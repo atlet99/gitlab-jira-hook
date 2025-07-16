@@ -198,27 +198,27 @@
 
 ## 📅 **Timeline**
 
-### **Q1 2025**
+### **State 1**
 - [ ] v0.2.0 - Extended event processing
 - [ ] v0.3.0 - Extended Jira integration
 - [ ] Production deployment
 
-### **Q2 2025**
+### **State 2**
 - [ ] v0.4.0 - Bidirectional synchronization
 - [ ] v0.5.0 - Advanced features
 - [ ] Enterprise customers onboarding
 
-### **Q3 2025**
+### **State 3**
 - [ ] v1.0.0 - Production readiness
 - [ ] High Availability deployment
 - [ ] Advanced monitoring
 
-### **Q4 2025**
+### **State 4**
 - [ ] v1.5.0 - Multi-tenant architecture
 - [ ] Self-service portal
 - [ ] Usage analytics
 
-### **2026**
+### **State 5**
 - [ ] v2.0.0 - Enterprise features
 - [ ] v2.5.0 - AI-powered features
 - [ ] v3.0.0 - Advanced automation
