@@ -1,0 +1,15 @@
+# errcheck exclude file for gitlab-jira-hook
+# Standard library functions that commonly don't need error checking
+
+# Common file operations in tests that are generally safe to ignore
+(*os.File).Close
+os.RemoveAll
+
+# Printf family functions - extensively used in examples and tests
+fmt.Printf
+fmt.Fprintf
+fmt.Sprintf
+
+# Standard output operations
+io.Copy(os.Stdout)
+io.Copy(os.Stderr)

@@ -1,0 +1,62 @@
+{
+    "_comment": "NOTE: gosec v2.22.5 hardcodes CWE taxonomy v4.4 (2021-03-15). Latest is v4.17 (2025-04-03). No config option to update.",
+    "global": {
+      "audit": "enabled"
+    },
+    "rules": {
+      "G101": {
+        "pattern": "(?i)passwd|pass|password|pwd|secret|private|token|key",
+        "entropy_threshold": 80.0,
+        "per_char_threshold": 3.0,
+        "truncate": 32
+      },
+      "G104": {
+        "ignore_nosec": false
+      },
+      "G115": {
+        "ignore_nosec": false
+      },
+      "G201": {
+        "ignore_nosec": false
+      },
+      "G202": {
+        "ignore_nosec": false
+      },
+      "G204": {
+        "ignore_nosec": false
+      },
+      "G301": {
+        "ignore_nosec": false
+      },
+      "G302": {
+        "ignore_nosec": false
+      },
+      "G306": {
+        "ignore_nosec": false
+      },
+      "G401": {
+        "ignore_nosec": false
+      },
+      "G402": {
+        "ignore_nosec": false
+      },
+      "G404": {
+        "ignore_nosec": false
+      }
+    },
+    "exclude": {
+      "G101": [
+        "*_test.go"
+      ],
+      "G104": [
+        "*_test.go"
+      ]
+    },
+    "exclude-dirs": [
+      "vendor",
+      "testdata",
+      ".git",
+      "node_modules"
+    ]
+  }
+  
