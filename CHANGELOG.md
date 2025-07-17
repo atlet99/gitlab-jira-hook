@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated commit comment formatting to properly handle file arrays using strings.Join()
 - Added strings package import in handler.go for array joining functionality
 - Resolved webhook processing failures caused by unmarshal errors when GitLab sends file information as arrays
+- Enhanced project filtering logic to support group-based filtering: now allows projects by group prefix (e.g., "devops" allows "devops/login/stg")
+- Added strings.HasPrefix() support for both System Hook and Project Hook handlers
+- Added comprehensive tests for group prefix filtering functionality
 
 ## [0.1.3] - 2025-07-17
 

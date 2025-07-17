@@ -761,7 +761,12 @@ func (h *ProjectHookHandler) isAllowedEvent(event *Event) bool {
 	}
 	if event.Project != nil && len(h.config.AllowedProjects) > 0 {
 		for _, p := range h.config.AllowedProjects {
+			// Check exact match
 			if event.Project.PathWithNamespace == p || event.Project.Name == p {
+				return true
+			}
+			// Check if project path starts with allowed group (for group-based filtering)
+			if strings.HasPrefix(event.Project.PathWithNamespace, p+"/") {
 				return true
 			}
 		}

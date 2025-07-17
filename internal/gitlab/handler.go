@@ -610,7 +610,12 @@ func (h *Handler) isAllowedEvent(event *Event) bool {
 		}
 		for _, p := range h.config.AllowedProjects {
 			for _, name := range projectNames {
+				// Check exact match
 				if name == p {
+					return true
+				}
+				// Check if project path starts with allowed group (for group-based filtering)
+				if strings.HasPrefix(name, p+"/") {
 					return true
 				}
 			}
