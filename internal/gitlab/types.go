@@ -101,6 +101,9 @@ type Event struct {
 	TotalCommitsCount int    `json:"total_commits_count"`
 	// Tag events
 	TagPush bool `json:"tag_push"`
+	// Repository update event specific fields
+	Changes []Change `json:"changes"`
+	Refs    []string `json:"refs"`
 }
 
 // Commit represents a Git commit
@@ -371,4 +374,11 @@ type Group struct {
 	RequestAccessEnabled bool   `json:"request_access_enabled"`
 	// Additional group fields
 	Parent *Group `json:"parent"`
+}
+
+// Change represents a repository change in repository_update event
+type Change struct {
+	Before string `json:"before"`
+	After  string `json:"after"`
+	Ref    string `json:"ref"`
 }

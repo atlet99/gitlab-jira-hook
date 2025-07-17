@@ -18,6 +18,7 @@ const (
 	DefaultJiraRateLimit        = 10
 	DefaultJiraRetryMaxAttempts = 3
 	DefaultJiraRetryBaseDelayMs = 200
+	DefaultTimezone             = "Etc/GMT-5" // UTC+5
 )
 
 // Config holds all configuration for the application
@@ -35,6 +36,7 @@ type Config struct {
 	JiraRetryMaxAttempts int
 	JiraRetryBaseDelayMs int
 	PushBranchFilter     []string // comma-separated list of branch names to filter
+	Timezone             string   // timezone for date formatting
 }
 
 // Load loads configuration from environment variables
@@ -59,6 +61,7 @@ func Load() (*Config, error) {
 		JiraRetryMaxAttempts: parseIntEnv("JIRA_RETRY_MAX_ATTEMPTS", DefaultJiraRetryMaxAttempts),
 		JiraRetryBaseDelayMs: parseIntEnv("JIRA_RETRY_BASE_DELAY_MS", DefaultJiraRetryBaseDelayMs),
 		PushBranchFilter:     parseCSVEnv("PUSH_BRANCH_FILTER"),
+		Timezone:             getEnv("TIMEZONE", DefaultTimezone),
 	}
 
 	// Validate required fields

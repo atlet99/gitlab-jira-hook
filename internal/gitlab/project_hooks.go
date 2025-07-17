@@ -11,34 +11,54 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
+	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
+	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
 )
 
 // ProjectHookHandler handles GitLab Project Hook requests
 type ProjectHookHandler struct {
-	config *config.Config
-	logger *slog.Logger
-	jira   JiraClient // Use interface instead of concrete type
-	parser *Parser
+	config  *config.Config
+	logger  *slog.Logger
+	jira    JiraClient // Use interface instead of concrete type
+	parser  *Parser
+	monitor *monitoring.WebhookMonitor
 }
 
 // NewProjectHookHandler creates a new GitLab Project Hook handler
 func NewProjectHookHandler(cfg *config.Config, logger *slog.Logger) *ProjectHookHandler {
 	return &ProjectHookHandler{
-		config: cfg,
-		logger: logger,
-		jira:   jira.NewClient(cfg),
-		parser: NewParser(),
+		config:  cfg,
+		logger:  logger,
+		jira:    jira.NewClient(cfg),
+		parser:  NewParser(),
+		monitor: nil, // Will be set by server
 	}
+}
+
+// SetMonitor sets the webhook monitor for metrics recording
+func (h *ProjectHookHandler) SetMonitor(monitor *monitoring.WebhookMonitor) {
+	h.monitor = monitor
 }
 
 // HandleProjectHook handles incoming GitLab Project Hook requests
 func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		// Record metrics if monitor is available
+		if h.monitor != nil {
+			h.monitor.RecordRequest("/gitlab-project-hook", success, time.Since(start))
+		}
+	}()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -88,7 +108,10 @@ func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
 		h.logger.Error("Failed to write response", "error", err)
+		return
 	}
+
+	success = true
 }
 
 // validateProjectToken validates the GitLab project secret token
@@ -212,6 +235,7 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				event.Ref,
 				branchURL,
 				projectWebURL,
+				h.config.Timezone,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,
@@ -271,25 +295,49 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 	}
 
 	// Extract participants and approvers from MR
-	var participants, approvedBy, reviewers, approvers []string
+	var participants, approvedBy, reviewers, approvers []userlink.UserWithLink
 	if event.MergeRequest != nil {
 		if event.MergeRequest.Author != nil {
-			participants = append(participants, event.MergeRequest.Author.Name)
+			name := event.MergeRequest.Author.Username
+			if name == "" {
+				name = event.MergeRequest.Author.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
 		}
 		if event.MergeRequest.Assignee != nil {
-			participants = append(participants, event.MergeRequest.Assignee.Name)
+			name := event.MergeRequest.Assignee.Username
+			if name == "" {
+				name = event.MergeRequest.Assignee.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
 		}
 		for _, participant := range event.MergeRequest.Participants {
-			participants = append(participants, participant.Name)
+			name := participant.Username
+			if name == "" {
+				name = participant.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
 		}
 		for _, user := range event.MergeRequest.ApprovedBy {
-			approvedBy = append(approvedBy, user.Name)
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			approvedBy = append(approvedBy, userlink.UserWithLink{Name: name, URL: ""})
 		}
 		for _, user := range event.MergeRequest.Reviewers {
-			reviewers = append(reviewers, user.Name)
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			reviewers = append(reviewers, userlink.UserWithLink{Name: name, URL: ""})
 		}
 		for _, user := range event.MergeRequest.Approvers {
-			approvers = append(approvers, user.Name)
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			approvers = append(approvers, userlink.UserWithLink{Name: name, URL: ""})
 		}
 	}
 
@@ -305,6 +353,7 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 		attrs.State,
 		attrs.Name,
 		attrs.Description,
+		h.config.Timezone,
 		participants,
 		approvedBy,
 		reviewers,

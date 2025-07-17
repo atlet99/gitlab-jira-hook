@@ -7,20 +7,24 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
+	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
+	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
 )
 
 // Handler handles GitLab webhook requests
 type Handler struct {
-	config *config.Config
-	logger *slog.Logger
-	jira   JiraClient
-	parser *Parser
+	config  *config.Config
+	logger  *slog.Logger
+	jira    JiraClient
+	parser  *Parser
+	monitor *monitoring.WebhookMonitor
 }
 
 // JiraClient defines the interface for Jira client operations
@@ -33,15 +37,31 @@ type JiraClient interface {
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
 	return &Handler{
-		config: cfg,
-		logger: logger,
-		jira:   jira.NewClient(cfg),
-		parser: NewParser(),
+		config:  cfg,
+		logger:  logger,
+		jira:    jira.NewClient(cfg),
+		parser:  NewParser(),
+		monitor: nil, // Will be set by server
 	}
+}
+
+// SetMonitor sets the webhook monitor for metrics recording
+func (h *Handler) SetMonitor(monitor *monitoring.WebhookMonitor) {
+	h.monitor = monitor
 }
 
 // HandleWebhook handles incoming GitLab webhook requests
 func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		// Record metrics if monitor is available
+		if h.monitor != nil {
+			h.monitor.RecordRequest("/gitlab-hook", success, time.Since(start))
+		}
+	}()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -96,7 +116,10 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
 		h.logger.Error("Failed to write response", "error", err)
+		return
 	}
+
+	success = true
 }
 
 // validateToken validates the GitLab secret token
@@ -142,6 +165,8 @@ func (h *Handler) processEvent(event *Event) error {
 	// System Hook events
 	case "repository_create", "repository_destroy":
 		return h.processRepositoryEvent(event)
+	case "repository_update":
+		return h.processRepositoryUpdateEvent(event)
 	case "team_create", "team_destroy":
 		return h.processTeamCreateDestroyEvent(event)
 	case "group_create", "group_destroy":
@@ -198,17 +223,8 @@ func (h *Handler) processPushEvent(event *Event) error {
 				authorName = commit.Author.Name
 			}
 
-			// Construct author URL using user_id for proper profile link in system hooks
-			authorURL := ""
-			if h.config.GitLabBaseURL != "" {
-				if event.UserID > 0 {
-					// Use user_id for profile URL in system hooks (correct format)
-					authorURL = fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
-				} else if authorName != "" {
-					// Fallback to username-based URL if user_id not available
-					authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
-				}
-			}
+			// Construct author URL using improved function
+			authorURL := h.constructAuthorURL(event, commit.Author)
 
 			// Get project web URL for MR links
 			projectWebURL := ""
@@ -230,6 +246,7 @@ func (h *Handler) processPushEvent(event *Event) error {
 				event.Ref,
 				branchURL,
 				projectWebURL,
+				h.config.Timezone,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,
@@ -250,6 +267,35 @@ func (h *Handler) processPushEvent(event *Event) error {
 	return nil
 }
 
+// constructAuthorURL constructs a user profile URL for commit authors
+func (h *Handler) constructAuthorURL(event *Event, author Author) string {
+	if h.config.GitLabBaseURL == "" {
+		return ""
+	}
+
+	// Priority 1: Use user_id from system hook (most reliable)
+	if event.UserID > 0 {
+		return fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
+	}
+
+	// Priority 2: Use username from system hook
+	if event.Username != "" {
+		return fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.Username)
+	}
+
+	// Priority 3: Try to extract username from author email (common pattern)
+	if author.Email != "" {
+		// Extract username from email (e.g., "user@example.com" -> "user")
+		parts := strings.Split(author.Email, "@")
+		if len(parts) > 0 && parts[0] != "" {
+			return fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, parts[0])
+		}
+	}
+
+	// If no user information available, return empty string
+	return ""
+}
+
 // constructBranchURL constructs a proper branch URL using project information
 func (h *Handler) constructBranchURL(event *Event, ref string) string {
 	// Extract branch name from refs/heads/branch format
@@ -258,12 +304,27 @@ func (h *Handler) constructBranchURL(event *Event, ref string) string {
 		branchName = strings.TrimPrefix(ref, "refs/heads/")
 	}
 
-	// Try to use project information from system hook first
+	// Priority 1: Use project information from system hook (most reliable)
 	if event.Project != nil && event.Project.WebURL != "" {
 		return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
 	}
 
-	// Fallback to using PathWithNamespace and GitLabBaseURL
+	// Priority 2: Use path_with_namespace from system hook (from documentation)
+	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		return fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, branchName)
+	}
+
+	// Priority 3: Use project information from project hook
+	if event.Project != nil && event.Project.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		return fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.Project.PathWithNamespace, branchName)
+	}
+
+	// Priority 4: Use project information from project hook with web_url
+	if event.Project != nil && event.Project.WebURL != "" {
+		return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+	}
+
+	// Priority 5: Fallback to using PathWithNamespace and GitLabBaseURL (legacy)
 	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
 		return fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, branchName)
 	}
@@ -274,16 +335,46 @@ func (h *Handler) constructBranchURL(event *Event, ref string) string {
 
 // constructProjectURL constructs a project URL using available project information
 func (h *Handler) constructProjectURL(event *Event) (string, string) {
-	// Try to use project information from system hook first
+	// Priority 1: Use project information from system hook (most reliable)
 	if event.Project != nil {
-		return event.Project.Name, event.Project.WebURL
+		projectName := event.Project.Name
+		if projectName == "" {
+			projectName = event.Name
+		}
+		return projectName, event.Project.WebURL
 	}
 
-	// Fallback to using PathWithNamespace and GitLabBaseURL
+	// Priority 2: Use path_with_namespace from system hook (from documentation)
 	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
-		projectName := event.PathWithNamespace
-		if event.Name != "" {
-			projectName = event.Name
+		projectName := event.Name
+		if projectName == "" {
+			// Extract project name from path_with_namespace
+			parts := strings.Split(event.PathWithNamespace, "/")
+			if len(parts) > 0 {
+				projectName = parts[len(parts)-1]
+			}
+		}
+		return projectName, fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.PathWithNamespace)
+	}
+
+	// Priority 3: Use project information from project hook
+	if event.Project != nil && event.Project.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		projectName := event.Project.Name
+		if projectName == "" {
+			// Extract project name from path_with_namespace
+			parts := strings.Split(event.Project.PathWithNamespace, "/")
+			if len(parts) > 0 {
+				projectName = parts[len(parts)-1]
+			}
+		}
+		return projectName, fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.Project.PathWithNamespace)
+	}
+
+	// Priority 4: Fallback to using PathWithNamespace and GitLabBaseURL (legacy)
+	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		projectName := event.Name
+		if projectName == "" {
+			projectName = event.PathWithNamespace
 		}
 		return projectName, fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.PathWithNamespace)
 	}
@@ -322,55 +413,49 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 	}
 
 	// Extract participants and approvers from MR using usernames instead of full names
-	var participants, approvedBy, reviewers, approvers []string
+	var participants, approvedBy, reviewers, approvers []userlink.UserWithLink
 	if event.MergeRequest != nil {
 		if event.MergeRequest.Author != nil {
-			// Use username if available, otherwise fallback to name
-			authorName := event.MergeRequest.Author.Username
-			if authorName == "" {
-				authorName = event.MergeRequest.Author.Name
+			name := event.MergeRequest.Author.Username
+			if name == "" {
+				name = event.MergeRequest.Author.Name
 			}
-			participants = append(participants, authorName)
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(event.MergeRequest.Author)})
 		}
 		if event.MergeRequest.Assignee != nil {
-			// Use username if available, otherwise fallback to name
-			assigneeName := event.MergeRequest.Assignee.Username
-			if assigneeName == "" {
-				assigneeName = event.MergeRequest.Assignee.Name
+			name := event.MergeRequest.Assignee.Username
+			if name == "" {
+				name = event.MergeRequest.Assignee.Name
 			}
-			participants = append(participants, assigneeName)
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(event.MergeRequest.Assignee)})
 		}
 		for _, participant := range event.MergeRequest.Participants {
-			// Use username if available, otherwise fallback to name
-			participantName := participant.Username
-			if participantName == "" {
-				participantName = participant.Name
+			name := participant.Username
+			if name == "" {
+				name = participant.Name
 			}
-			participants = append(participants, participantName)
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(&participant)})
 		}
 		for _, user := range event.MergeRequest.ApprovedBy {
-			// Use username if available, otherwise fallback to name
-			userName := user.Username
-			if userName == "" {
-				userName = user.Name
+			name := user.Username
+			if name == "" {
+				name = user.Name
 			}
-			approvedBy = append(approvedBy, userName)
+			approvedBy = append(approvedBy, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(&user)})
 		}
 		for _, user := range event.MergeRequest.Reviewers {
-			// Use username if available, otherwise fallback to name
-			userName := user.Username
-			if userName == "" {
-				userName = user.Name
+			name := user.Username
+			if name == "" {
+				name = user.Name
 			}
-			reviewers = append(reviewers, userName)
+			reviewers = append(reviewers, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(&user)})
 		}
 		for _, user := range event.MergeRequest.Approvers {
-			// Use username if available, otherwise fallback to name
-			userName := user.Username
-			if userName == "" {
-				userName = user.Name
+			name := user.Username
+			if name == "" {
+				name = user.Name
 			}
-			approvers = append(approvers, userName)
+			approvers = append(approvers, userlink.UserWithLink{Name: name, URL: h.constructUserProfileURL(&user)})
 		}
 
 		// Log MR data for debugging
@@ -416,6 +501,7 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		attrs.Name,
 		attrs.Description,
 		eventTime,
+		h.config.Timezone,
 		participants,
 		approvedBy,
 		reviewers,
@@ -847,6 +933,70 @@ func (h *Handler) processRepositoryEvent(event *Event) error {
 	return nil
 }
 
+func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
+	h.logger.Info("Repository update event", "type", event.Type)
+
+	// Get project information
+	projectName := "Unknown Project"
+	projectURL := ""
+	if event.Project != nil {
+		projectName = event.Project.Name
+		projectURL = event.Project.WebURL
+	}
+
+	// Get user information
+	userName := event.UserName
+	if userName == "" {
+		userName = event.Username
+	}
+
+	// Build comment with project and user information
+	comment := fmt.Sprintf("Repository updated: [%s](%s)\nUser: %s\nProject: [%s](%s)",
+		projectName,
+		projectURL,
+		userName,
+		projectName,
+		projectURL)
+
+	// Add information about changes if available
+	if len(event.Changes) > 0 {
+		comment += "\nChanges:"
+		for _, change := range event.Changes {
+			// Extract branch name from ref
+			branchName := change.Ref
+			if strings.HasPrefix(change.Ref, "refs/heads/") {
+				branchName = strings.TrimPrefix(change.Ref, "refs/heads/")
+			} else if strings.HasPrefix(change.Ref, "refs/tags/") {
+				branchName = strings.TrimPrefix(change.Ref, "refs/tags/")
+			}
+
+			comment += fmt.Sprintf("\n- Branch: `%s` (%s → %s)",
+				branchName,
+				change.Before[:8], // Show first 8 characters of commit hash
+				change.After[:8])
+		}
+	}
+
+	// Extract Jira issue IDs from project name and user name
+	text := projectName + " " + userName
+	issueIDs := h.parser.ExtractIssueIDs(text)
+
+	for _, issueID := range issueIDs {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+			h.logger.Error("Failed to add repository update comment to Jira",
+				"error", err,
+				"issueID", issueID,
+				"projectName", projectName)
+		} else {
+			h.logger.Info("Added repository update comment to Jira issue",
+				"issueID", issueID,
+				"projectName", projectName)
+		}
+	}
+
+	return nil
+}
+
 func (h *Handler) processTeamCreateDestroyEvent(event *Event) error {
 	h.logger.Info("Team create/destroy event", "type", event.Type)
 
@@ -1003,6 +1153,7 @@ func (h *Handler) processTagPushEvent(event *Event) error {
 		"", // projectURL - not available in System Hook
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Name,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1034,6 +1185,7 @@ func (h *Handler) processReleaseEvent(event *Event) error {
 		event.ObjectAttributes.Ref,
 		event.ObjectAttributes.Description,
 		event.ObjectAttributes.Name,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1066,6 +1218,7 @@ func (h *Handler) processDeploymentEvent(event *Event) error {
 		event.ObjectAttributes.Status,
 		event.ObjectAttributes.Sha,
 		event.ObjectAttributes.Name,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1096,6 +1249,7 @@ func (h *Handler) processFeatureFlagEvent(event *Event) error {
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Description,
 		event.ObjectAttributes.Name,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1126,6 +1280,7 @@ func (h *Handler) processWikiPageEvent(event *Event) error {
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.Content,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1162,6 +1317,7 @@ func (h *Handler) processPipelineEvent(event *Event) error {
 		event.ObjectAttributes.Sha,
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.Duration,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1200,6 +1356,7 @@ func (h *Handler) processBuildEvent(event *Event) error {
 		event.ObjectAttributes.Sha,
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.Duration,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1226,6 +1383,7 @@ func (h *Handler) processNoteEvent(event *Event) error {
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.Note,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1263,6 +1421,7 @@ func (h *Handler) processIssueEvent(event *Event) error {
 		event.ObjectAttributes.Priority,
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.Description,
+		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
@@ -1280,4 +1439,18 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// constructUserProfileURL constructs a user profile URL using available user information
+func (h *Handler) constructUserProfileURL(user *User) string {
+	if h.config.GitLabBaseURL == "" || user == nil {
+		return ""
+	}
+	if user.ID > 0 {
+		return fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, user.ID)
+	}
+	if user.Username != "" {
+		return fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, user.Username)
+	}
+	return ""
 }

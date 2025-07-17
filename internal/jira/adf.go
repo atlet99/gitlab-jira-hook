@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
+	"github.com/atlet99/gitlab-jira-hook/internal/utils"
 )
 
 // DateFormatGOST is the date format according to GOST 7.64-90 standard (DD.MM.YYYY HH:MM)
@@ -11,7 +14,7 @@ const DateFormatGOST = "02.01.2006 15:04"
 
 // GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
-	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL, projectWebURL string,
+	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL, projectWebURL, timezone string,
 	added, modified, removed []string,
 ) CommentPayload {
 	content := []Content{createCommitAuthor(authorName, authorURL)}
@@ -27,7 +30,7 @@ func GenerateCommitADFComment(
 		content = append(content, mrContent)
 	}
 
-	content = append(content, createCommitDate(date))
+	content = append(content, createCommitDate(date, timezone))
 
 	if hasFileChanges(added, modified, removed) {
 		content = append(content, createCompactFileChangesSection(added, modified, removed)...)
@@ -224,9 +227,9 @@ func extractMRID(mrRef string) string {
 	return mrRef
 }
 
-func createCommitDate(date string) Content {
+func createCommitDate(date, timezone string) Content {
 	// Format the date to GOST 7.64-90 (DD.MM.YYYY HH:MM)
-	formattedDate := formatDateGOST(date)
+	formattedDate := utils.FormatDateGOST(date, timezone)
 
 	return Content{
 		Type: "paragraph",
@@ -400,22 +403,23 @@ func createSimpleParagraph(text string) Content {
 	}
 }
 
-// GenerateMergeRequestADFComment generates ADF comment for Merge Request
+// GenerateMergeRequestADFComment generates an ADF comment for a merge request event
 func GenerateMergeRequestADFComment(
-	title, url, projectName, projectURL, action, sourceBranch, targetBranch, status, author, description string,
-	participants, approvedBy, reviewers, approvers []string,
+	title, url, projectName, projectURL, action, sourceBranch, targetBranch, status, author, description, timezone string,
+	participants, approvedBy, reviewers, approvers []userlink.UserWithLink,
 ) CommentPayload {
 	return GenerateMergeRequestADFCommentWithBranchURLs(
-		title, url, projectName, projectURL, action, sourceBranch, "", targetBranch, "", status, author, description, "",
+		title, url, projectName, projectURL, action,
+		sourceBranch, "", targetBranch, "", status, author, description, "", timezone,
 		participants, approvedBy, reviewers, approvers,
 	)
 }
 
-// GenerateMergeRequestADFCommentWithBranchURLs generates ADF comment for MR with clickable branch links
+// GenerateMergeRequestADFCommentWithBranchURLs generates an ADF comment for a merge request event with branch URLs
 func GenerateMergeRequestADFCommentWithBranchURLs(
 	title, url, projectName, projectURL, action, sourceBranch, sourceBranchURL,
-	targetBranch, targetBranchURL, status, author, description, eventTime string,
-	participants, approvedBy, reviewers, approvers []string,
+	targetBranch, targetBranchURL, status, author, description, eventTime, timezone string,
+	participants, approvedBy, reviewers, approvers []userlink.UserWithLink,
 ) CommentPayload {
 	var content []Content
 
@@ -443,19 +447,19 @@ func GenerateMergeRequestADFCommentWithBranchURLs(
 
 	// Add participants if available
 	if len(participants) > 0 {
-		content = append(content, createParticipantsField(participants))
+		content = append(content, createParticipantsFieldWithLinks(participants))
 	}
 	// Add approved by if available
 	if len(approvedBy) > 0 {
-		content = append(content, createApproversField("approved by", approvedBy))
+		content = append(content, createApproversFieldWithLinks("approved by", approvedBy))
 	}
 	// Add reviewers if available
 	if len(reviewers) > 0 {
-		content = append(content, createApproversField("reviewers", reviewers))
+		content = append(content, createApproversFieldWithLinks("reviewers", reviewers))
 	}
 	// Add approvers if available
 	if len(approvers) > 0 {
-		content = append(content, createApproversField("approvers", approvers))
+		content = append(content, createApproversFieldWithLinks("approvers", approvers))
 	}
 
 	// Add project info if available
@@ -476,7 +480,7 @@ func GenerateMergeRequestADFCommentWithBranchURLs(
 	if eventTime != "" {
 		content = append(content, createEventDateField(eventTime))
 	} else {
-		content = append(content, createCurrentDateField())
+		content = append(content, createCurrentDateField(timezone))
 	}
 
 	return CommentPayload{
@@ -518,9 +522,9 @@ func createMergeRequestDescription(description string) Content {
 	}
 }
 
-func createCurrentDateField() Content {
-	// Format current time to GOST 7.64-90 format
-	formattedDate := time.Now().Format(DateFormatGOST)
+func createCurrentDateField(timezone string) Content {
+	// Format current time to GOST 7.64-90 format with timezone
+	formattedDate := utils.FormatCurrentTimeGOST(timezone)
 
 	return Content{
 		Type: "paragraph",
@@ -608,32 +612,51 @@ func createBranchesFieldWithURLs(sourceBranch, sourceBranchURL, targetBranch, ta
 	}
 }
 
-func createParticipantsField(participants []string) Content {
-	// Join participants with commas
-	participantsText := strings.Join(participants, ", ")
-
+func createParticipantsFieldWithLinks(users []userlink.UserWithLink) Content {
+	var userContents []TextContent
+	for i, u := range users {
+		userContent := TextContent{
+			Type:  "text",
+			Text:  u.Name,
+			Marks: []Mark{{Type: "link", Attrs: map[string]interface{}{"href": u.URL}}, {Type: "code"}},
+		}
+		userContents = append(userContents, userContent)
+		if i < len(users)-1 {
+			userContents = append(userContents, TextContent{Type: "text", Text: ", "})
+		}
+	}
 	return Content{
 		Type: "paragraph",
-		Content: []TextContent{
-			{Type: "text", Text: "participants: ", Marks: []Mark{{Type: "strong"}}},
-			{Type: "text", Text: participantsText, Marks: []Mark{{Type: "code"}}},
-		},
+		Content: append(
+			[]TextContent{{Type: "text", Text: "participants: ", Marks: []Mark{{Type: "strong"}}}},
+			userContents...,
+		),
 	}
 }
 
-func createApproversField(label string, users []string) Content {
+// createApproversFieldWithLinks creates a field for approvers/reviewers with clickable links
+func createApproversFieldWithLinks(label string, users []userlink.UserWithLink) Content {
+	var userContents []TextContent
+	for i, u := range users {
+		userContent := TextContent{
+			Type:  "text",
+			Text:  u.Name,
+			Marks: []Mark{{Type: "link", Attrs: map[string]interface{}{"href": u.URL}}, {Type: "code"}},
+		}
+		userContents = append(userContents, userContent)
+		if i < len(users)-1 {
+			userContents = append(userContents, TextContent{Type: "text", Text: ", "})
+		}
+	}
 	return Content{
-		Type: "paragraph",
-		Content: []TextContent{
-			{Type: "text", Text: label + ": ", Marks: []Mark{{Type: "strong"}}},
-			{Type: "text", Text: strings.Join(users, ", "), Marks: []Mark{{Type: "code"}}},
-		},
+		Type:    "paragraph",
+		Content: append([]TextContent{{Type: "text", Text: label + ": ", Marks: []Mark{{Type: "strong"}}}}, userContents...),
 	}
 }
 
 // GenerateIssueADFComment generates ADF comment for Issue
 func GenerateIssueADFComment(
-	title, url, projectName, projectURL, action, status, issueType, priority, author, description string,
+	title, url, projectName, projectURL, action, status, issueType, priority, author, description, timezone string,
 ) CommentPayload {
 	var content []Content
 
@@ -667,7 +690,7 @@ func GenerateIssueADFComment(
 		content = append(content, createDescriptionField(description)...)
 	}
 
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -680,7 +703,7 @@ func GenerateIssueADFComment(
 
 // GeneratePipelineADFComment generates an ADF comment for a Pipeline event
 func GeneratePipelineADFComment(
-	ref, url, projectName, projectURL, action, status, sha, author string, duration int,
+	ref, url, projectName, projectURL, action, status, sha, author string, duration int, timezone string,
 ) CommentPayload {
 	content := createPipelineHeader(ref, url)
 	content = append(content, createPipelineProject(projectName, projectURL)...)           // may be empty
@@ -688,7 +711,7 @@ func GeneratePipelineADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",
@@ -766,7 +789,7 @@ func createPipelineFields(action, status, ref, sha string, duration int) []Conte
 
 // GenerateBuildADFComment generates an ADF comment for a Build/Job event
 func GenerateBuildADFComment(
-	name, url, projectName, projectURL, action, status, stage, ref, sha, author string, duration int,
+	name, url, projectName, projectURL, action, status, stage, ref, sha, author string, duration int, timezone string,
 ) CommentPayload {
 	content := createBuildHeader(name, url)
 	content = append(content, createBuildProject(projectName, projectURL)...)                  // may be empty
@@ -774,7 +797,7 @@ func GenerateBuildADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",
@@ -931,7 +954,7 @@ func generateSimpleADFComment(
 		)
 	}
 
-	adfContent = append(adfContent, createCurrentDateField())
+	adfContent = append(adfContent, createCurrentDateField(""))
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -943,13 +966,13 @@ func generateSimpleADFComment(
 }
 
 // GenerateNoteADFComment generates ADF comment for Note/Comment
-func GenerateNoteADFComment(title, url, projectName, projectURL, action, author, content string) CommentPayload {
+func GenerateNoteADFComment(title, url, projectName, projectURL, action, author, content, _ string) CommentPayload {
 	return generateSimpleADFComment(title, url, projectName, projectURL, action, author, content, "note", "Comment")
 }
 
 // GenerateFeatureFlagADFComment generates ADF comment for Feature Flag
 func GenerateFeatureFlagADFComment(
-	name, url, projectName, projectURL, action, description, author string,
+	name, url, projectName, projectURL, action, description, author, _ string,
 ) CommentPayload {
 	return generateSimpleADFComment(
 		name, url, projectName, projectURL, action, author, description, "feature_flag", "Feature Flag",
@@ -957,13 +980,13 @@ func GenerateFeatureFlagADFComment(
 }
 
 // GenerateWikiPageADFComment generates ADF comment for Wiki Page
-func GenerateWikiPageADFComment(title, url, projectName, projectURL, action, author, content string) CommentPayload {
+func GenerateWikiPageADFComment(title, url, projectName, projectURL, action, author, content, _ string) CommentPayload {
 	return generateSimpleADFComment(title, url, projectName, projectURL, action, author, content, "wiki_page", "Wiki Page")
 }
 
 // GenerateTagPushADFComment generates ADF comment for Tag Push
 func GenerateTagPushADFComment(
-	ref, url, projectName, projectURL, action, author string,
+	ref, url, projectName, projectURL, action, author, timezone string,
 ) CommentPayload {
 	var content []Content
 
@@ -1036,7 +1059,7 @@ func GenerateTagPushADFComment(
 		})
 	}
 
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -1049,7 +1072,7 @@ func GenerateTagPushADFComment(
 
 // GenerateReleaseADFComment generates ADF comment for Release
 func GenerateReleaseADFComment(
-	name, url, projectName, projectURL, action, tag, description, author string,
+	name, url, projectName, projectURL, action, tag, description, author, timezone string,
 ) CommentPayload {
 	var content []Content
 
@@ -1136,7 +1159,7 @@ func GenerateReleaseADFComment(
 		)
 	}
 
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -1149,7 +1172,7 @@ func GenerateReleaseADFComment(
 
 // GenerateDeploymentADFComment generates an ADF comment for a Deployment event
 func GenerateDeploymentADFComment(
-	ref, url, projectName, projectURL, action, environment, status, sha, author string,
+	ref, url, projectName, projectURL, action, environment, status, sha, author, timezone string,
 ) CommentPayload {
 	content := createDeploymentHeader(ref, url)
 	content = append(content, createDeploymentProject(projectName, projectURL)...)              // may be empty
@@ -1157,7 +1180,7 @@ func GenerateDeploymentADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = append(content, createCurrentDateField())
+	content = append(content, createCurrentDateField(timezone))
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",

@@ -3,6 +3,10 @@ package jira
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
 )
 
 func TestCreateCommitBranch_EmptyURL(t *testing.T) {
@@ -99,16 +103,17 @@ func TestGenerateMergeRequestADFComment_NewFormat(t *testing.T) {
 		"https://gitlab.com/test/project/merge_requests/123",
 		"test-project",
 		"https://gitlab.com/test/project",
-		"Update",
+		"update",
 		"feature/ABC-456-branch",
 		"main",
 		"opened",
 		"Test User",
 		"This MR addresses ABC-123 and ABC-456",
-		[]string{}, // participants
-		[]string{}, // approvedBy
-		[]string{}, // reviewers
-		[]string{}, // approvers
+		"Asia/Almaty",
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
 	)
 
 	// Marshal to JSON to check the structure
@@ -146,96 +151,89 @@ func TestGenerateMergeRequestADFComment_NewFormat(t *testing.T) {
 }
 
 func TestGenerateMergeRequestADFComment_WithParticipants(t *testing.T) {
-	participants := []string{"John Doe", "Jane Smith", "Bob Johnson"}
+	participants := []userlink.UserWithLink{
+		{Name: "john_doe", URL: "https://gitlab.com/john_doe"},
+		{Name: "jane_smith", URL: "https://gitlab.com/jane_smith"},
+	}
+
 	comment := GenerateMergeRequestADFComment(
-		"Test MR with participants",
-		"https://gitlab.com/test/project/merge_requests/456",
+		"Test MR",
+		"https://gitlab.com/test/project/merge_requests/123",
 		"test-project",
 		"https://gitlab.com/test/project",
-		"Open",
+		"open",
 		"feature/test",
 		"main",
 		"opened",
 		"Test User",
-		"This MR has multiple participants",
+		"Test description",
+		"UTC",
 		participants,
-		[]string{}, // approvedBy
-		[]string{}, // reviewers
-		[]string{}, // approvers
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
 	)
 
-	// Marshal to JSON to check the structure
+	// Convert to JSON for easier testing
 	jsonData, err := json.Marshal(comment)
-	if err != nil {
-		t.Fatalf("Failed to marshal comment: %v", err)
-	}
-
+	assert.NoError(t, err)
 	jsonStr := string(jsonData)
 
 	// Check that participants field is present
-	if !contains(jsonStr, `"text":"participants: "`) {
-		t.Error("Expected participants field in MR comment")
-	}
+	assert.Contains(t, jsonStr, "participants", "Expected participants field in MR comment")
 
-	// Check that all participants are included
+	// Check that all participants are included with their names
 	for _, participant := range participants {
-		if !contains(jsonStr, participant) {
-			t.Errorf("Expected participant %s in MR comment", participant)
-		}
+		assert.Contains(t, jsonStr, participant.Name, "Expected participant %s in MR comment", participant.Name)
 	}
 
-	// Check that participants are joined with commas
-	if !contains(jsonStr, "John Doe, Jane Smith, Bob Johnson") {
-		t.Error("Expected participants to be joined with commas")
-	}
+	// Check that participants have clickable links
+	assert.Contains(t, jsonStr, `"type":"link"`, "Expected participants to have clickable links")
+	assert.Contains(t, jsonStr, `"href":"https://gitlab.com/john_doe"`, "Expected first participant link")
+	assert.Contains(t, jsonStr, `"href":"https://gitlab.com/jane_smith"`, "Expected second participant link")
 }
 
 func TestGenerateMergeRequestADFComment_WithApprovers(t *testing.T) {
-	participants := []string{"John Doe"}
-	approvedBy := []string{"Alice Brown", "Bob Johnson"}
-	reviewers := []string{"Jane Smith"}
-	approvers := []string{"Eve Adams"}
+	approvedBy := []userlink.UserWithLink{
+		{Name: "reviewer1", URL: "https://gitlab.com/reviewer1"},
+		{Name: "reviewer2", URL: "https://gitlab.com/reviewer2"},
+	}
+
 	comment := GenerateMergeRequestADFComment(
-		"Test MR with approvers",
-		"https://gitlab.com/test/project/merge_requests/789",
+		"Test MR",
+		"https://gitlab.com/test/project/merge_requests/123",
 		"test-project",
 		"https://gitlab.com/test/project",
-		"Open",
+		"open",
 		"feature/test",
 		"main",
 		"opened",
 		"Test User",
-		"This MR has approvers and reviewers",
-		participants,
+		"Test description",
+		"UTC",
+		[]userlink.UserWithLink{},
 		approvedBy,
-		reviewers,
-		approvers,
+		[]userlink.UserWithLink{},
+		[]userlink.UserWithLink{},
 	)
 
+	// Convert to JSON for easier testing
 	jsonData, err := json.Marshal(comment)
-	if err != nil {
-		t.Fatalf("Failed to marshal comment: %v", err)
-	}
+	assert.NoError(t, err)
 	jsonStr := string(jsonData)
 
-	if !contains(jsonStr, `"text":"approved by: "`) {
-		t.Error("Expected approved by field in MR comment")
+	// Check that approved by field is present
+	assert.Contains(t, jsonStr, "approved by", "Expected approved by field in MR comment")
+
+	// Check that all approvers are included with their names
+	for _, approver := range approvedBy {
+		assert.Contains(t, jsonStr, approver.Name, "Expected approver %s in MR comment", approver.Name)
 	}
-	if !contains(jsonStr, `"text":"reviewers: "`) {
-		t.Error("Expected reviewers field in MR comment")
-	}
-	if !contains(jsonStr, `"text":"approvers: "`) {
-		t.Error("Expected approvers field in MR comment")
-	}
-	if !contains(jsonStr, "Alice Brown, Bob Johnson") {
-		t.Error("Expected approved by users to be joined with commas")
-	}
-	if !contains(jsonStr, "Jane Smith") {
-		t.Error("Expected reviewer in MR comment")
-	}
-	if !contains(jsonStr, "Eve Adams") {
-		t.Error("Expected approver in MR comment")
-	}
+
+	// Check that approvers have clickable links
+	assert.Contains(t, jsonStr, `"type":"link"`, "Expected approvers to have clickable links")
+	assert.Contains(t, jsonStr, `"href":"https://gitlab.com/reviewer1"`, "Expected first approver link")
+	assert.Contains(t, jsonStr, `"href":"https://gitlab.com/reviewer2"`, "Expected second approver link")
 }
 
 // Helper function to check if a string contains a substring
