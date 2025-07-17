@@ -1,0 +1,1041 @@
+openapi: 3.1.0
+info:
+  title: GitLab ↔ Jira Cloud Webhook API
+  description: |
+    A lightweight Go webhook server that connects GitLab System Hooks and Project Webhooks with Jira Cloud.
+    Automatically posts commit, merge request, and other GitLab activity to corresponding Jira issues.
+  version: 0.1.0
+  contact:
+    name: GitLab Jira Hook Support
+    url: https://github.com/atlet99/gitlab-jira-hook
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://yourdomain.com
+    description: Production server
+
+paths:
+  /gitlab-hook:
+    post:
+      summary: GitLab System Hook endpoint
+      description: |
+        Handles GitLab System Hook events. Validates the webhook signature and processes
+        various GitLab events to create comments in Jira issues.
+      tags:
+        - System Hooks
+      security:
+        - GitLabToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PushEvent'
+                - $ref: '#/components/schemas/MergeRequestEvent'
+                - $ref: '#/components/schemas/ProjectEvent'
+                - $ref: '#/components/schemas/UserEvent'
+                - $ref: '#/components/schemas/GroupEvent'
+                - $ref: '#/components/schemas/RepositoryEvent'
+                - $ref: '#/components/schemas/TagPushEvent'
+                - $ref: '#/components/schemas/ReleaseEvent'
+                - $ref: '#/components/schemas/DeploymentEvent'
+                - $ref: '#/components/schemas/FeatureFlagEvent'
+                - $ref: '#/components/schemas/WikiPageEvent'
+                - $ref: '#/components/schemas/PipelineEvent'
+                - $ref: '#/components/schemas/BuildEvent'
+                - $ref: '#/components/schemas/NoteEvent'
+                - $ref: '#/components/schemas/IssueEvent'
+            examples:
+              push_event:
+                summary: Push Event
+                value:
+                  event_name: "push"
+                  ref: "refs/heads/main"
+                  commits:
+                    - id: "abc123"
+                      message: "Fix login issue ABC-123"
+                      author:
+                        name: "John Doe"
+                        email: "john@example.com"
+                      url: "https://gitlab.com/project/commit/abc123"
+                      timestamp: "2024-01-01T12:00:00Z"
+                  project:
+                    name: "My Project"
+                    web_url: "https://gitlab.com/project"
+              merge_request_event:
+                summary: Merge Request Event
+                value:
+                  event_name: "merge_request"
+                  object_attributes:
+                    id: 123
+                    title: "Implement user authentication ABC-123"
+                    description: "This fixes ABC-123 requirements"
+                    state: "opened"
+                    action: "open"
+                    source_branch: "feature/auth"
+                    target_branch: "main"
+                    url: "https://gitlab.com/project/merge_requests/123"
+                  project:
+                    name: "My Project"
+                    web_url: "https://gitlab.com/project"
+      responses:
+        '200':
+          description: Event processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Event processed successfully"
+                  jira_comments_created:
+                    type: integer
+                    example: 2
+        '400':
+          description: Bad request - invalid event data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /project-hook:
+    post:
+      summary: GitLab Project Webhook endpoint
+      description: |
+        Handles GitLab Project Webhook events. Validates the webhook signature and processes
+        various project events to create comments in Jira issues.
+      tags:
+        - Project Webhooks
+      security:
+        - GitLabToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ProjectPushEvent'
+                - $ref: '#/components/schemas/ProjectMergeRequestEvent'
+                - $ref: '#/components/schemas/ProjectIssueEvent'
+                - $ref: '#/components/schemas/ProjectNoteEvent'
+                - $ref: '#/components/schemas/ProjectPipelineEvent'
+                - $ref: '#/components/schemas/ProjectBuildEvent'
+                - $ref: '#/components/schemas/ProjectTagPushEvent'
+                - $ref: '#/components/schemas/ProjectReleaseEvent'
+                - $ref: '#/components/schemas/ProjectDeploymentEvent'
+                - $ref: '#/components/schemas/ProjectFeatureFlagEvent'
+                - $ref: '#/components/schemas/ProjectWikiPageEvent'
+            examples:
+              project_push_event:
+                summary: Project Push Event
+                value:
+                  object_kind: "push"
+                  ref: "refs/heads/main"
+                  commits:
+                    - id: "abc123"
+                      message: "Fix login issue ABC-123"
+                      author:
+                        name: "John Doe"
+                        email: "john@example.com"
+                      url: "https://gitlab.com/project/commit/abc123"
+                      timestamp: "2024-01-01T12:00:00Z"
+                  project:
+                    name: "My Project"
+                    web_url: "https://gitlab.com/project"
+              project_issue_event:
+                summary: Project Issue Event
+                value:
+                  object_kind: "issue"
+                  object_attributes:
+                    id: 456
+                    title: "Bug related to ABC-123"
+                    description: "This issue is related to ABC-123"
+                    state: "opened"
+                    action: "open"
+                    issue_type: "issue"
+                    priority: "medium"
+                    url: "https://gitlab.com/project/issues/456"
+                  project:
+                    name: "My Project"
+                    web_url: "https://gitlab.com/project"
+      responses:
+        '200':
+          description: Event processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Event processed successfully"
+                  jira_comments_created:
+                    type: integer
+                    example: 1
+        '400':
+          description: Bad request - invalid event data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the webhook server
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-01-01T12:00:00Z"
+                  version:
+                    type: string
+                    example: "0.1.0"
+                  uptime:
+                    type: string
+                    example: "1h23m45s"
+
+components:
+  securitySchemes:
+    GitLabToken:
+      type: apiKey
+      name: X-Gitlab-Token
+      in: header
+      description: GitLab webhook secret token
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+      required:
+        - error
+        - timestamp
+
+    # System Hook Event Schemas
+    PushEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [push]
+        ref:
+          type: string
+          description: Git reference (e.g., refs/heads/main)
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commit'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - event_name
+        - ref
+        - commits
+        - project
+
+    MergeRequestEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [merge_request]
+        object_attributes:
+          $ref: '#/components/schemas/MergeRequestAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - event_name
+        - object_attributes
+        - project
+
+    ProjectEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [project_create, project_update, project_destroy]
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - event_name
+        - project
+
+    UserEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [user_create, user_destroy]
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - event_name
+        - user
+
+    GroupEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [group_create, group_destroy]
+        group:
+          $ref: '#/components/schemas/Group'
+      required:
+        - event_name
+        - group
+
+    RepositoryEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [repository_create, repository_destroy]
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - event_name
+        - project
+
+    TagPushEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [tag_push]
+        ref:
+          type: string
+          description: Git reference (e.g., refs/tags/v1.0.0)
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commit'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - event_name
+        - ref
+        - commits
+        - project
+
+    ReleaseEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [release]
+        project:
+          $ref: '#/components/schemas/Project'
+        release:
+          $ref: '#/components/schemas/Release'
+      required:
+        - event_name
+        - project
+        - release
+
+    DeploymentEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [deployment]
+        project:
+          $ref: '#/components/schemas/Project'
+        deployment:
+          $ref: '#/components/schemas/Deployment'
+      required:
+        - event_name
+        - project
+        - deployment
+
+    FeatureFlagEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [feature_flag]
+        project:
+          $ref: '#/components/schemas/Project'
+        feature_flag:
+          $ref: '#/components/schemas/FeatureFlag'
+      required:
+        - event_name
+        - project
+        - feature_flag
+
+    WikiPageEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [wiki_page]
+        project:
+          $ref: '#/components/schemas/Project'
+        wiki_page:
+          $ref: '#/components/schemas/WikiPage'
+      required:
+        - event_name
+        - project
+        - wiki_page
+
+    PipelineEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [pipeline]
+        project:
+          $ref: '#/components/schemas/Project'
+        pipeline:
+          $ref: '#/components/schemas/Pipeline'
+      required:
+        - event_name
+        - project
+        - pipeline
+
+    BuildEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [build]
+        project:
+          $ref: '#/components/schemas/Project'
+        build:
+          $ref: '#/components/schemas/Build'
+      required:
+        - event_name
+        - project
+        - build
+
+    NoteEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [note]
+        project:
+          $ref: '#/components/schemas/Project'
+        note:
+          $ref: '#/components/schemas/Note'
+      required:
+        - event_name
+        - project
+        - note
+
+    IssueEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [issue]
+        project:
+          $ref: '#/components/schemas/Project'
+        issue:
+          $ref: '#/components/schemas/Issue'
+      required:
+        - event_name
+        - project
+        - issue
+
+    # Project Webhook Event Schemas
+    ProjectPushEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [push]
+        ref:
+          type: string
+          description: Git reference (e.g., refs/heads/main)
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commit'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - ref
+        - commits
+        - project
+
+    ProjectMergeRequestEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [merge_request]
+        object_attributes:
+          $ref: '#/components/schemas/MergeRequestAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectIssueEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [issue]
+        object_attributes:
+          $ref: '#/components/schemas/IssueAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectNoteEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [note]
+        object_attributes:
+          $ref: '#/components/schemas/NoteAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectPipelineEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [pipeline]
+        object_attributes:
+          $ref: '#/components/schemas/PipelineAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectBuildEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [build]
+        object_attributes:
+          $ref: '#/components/schemas/BuildAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectTagPushEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [tag_push]
+        ref:
+          type: string
+          description: Git reference (e.g., refs/tags/v1.0.0)
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commit'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - ref
+        - commits
+        - project
+
+    ProjectReleaseEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [release]
+        project:
+          $ref: '#/components/schemas/Project'
+        release:
+          $ref: '#/components/schemas/Release'
+      required:
+        - object_kind
+        - project
+        - release
+
+    ProjectDeploymentEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [deployment]
+        project:
+          $ref: '#/components/schemas/Project'
+        deployment:
+          $ref: '#/components/schemas/Deployment'
+      required:
+        - object_kind
+        - project
+        - deployment
+
+    ProjectFeatureFlagEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [feature_flag]
+        project:
+          $ref: '#/components/schemas/Project'
+        feature_flag:
+          $ref: '#/components/schemas/FeatureFlag'
+      required:
+        - object_kind
+        - project
+        - feature_flag
+
+    ProjectWikiPageEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [wiki_page]
+        project:
+          $ref: '#/components/schemas/Project'
+        wiki_page:
+          $ref: '#/components/schemas/WikiPage'
+      required:
+        - object_kind
+        - project
+        - wiki_page
+
+    # Common Schemas
+    Commit:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Commit SHA
+        message:
+          type: string
+          description: Commit message
+        author:
+          $ref: '#/components/schemas/Author'
+        url:
+          type: string
+          format: uri
+          description: Commit URL
+        timestamp:
+          type: string
+          format: date-time
+          description: Commit timestamp
+      required:
+        - id
+        - message
+        - author
+
+    Author:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Author name
+        email:
+          type: string
+          format: email
+          description: Author email
+      required:
+        - name
+        - email
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Project ID
+        name:
+          type: string
+          description: Project name
+        web_url:
+          type: string
+          format: uri
+          description: Project web URL
+        path_with_namespace:
+          type: string
+          description: Project path with namespace
+      required:
+        - id
+        - name
+        - web_url
+
+    MergeRequestAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Merge request ID
+        title:
+          type: string
+          description: Merge request title
+        description:
+          type: string
+          description: Merge request description
+        state:
+          type: string
+          enum: [opened, closed, merged]
+          description: Merge request state
+        action:
+          type: string
+          enum: [open, close, reopen, update, merge]
+          description: Action performed
+        source_branch:
+          type: string
+          description: Source branch name
+        target_branch:
+          type: string
+          description: Target branch name
+        url:
+          type: string
+          format: uri
+          description: Merge request URL
+      required:
+        - id
+        - title
+        - state
+        - action
+
+    IssueAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Issue ID
+        title:
+          type: string
+          description: Issue title
+        description:
+          type: string
+          description: Issue description
+        state:
+          type: string
+          enum: [opened, closed]
+          description: Issue state
+        action:
+          type: string
+          enum: [open, close, reopen, update]
+          description: Action performed
+        issue_type:
+          type: string
+          enum: [issue, incident, test_case]
+          description: Issue type
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Issue priority
+        url:
+          type: string
+          format: uri
+          description: Issue URL
+      required:
+        - id
+        - title
+        - state
+        - action
+
+    NoteAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Note ID
+        note:
+          type: string
+          description: Note content
+        noteable_type:
+          type: string
+          enum: [Commit, MergeRequest, Issue, Snippet]
+          description: Type of object being commented on
+        noteable_id:
+          type: integer
+          description: ID of the object being commented on
+        url:
+          type: string
+          format: uri
+          description: Note URL
+      required:
+        - id
+        - note
+        - noteable_type
+        - noteable_id
+
+    PipelineAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Pipeline ID
+        ref:
+          type: string
+          description: Git reference
+        status:
+          type: string
+          enum: [pending, running, success, failed, canceled, skipped]
+          description: Pipeline status
+        sha:
+          type: string
+          description: Commit SHA
+        duration:
+          type: integer
+          description: Pipeline duration in seconds
+        url:
+          type: string
+          format: uri
+          description: Pipeline URL
+      required:
+        - id
+        - ref
+        - status
+        - sha
+
+    BuildAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Build ID
+        name:
+          type: string
+          description: Build name
+        stage:
+          type: string
+          description: Build stage
+        status:
+          type: string
+          enum: [pending, running, success, failed, canceled, skipped]
+          description: Build status
+        duration:
+          type: integer
+          description: Build duration in seconds
+        url:
+          type: string
+          format: uri
+          description: Build URL
+      required:
+        - id
+        - name
+        - stage
+        - status
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: User ID
+        name:
+          type: string
+          description: User name
+        email:
+          type: string
+          format: email
+          description: User email
+        username:
+          type: string
+          description: Username
+      required:
+        - id
+        - name
+        - email
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Group ID
+        name:
+          type: string
+          description: Group name
+        path:
+          type: string
+          description: Group path
+        web_url:
+          type: string
+          format: uri
+          description: Group web URL
+      required:
+        - id
+        - name
+        - path
+
+    Release:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Release ID
+        tag_name:
+          type: string
+          description: Release tag name
+        name:
+          type: string
+          description: Release name
+        description:
+          type: string
+          description: Release description
+        url:
+          type: string
+          format: uri
+          description: Release URL
+      required:
+        - id
+        - tag_name
+        - name
+
+    Deployment:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Deployment ID
+        ref:
+          type: string
+          description: Git reference
+        environment:
+          type: string
+          description: Deployment environment
+        status:
+          type: string
+          enum: [running, success, failed, canceled]
+          description: Deployment status
+        url:
+          type: string
+          format: uri
+          description: Deployment URL
+      required:
+        - id
+        - ref
+        - environment
+        - status
+
+    FeatureFlag:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Feature flag ID
+        name:
+          type: string
+          description: Feature flag name
+        description:
+          type: string
+          description: Feature flag description
+        active:
+          type: boolean
+          description: Whether the feature flag is active
+        url:
+          type: string
+          format: uri
+          description: Feature flag URL
+      required:
+        - id
+        - name
+        - active
+
+    WikiPage:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Wiki page ID
+        title:
+          type: string
+          description: Wiki page title
+        content:
+          type: string
+          description: Wiki page content
+        action:
+          type: string
+          enum: [create, update, delete]
+          description: Action performed
+        url:
+          type: string
+          format: uri
+          description: Wiki page URL
+      required:
+        - id
+        - title
+        - action
+
+tags:
+  - name: System Hooks
+    description: GitLab System Hook endpoints
+  - name: Project Webhooks
+    description: GitLab Project Webhook endpoints
+  - name: Health
+    description: Health check endpoints 

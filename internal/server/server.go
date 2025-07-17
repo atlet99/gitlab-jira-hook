@@ -22,12 +22,15 @@ type Server struct {
 func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create GitLab handler
 	gitlabHandler := gitlab.NewHandler(cfg, logger)
+	// Create Project Hook handler
+	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
 
 	// Create mux
 	mux := http.NewServeMux()
 
 	// Register routes
 	mux.HandleFunc("/gitlab-hook", gitlabHandler.HandleWebhook)
+	mux.HandleFunc("/gitlab-project-hook", projectHookHandler.HandleProjectHook)
 	mux.HandleFunc("/health", handleHealth)
 
 	// Create server

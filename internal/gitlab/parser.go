@@ -12,8 +12,8 @@ type Parser struct {
 
 // NewParser creates a new parser
 func NewParser() *Parser {
-	// Regex pattern for Jira issue IDs: 2+ letters followed by dash and numbers
-	pattern := `([A-Z]{2,}-\d+)`
+	// Regex pattern for Jira issue IDs: 2+ letters followed by dash and numbers (case insensitive)
+	pattern := `([A-Za-z]{2,}-\d+)`
 
 	return &Parser{
 		issueIDRegex: regexp.MustCompile(pattern),
