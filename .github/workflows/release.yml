@@ -23,7 +23,7 @@ jobs:
       contents: read  # Required to checkout code
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -87,7 +87,7 @@ jobs:
             goarch: arm64
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -196,7 +196,7 @@ jobs:
       packages: write     # Required to push Docker images to GHCR
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -259,7 +259,7 @@ jobs:
       actions: read       # Required to download build artifacts from previous jobs
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
         with:
           disable-sudo: true
           egress-policy: audit
