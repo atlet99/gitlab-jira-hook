@@ -74,7 +74,12 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Event filtering by project/group
 	if !h.isAllowedEvent(event) {
-		h.logger.Info("Event filtered by project/group", "eventType", event.Type)
+		h.logger.Info("Event filtered by project/group",
+			"eventType", event.Type,
+			"projectPath", h.getProjectPath(event),
+			"groupPath", h.getGroupPath(event),
+			"allowedProjects", h.config.AllowedProjects,
+			"allowedGroups", h.config.AllowedGroups)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -589,23 +594,74 @@ func (h *Handler) isAllowedEvent(event *Event) bool {
 	if len(h.config.AllowedProjects) == 0 && len(h.config.AllowedGroups) == 0 {
 		return true
 	}
-	// Check project
-	if event.Project != nil && len(h.config.AllowedProjects) > 0 {
+
+	// Check project filtering
+	if len(h.config.AllowedProjects) > 0 {
+		projectNames := []string{}
+		if event.Project != nil {
+			projectNames = append(projectNames, event.Project.Name, event.Project.PathWithNamespace)
+		}
+		if event.PathWithNamespace != "" {
+			projectNames = append(projectNames, event.PathWithNamespace)
+		}
+		if event.ProjectName != "" {
+			projectNames = append(projectNames, event.ProjectName)
+		}
 		for _, p := range h.config.AllowedProjects {
-			if event.Project.PathWithNamespace == p || event.Project.Name == p {
-				return true
+			for _, name := range projectNames {
+				if name == p {
+					return true
+				}
 			}
 		}
 	}
-	// Check group
-	if event.Group != nil && len(h.config.AllowedGroups) > 0 {
+
+	// Check group filtering
+	if len(h.config.AllowedGroups) > 0 {
+		groupNames := []string{}
+		if event.Group != nil {
+			groupNames = append(groupNames, event.Group.Name, event.Group.FullPath)
+		}
+		if event.FullPath != "" {
+			groupNames = append(groupNames, event.FullPath)
+		}
+		if event.GroupName != "" {
+			groupNames = append(groupNames, event.GroupName)
+		}
 		for _, g := range h.config.AllowedGroups {
-			if event.Group.FullPath == g || event.Group.Name == g {
-				return true
+			for _, name := range groupNames {
+				if name == g {
+					return true
+				}
 			}
 		}
 	}
+
 	return false
+}
+
+// getProjectPath extracts project path from event
+func (h *Handler) getProjectPath(event *Event) string {
+	if event.Project != nil {
+		return event.Project.PathWithNamespace
+	} else if event.PathWithNamespace != "" {
+		return event.PathWithNamespace
+	} else if event.ProjectName != "" && event.Username != "" {
+		return event.Username + "/" + event.ProjectName
+	}
+	return ""
+}
+
+// getGroupPath extracts group path from event
+func (h *Handler) getGroupPath(event *Event) string {
+	if event.Group != nil {
+		return event.Group.FullPath
+	} else if event.FullPath != "" {
+		return event.FullPath
+	} else if event.GroupName != "" {
+		return event.GroupName
+	}
+	return ""
 }
 
 // Added event handlers for new event types

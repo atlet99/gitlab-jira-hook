@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-07-17
+
+### Fixed
+- Fixed event filtering by project and group: now supports comparison by both name (Name) and full path (PathWithNamespace, FullPath), as well as additional fields (ProjectName, GroupName). This ensures correct filtering for all GitLab event types and passes all unit tests.
+- Improved logging of event filtering reasons (displays project/group path and list of allowed values).
+
+### Changed
+- Removed nginx and all related files from docker-compose and repository to simplify local and production deployment.
+- docker-compose now runs only the main service on the required port without unnecessary proxies.
+
 ## [0.1.2] - 2025-07-17
 
 ### Added
@@ -137,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.2
+[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 
