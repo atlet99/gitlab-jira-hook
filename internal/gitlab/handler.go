@@ -186,23 +186,28 @@ func (h *Handler) processPushEvent(event *Event) error {
 			// Construct branch URL using project information from system hook
 			branchURL := h.constructBranchURL(event, event.Ref)
 
-			// Use username from system hook instead of full name from commit
+			// For system hooks, we need to handle username differently
+			// In push events (including merge commits), we have user_id but not username
 			authorName := event.Username
 			if authorName == "" && event.User != nil {
 				authorName = event.User.Username
 			}
-			// For system hooks, we should use username, not full name
+			// For system hooks, we have user_id but not username
 			if authorName == "" {
-				// In system hooks, we have user_id but not username
-				// Use commit author name as fallback
+				// Use commit author name as display name
 				authorName = commit.Author.Name
 			}
 
-			// Construct author URL using username for proper profile link
+			// Construct author URL using user_id for proper profile link in system hooks
 			authorURL := ""
-			if h.config.GitLabBaseURL != "" && authorName != "" {
-				// Use username for profile URL (correct format)
-				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
+			if h.config.GitLabBaseURL != "" {
+				if event.UserID > 0 {
+					// Use user_id for profile URL in system hooks (correct format)
+					authorURL = fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
+				} else if authorName != "" {
+					// Fallback to username-based URL if user_id not available
+					authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
+				}
 			}
 
 			// Get project web URL for MR links
@@ -382,16 +387,17 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 	sourceBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.SourceBranch)
 	targetBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.TargetBranch)
 
-	// Use event time from object_attributes (UpdatedAt) for the comment, fallback to CreatedAt if UpdatedAt is empty
-	eventTime := attrs.UpdatedAt
+	// Use event time from the event itself for MR comments
+	// This ensures we get the actual time when the MR event occurred
+	eventTime := event.UpdatedAt
 	if eventTime == "" {
-		eventTime = attrs.CreatedAt
+		eventTime = event.CreatedAt
 	}
-	// If object_attributes doesn't have time, fallback to event level
+	// If event level doesn't have time, fallback to object_attributes
 	if eventTime == "" {
-		eventTime = event.UpdatedAt
+		eventTime = attrs.UpdatedAt
 		if eventTime == "" {
-			eventTime = event.CreatedAt
+			eventTime = attrs.CreatedAt
 		}
 	}
 
