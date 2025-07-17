@@ -189,11 +189,18 @@ func (h *Handler) processPushEvent(event *Event) error {
 				branchURL = fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, event.Ref)
 			}
 
+			// Construct author URL if we have GitLab base URL
+			authorURL := ""
+			if h.config.GitLabBaseURL != "" {
+				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, commit.Author.Name)
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
 				commit.Author.Name,
 				commit.Author.Email,
+				authorURL,
 				commit.Message,
 				commit.Timestamp,
 				event.Ref,

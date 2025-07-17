@@ -184,11 +184,18 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, event.Ref)
 			}
 
+			// Construct author URL if we have project information
+			authorURL := ""
+			if event.Project != nil {
+				authorURL = fmt.Sprintf("%s/%s", event.Project.WebURL, commit.Author.Name)
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
 				commit.Author.Name,
 				commit.Author.Email,
+				authorURL,
 				commit.Message,
 				commit.Timestamp,
 				event.Ref,

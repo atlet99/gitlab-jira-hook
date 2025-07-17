@@ -6,12 +6,15 @@ import (
 	"time"
 )
 
+// DateFormatGOST is the date format according to GOST 7.64-90 standard (DD.MM.YYYY HH:MM)
+const DateFormatGOST = "02.01.2006 15:04"
+
 // GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
-	commitID, commitURL, authorName, authorEmail, message, date, branch, branchURL string,
+	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL string,
 	added, modified, removed []string,
 ) CommentPayload {
-	content := []Content{createCommitAuthor(authorName, authorEmail)}
+	content := []Content{createCommitAuthor(authorName, authorURL)}
 	content = append(content, createCommitHeader(commitID, commitURL)...)
 	content = append(content,
 		createCommitBranch(branch, branchURL),
@@ -45,25 +48,37 @@ func createCommitHeader(commitID, commitURL string) []Content {
 		{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**commit:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
 				commitLink,
 			},
 		},
 	}
 }
 
-func createCommitAuthor(authorName, authorEmail string) Content {
-	authorBold := TextContent{
-		Type:  "text",
-		Text:  authorName,
-		Marks: []Mark{{Type: "strong"}},
+func createCommitAuthor(authorName, authorURL string) Content {
+	var authorContent TextContent
+	if authorURL != "" {
+		authorContent = TextContent{
+			Type: "text",
+			Text: authorName,
+			Marks: []Mark{
+				{Type: "strong"},
+				{Type: "link", Attrs: map[string]interface{}{"href": authorURL}},
+			},
+		}
+	} else {
+		authorContent = TextContent{
+			Type:  "text",
+			Text:  authorName,
+			Marks: []Mark{{Type: "strong"}},
+		}
 	}
+
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**username:** ", Marks: []Mark{{Type: "strong"}}},
-			authorBold,
-			{Type: "text", Text: fmt.Sprintf(" (%s)", authorEmail)},
+			{Type: "text", Text: "username: ", Marks: []Mark{{Type: "strong"}}},
+			authorContent,
 		},
 	}
 }
@@ -73,7 +88,7 @@ func createCommitBranch(branch, branchURL string) Content {
 		return Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**branch:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "branch: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: "unknown", Marks: []Mark{{Type: "code"}}},
 			},
 		}
@@ -96,7 +111,7 @@ func createCommitBranch(branch, branchURL string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**branch:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "branch: ", Marks: []Mark{{Type: "strong"}}},
 			branchLink,
 		},
 	}
@@ -106,20 +121,32 @@ func createCommitMessage(message string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**commit:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: message},
 		},
 	}
 }
 
 func createCommitDate(date string) Content {
+	// Format the date to GOST 7.64-90 (DD.MM.YYYY HH:MM)
+	formattedDate := formatDateGOST(date)
+
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**date:** ", Marks: []Mark{{Type: "strong"}}},
-			{Type: "text", Text: date},
+			{Type: "text", Text: "date: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: formattedDate},
 		},
 	}
+}
+
+// formatDateGOST parses a date string in RFC3339 and returns it in GOST 7.64-90 format: DD.MM.YYYY HH:MM
+func formatDateGOST(dateStr string) string {
+	parsedTime, err := time.Parse(time.RFC3339, dateStr)
+	if err != nil {
+		return dateStr
+	}
+	return parsedTime.Format(DateFormatGOST)
 }
 
 func hasFileChanges(added, modified, removed []string) bool {
@@ -146,7 +173,7 @@ func createCompactFileChangesSection(added, modified, removed []string) []Conten
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**files:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "files: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: strings.Join(changes, " "), Marks: []Mark{{Type: "code"}}},
 			},
 		})
