@@ -11,9 +11,9 @@ func GenerateCommitADFComment(
 	commitID, commitURL, authorName, authorEmail, message, date, branch, branchURL string,
 	added, modified, removed []string,
 ) CommentPayload {
-	content := createCommitHeader(commitID, commitURL)
+	content := []Content{createCommitAuthor(authorName, authorEmail)}
+	content = append(content, createCommitHeader(commitID, commitURL)...)
 	content = append(content,
-		createCommitAuthor(authorName, authorEmail),
 		createCommitBranch(branch, branchURL),
 		createCommitMessage(message),
 		createCommitDate(date),
@@ -45,7 +45,7 @@ func createCommitHeader(commitID, commitURL string) []Content {
 		{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "Commit "},
+				{Type: "text", Text: "**commit:** ", Marks: []Mark{{Type: "strong"}}},
 				commitLink,
 			},
 		},
@@ -61,7 +61,7 @@ func createCommitAuthor(authorName, authorEmail string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "by "},
+			{Type: "text", Text: "**username:** ", Marks: []Mark{{Type: "strong"}}},
 			authorBold,
 			{Type: "text", Text: fmt.Sprintf(" (%s)", authorEmail)},
 		},
@@ -73,15 +73,21 @@ func createCommitBranch(branch, branchURL string) Content {
 		return Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "Branch: "},
+				{Type: "text", Text: "**branch:** ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: "unknown", Marks: []Mark{{Type: "code"}}},
 			},
 		}
 	}
 
+	// Extract branch name from refs/heads/branch format
+	branchName := branch
+	if strings.HasPrefix(branch, "refs/heads/") {
+		branchName = strings.TrimPrefix(branch, "refs/heads/")
+	}
+
 	branchLink := TextContent{
 		Type: "text",
-		Text: branch,
+		Text: branchName,
 		Marks: []Mark{{
 			Type:  "link",
 			Attrs: map[string]interface{}{"href": branchURL},
@@ -90,7 +96,7 @@ func createCommitBranch(branch, branchURL string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "Branch: "},
+			{Type: "text", Text: "**branch:** ", Marks: []Mark{{Type: "strong"}}},
 			branchLink,
 		},
 	}
@@ -100,7 +106,8 @@ func createCommitMessage(message string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: fmt.Sprintf("Message: %s", message)},
+			{Type: "text", Text: "**commit:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: message},
 		},
 	}
 }
@@ -109,7 +116,8 @@ func createCommitDate(date string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: fmt.Sprintf("Date: %s", date)},
+			{Type: "text", Text: "**date:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: date},
 		},
 	}
 }
@@ -138,7 +146,7 @@ func createCompactFileChangesSection(added, modified, removed []string) []Conten
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "Files: "},
+				{Type: "text", Text: "**files:** ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: strings.Join(changes, " "), Marks: []Mark{{Type: "code"}}},
 			},
 		})
