@@ -235,48 +235,36 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 
 	attrs := event.ObjectAttributes
 	projectName := "Unknown Project"
-	if event.Project != nil {
-		projectName = event.Project.Name
-	}
-
-	// Extract Jira issue IDs from title and description
-	text := attrs.Title
-	if attrs.Description != "" {
-		text += " " + attrs.Description
-	}
-
-	issueIDs := h.parser.ExtractIssueIDs(text)
-	for _, issueID := range issueIDs {
-		comment := h.createMergeRequestComment(event)
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add merge request comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"mrID", attrs.ID,
-				"projectName", projectName)
-		} else {
-			h.logger.Info("Added merge request comment to Jira issue",
-				"issueID", issueID,
-				"mrID", attrs.ID,
-				"projectName", projectName)
-		}
-	}
-
-	return nil
-}
-
-// createMergeRequestComment creates a comment for a merge request
-func (h *ProjectHookHandler) createMergeRequestComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	projectName := "Unknown Project"
 	projectURL := ""
 	if event.Project != nil {
 		projectName = event.Project.Name
 		projectURL = event.Project.WebURL
 	}
 
-	return fmt.Sprintf(
-		"Merge Request [%s](%s)\nProject: [%s](%s)\nAction: %s\nSource: `%s` → Target: `%s`\nStatus: %s\nAuthor: %s\nDescription: %s",
+	// Get issue-keys from all relevant fields
+	var allTexts []string
+	allTexts = append(allTexts, attrs.Title)
+	allTexts = append(allTexts, attrs.Description)
+	allTexts = append(allTexts, attrs.SourceBranch)
+	allTexts = append(allTexts, attrs.TargetBranch)
+	// TODO: if there are comments, add them here
+
+	issueKeySet := make(map[string]struct{})
+	for _, text := range allTexts {
+		for _, key := range h.parser.ExtractIssueIDs(text) {
+			if key != "" {
+				issueKeySet[key] = struct{}{}
+			}
+		}
+	}
+
+	// If no issue keys are found, do nothing
+	if len(issueKeySet) == 0 {
+		return nil
+	}
+
+	// Generate ADF comment for MR
+	comment := jira.GenerateMergeRequestADFComment(
 		attrs.Title,
 		attrs.URL,
 		projectName,
@@ -288,6 +276,24 @@ func (h *ProjectHookHandler) createMergeRequestComment(event *Event) string {
 		attrs.Name,
 		attrs.Description,
 	)
+
+	// Add comment to each issue
+	for issueID := range issueKeySet {
+		if err := h.jira.AddComment(issueID, comment); err != nil {
+			h.logger.Error("Failed to add MR comment to Jira",
+				"error", err,
+				"issueID", issueID,
+				"mrID", attrs.ID,
+				"projectName", projectName)
+		} else {
+			h.logger.Info("Added MR comment to Jira issue",
+				"issueID", issueID,
+				"mrID", attrs.ID,
+				"projectName", projectName)
+		}
+	}
+
+	return nil
 }
 
 func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {

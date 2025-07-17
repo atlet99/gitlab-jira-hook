@@ -100,6 +100,18 @@ func createCommitBranch(branch, branchURL string) Content {
 		branchName = strings.TrimPrefix(branch, "refs/heads/")
 	}
 
+	// If branchURL is empty, just show branch name without link
+	if branchURL == "" {
+		return Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "branch: ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: branchName, Marks: []Mark{{Type: "code"}}},
+			},
+		}
+	}
+
+	// Create clickable link if branchURL is available
 	branchLink := TextContent{
 		Type: "text",
 		Text: branchName,
@@ -184,6 +196,18 @@ func createCompactFileChangesSection(added, modified, removed []string) []Conten
 
 // Helper functions for creating common ADF elements
 func createTitleLink(title, url, label string) Content {
+	// If URL is empty, just show title without link
+	if url == "" {
+		return Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: strings.ToLower(label) + ": ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: title},
+			},
+		}
+	}
+
+	// Create clickable link if URL is available
 	titleLink := TextContent{
 		Type: "text",
 		Text: title,
@@ -202,6 +226,18 @@ func createTitleLink(title, url, label string) Content {
 }
 
 func createProjectLink(projectName, projectURL string) Content {
+	// If projectURL is empty, just show project name without link
+	if projectURL == "" {
+		return Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "project: ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: projectName},
+			},
+		}
+	}
+
+	// Create clickable link if projectURL is available
 	projectLink := TextContent{
 		Type: "text",
 		Text: projectName,

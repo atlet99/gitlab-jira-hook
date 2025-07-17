@@ -236,29 +236,54 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		return nil
 	}
 
-	issueIDs := h.parser.ExtractIssueIDs(event.ObjectAttributes.Title)
-	for _, issueID := range issueIDs {
-		comment := jira.GenerateMergeRequestADFComment(
-			event.ObjectAttributes.Title,
-			event.ObjectAttributes.URL,
-			"", // projectName - нет в System Hook
-			"", // projectURL - нет в System Hook
-			cases.Title(language.English).String(event.ObjectAttributes.Action),
-			event.ObjectAttributes.SourceBranch,
-			event.ObjectAttributes.TargetBranch,
-			event.ObjectAttributes.State,
-			event.ObjectAttributes.Name,
-			event.ObjectAttributes.Description,
-		)
+	attrs := event.ObjectAttributes
+	// Get issue-keys
+	var allTexts []string
+	allTexts = append(allTexts, attrs.Title)
+	allTexts = append(allTexts, attrs.Description)
+	allTexts = append(allTexts, attrs.SourceBranch)
+	allTexts = append(allTexts, attrs.TargetBranch)
+	// TODO: if there are comments, add them here
+
+	issueKeySet := make(map[string]struct{})
+	for _, text := range allTexts {
+		for _, key := range h.parser.ExtractIssueIDs(text) {
+			if key != "" {
+				issueKeySet[key] = struct{}{}
+			}
+		}
+	}
+
+	// If no issue keys are found, do nothing
+	if len(issueKeySet) == 0 {
+		return nil
+	}
+
+	// Generate ADF comment for MR
+	comment := jira.GenerateMergeRequestADFComment(
+		attrs.Title,
+		attrs.URL,
+		"", // projectName - not in System Hook
+		"", // projectURL - not in System Hook
+		cases.Title(language.English).String(attrs.Action),
+		attrs.SourceBranch,
+		attrs.TargetBranch,
+		attrs.State,
+		attrs.Name,
+		attrs.Description,
+	)
+
+	// Add comment to each issue
+	for issueID := range issueKeySet {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
-			h.logger.Error("Failed to add comment to Jira",
+			h.logger.Error("Failed to add MR comment to Jira",
 				"error", err,
 				"issueID", issueID,
-				"mrID", event.ObjectAttributes.ID)
+				"mrID", attrs.ID)
 		} else {
-			h.logger.Info("Added comment to Jira issue",
+			h.logger.Info("Added MR comment to Jira issue",
 				"issueID", issueID,
-				"mrID", event.ObjectAttributes.ID)
+				"mrID", attrs.ID)
 		}
 	}
 
