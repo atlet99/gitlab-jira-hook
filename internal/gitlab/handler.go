@@ -195,10 +195,22 @@ func (h *Handler) processPushEvent(event *Event) error {
 				authorName = commit.Author.Name // fallback to commit author name
 			}
 
-			// Construct author URL if we have GitLab base URL
+			// Construct author URL using user_id from system hook for proper profile link
 			authorURL := ""
-			if h.config.GitLabBaseURL != "" && authorName != "" {
-				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
+			if h.config.GitLabBaseURL != "" {
+				if event.UserID > 0 {
+					// Use user_id for profile URL (more reliable than username)
+					authorURL = fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
+				} else if authorName != "" {
+					// Fallback to username-based URL
+					authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
+				}
+			}
+
+			// Get project web URL for MR links
+			projectWebURL := ""
+			if event.Project != nil {
+				projectWebURL = event.Project.WebURL
 			}
 
 			comment := jira.GenerateCommitADFComment(
@@ -211,6 +223,7 @@ func (h *Handler) processPushEvent(event *Event) error {
 				commit.Timestamp,
 				event.Ref,
 				branchURL,
+				projectWebURL,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,
@@ -368,10 +381,17 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 	sourceBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.SourceBranch)
 	targetBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.TargetBranch)
 
-	// Use event time (UpdatedAt) for the comment, fallback to CreatedAt if UpdatedAt is empty
-	eventTime := event.UpdatedAt
+	// Use event time from object_attributes (UpdatedAt) for the comment, fallback to CreatedAt if UpdatedAt is empty
+	eventTime := attrs.UpdatedAt
 	if eventTime == "" {
-		eventTime = event.CreatedAt
+		eventTime = attrs.CreatedAt
+	}
+	// If object_attributes doesn't have time, fallback to event level
+	if eventTime == "" {
+		eventTime = event.UpdatedAt
+		if eventTime == "" {
+			eventTime = event.CreatedAt
+		}
 	}
 
 	// Generate ADF comment for MR with clickable branch links

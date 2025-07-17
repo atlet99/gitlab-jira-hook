@@ -195,6 +195,12 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				authorURL = fmt.Sprintf("%s/%s", event.Project.WebURL, commit.Author.Name)
 			}
 
+			// Get project web URL for MR links
+			projectWebURL := ""
+			if event.Project != nil {
+				projectWebURL = event.Project.WebURL
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
@@ -205,6 +211,7 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				commit.Timestamp,
 				event.Ref,
 				branchURL,
+				projectWebURL,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,

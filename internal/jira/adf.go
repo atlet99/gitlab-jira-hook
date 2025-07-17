@@ -11,14 +11,14 @@ const DateFormatGOST = "02.01.2006 15:04"
 
 // GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
-	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL string,
+	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL, projectWebURL string,
 	added, modified, removed []string,
 ) CommentPayload {
 	content := []Content{createCommitAuthor(authorName, authorURL)}
 	content = append(content, createCommitHeader(commitID, commitURL)...)
 	content = append(content,
 		createCommitBranch(branch, branchURL),
-		createCommitMessage(message),
+		createCommitMessage(message, projectWebURL),
 		createCommitDate(date),
 	)
 
@@ -129,7 +129,33 @@ func createCommitBranch(branch, branchURL string) Content {
 	}
 }
 
-func createCommitMessage(message string) Content {
+func createCommitMessage(message, projectWebURL string) Content {
+	// Check if message contains "See merge request" and extract MR link
+	mrLink := extractMergeRequestLink(message, projectWebURL)
+	if mrLink != "" {
+		// Split message into commit message and MR reference
+		parts := strings.Split(message, "See merge request")
+		commitMsg := strings.TrimSpace(parts[0])
+
+		// Combine all content elements into a single append
+		content := []TextContent{
+			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: commitMsg},
+			{Type: "text", Text: "\nSee merge request ", Marks: []Mark{{Type: "strong"}}},
+			{
+				Type:  "text",
+				Text:  extractMRID(mrLink),
+				Marks: []Mark{{Type: "link", Attrs: map[string]interface{}{"href": mrLink}}},
+			},
+		}
+
+		return Content{
+			Type:    "paragraph",
+			Content: content,
+		}
+	}
+
+	// Regular commit message without MR reference
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
@@ -137,6 +163,44 @@ func createCommitMessage(message string) Content {
 			{Type: "text", Text: message},
 		},
 	}
+}
+
+// extractMergeRequestLink extracts MR URL from commit message
+// This function will be called with project web_url context from the handler
+func extractMergeRequestLink(message, projectWebURL string) string {
+	// Look for "See merge request" pattern
+	if strings.Contains(message, "See merge request") {
+		// Extract the MR reference (e.g., "devops/test-jira-webhook!4")
+		parts := strings.Split(message, "See merge request")
+		if len(parts) > 1 {
+			mrRef := strings.TrimSpace(parts[1])
+			// Convert MR reference to URL format
+			// Format: project!number -> project_web_url/-/merge_requests/number
+			if strings.Contains(mrRef, "!") {
+				projectAndNumber := strings.Split(mrRef, "!")
+				const expectedParts = 2
+				if len(projectAndNumber) == expectedParts {
+					number := projectAndNumber[1]
+					if projectWebURL != "" {
+						return fmt.Sprintf("%s/-/merge_requests/%s", projectWebURL, number)
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// extractMRID extracts MR ID from MR reference
+func extractMRID(mrRef string) string {
+	if strings.Contains(mrRef, "!") {
+		parts := strings.Split(mrRef, "!")
+		const expectedParts = 2
+		if len(parts) == expectedParts {
+			return parts[1]
+		}
+	}
+	return mrRef
 }
 
 func createCommitDate(date string) Content {

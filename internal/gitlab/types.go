@@ -128,6 +128,9 @@ type ObjectAttributes struct {
 	State  string `json:"state"`
 	Action string `json:"action"`
 	URL    string `json:"url"`
+	// Time fields from system hook
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 	// Additional fields for project hooks
 	Note        string `json:"note"`
 	Content     string `json:"content"`
