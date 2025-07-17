@@ -191,8 +191,11 @@ func (h *Handler) processPushEvent(event *Event) error {
 			if authorName == "" && event.User != nil {
 				authorName = event.User.Username
 			}
+			// For system hooks, we should use username, not full name
 			if authorName == "" {
-				authorName = commit.Author.Name // fallback to commit author name
+				// In system hooks, we have user_id but not username
+				// Use commit author name as fallback
+				authorName = commit.Author.Name
 			}
 
 			// Construct author URL using user_id from system hook for proper profile link
@@ -213,6 +216,15 @@ func (h *Handler) processPushEvent(event *Event) error {
 				projectWebURL = event.Project.WebURL
 			}
 
+			// Use event time for system hooks, fallback to commit timestamp
+			eventTime := event.UpdatedAt
+			if eventTime == "" {
+				eventTime = event.CreatedAt
+			}
+			if eventTime == "" {
+				eventTime = commit.Timestamp
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
@@ -220,7 +232,7 @@ func (h *Handler) processPushEvent(event *Event) error {
 				commit.Author.Email,
 				authorURL,
 				commit.Message,
-				commit.Timestamp,
+				eventTime,
 				event.Ref,
 				branchURL,
 				projectWebURL,

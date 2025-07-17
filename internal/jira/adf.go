@@ -141,7 +141,7 @@ func createCommitMessage(message, projectWebURL string) Content {
 		content := []TextContent{
 			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: commitMsg},
-			{Type: "text", Text: "\nSee merge request ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "See merge request ", Marks: []Mark{{Type: "strong"}}},
 			{
 				Type:  "text",
 				Text:  extractMRID(mrLink),

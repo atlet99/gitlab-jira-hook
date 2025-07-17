@@ -58,6 +58,7 @@ type Event struct {
 	// User membership events
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
+	UserName string `json:"user_name"` // Full name from system hook
 	// Project membership events
 	ProjectID   int    `json:"project_id"`
 	ProjectName string `json:"project_name"`
