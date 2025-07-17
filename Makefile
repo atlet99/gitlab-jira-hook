@@ -551,7 +551,7 @@ docs-api:
 	@echo "Run 'go doc ./internal/...' for detailed API documentation"
 
 # CI/CD Support
-.PHONY: ci-lint ci-test ci-build ci-release matrix-test-local matrix-info test-multi-go test-go-versions
+.PHONY: ci-lint ci-test ci-build ci-release matrix-test-local matrix-info test-multi-go test-go-versions test-integration test-data-check
 
 ci-lint:
 	@echo "Running CI linting checks..."
@@ -568,6 +568,14 @@ ci-build:
 
 ci-release: ci-lint ci-test ci-build
 	@echo "CI release pipeline completed"
+
+test-integration:
+	@echo "Running integration tests..."
+	@go test -v -tags=integration ./...
+
+test-data-check:
+	@echo "Running data validation tests..."
+	@go test -v ./internal/gitlab/ -run TestDataValidation
 
 matrix-test-local:
 	@echo "Running matrix tests locally..."

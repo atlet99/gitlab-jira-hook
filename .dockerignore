@@ -38,3 +38,10 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp 
+
+# Docs
+docs/
+*-docs.*
+
+# Special files
+*rules

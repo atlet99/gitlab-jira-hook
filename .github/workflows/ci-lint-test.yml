@@ -1,0 +1,116 @@
+name: CI - Lint and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  lint_and_test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Get Go Version
+        shell: bash
+        run: |
+          #!/bin/bash
+          GOVERSION=$({ [ -f .go-version ] && cat .go-version; })
+          echo "GOVERSION=$GOVERSION" >> $GITHUB_ENV
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GOVERSION }}
+
+      - name: Go Cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GOVERSION }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GOVERSION }}-
+            ${{ runner.os }}-go-
+
+      - name: Download Dependencies
+        run: go mod download
+
+      - name: Verify Dependencies
+        run: go mod verify
+
+      - name: Build
+        run: make build
+
+      - name: Run Tests
+        run: make test
+
+      - name: Run Tests with Race Detection
+        run: make test-race
+
+      - name: Run Tests with Coverage
+        run: make test-coverage
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@4650159d642e33fdc30954ca22638caf0df6cac8 # v5.4.3
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Go Lint
+        env:
+          GOGC: 10
+        uses: golangci/golangci-lint-action@25e2cdc5eb1d7a04fdc45ff538f1a00e960ae128 # v8.0.0
+        with:
+          version: v2.1.6
+          only-new-issues: true
+          args: --timeout=10m
+
+      - name: Run Staticcheck
+        uses: dominikh/staticcheck-action@fe1dd0c3658873b46f8c9bb3291096a617310ca6 # v1.3.1
+        with:
+          version: "latest"
+          install-go: false
+          cache-key: ${{ runner.os }}-${{ env.GOVERSION }}
+
+      - name: Install errcheck
+        run: go install github.com/kisielk/errcheck@v1.9.0
+
+      - name: Run errcheck
+        run: |
+          echo "Running errcheck to find unchecked errors..."
+          if [ -f .errcheck_excludes.txt ]; then
+            errcheck -exclude .errcheck_excludes.txt ./...
+          else
+            errcheck ./...
+          fi
+
+      - name: Run Integration Tests
+        run: make test-integration
+
+      - name: Test Data Validation
+        run: make test-data-check 

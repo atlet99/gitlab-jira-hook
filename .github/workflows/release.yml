@@ -1,0 +1,372 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        default: 'v0.1.0'
+
+# Set top-level permissions to read-all for security
+# Required write permissions are explicitly set at job level
+permissions: read-all
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Required to checkout code
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get Go Version
+        run: |
+          GOVERSION=$({ [ -f .go-version ] && cat .go-version; })
+          echo "GOVERSION=$GOVERSION" >> $GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GOVERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GOVERSION }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GOVERSION }}-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: make test
+
+      - name: Run linter
+        run: make lint
+
+  build_binaries:
+    name: Build Binaries
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read      # Required to checkout code
+      id-token: write     # Required for Cosign keyless signing
+      actions: read       # Required to upload artifacts
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Get Go Version
+        run: |
+          GOVERSION=$({ [ -f .go-version ] && cat .go-version; })
+          echo "GOVERSION=$GOVERSION" >> $GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GOVERSION }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_NO_V=${VERSION#v}" >> $GITHUB_ENV
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY_NAME="gitlab-jira-hook-${{ env.VERSION_NO_V }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "$GOOS" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          LDFLAGS="-s -w -X github.com/atlet99/gitlab-jira-hook/internal/version.Version=${{ env.VERSION_NO_V }}"
+          LDFLAGS="$LDFLAGS -X github.com/atlet99/gitlab-jira-hook/internal/version.Commit=${{ github.sha }}"
+          LDFLAGS="$LDFLAGS -X github.com/atlet99/gitlab-jira-hook/internal/version.Date=$(date -u +%Y-%m-%d_%H:%M:%S)"
+          LDFLAGS="$LDFLAGS -X github.com/atlet99/gitlab-jira-hook/internal/version.BuiltBy=github-actions"
+
+          go build -ldflags="$LDFLAGS" -o "${BINARY_NAME}" ./cmd/server
+
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+        with:
+          cosign-release: 'v2.4.3'
+
+      - name: Sign binary with Cosign (keyless)
+        run: |
+          # Sign the binary using keyless signing
+          cosign sign-blob --yes \
+            --output-signature ${{ env.BINARY_NAME }}.sig \
+            ${{ env.BINARY_NAME }}
+
+          # Generate checksums
+          sha256sum ${{ env.BINARY_NAME }} > ${{ env.BINARY_NAME }}.sha256
+          sha512sum ${{ env.BINARY_NAME }} > ${{ env.BINARY_NAME }}.sha512
+
+          # Create verification instructions
+          cat > ${{ env.BINARY_NAME }}.verify << EOF
+          # Verify this binary with Cosign
+          # 1. Install cosign: https://docs.sigstore.dev/cosign/installation/
+          # 2. Run verification:
+          cosign verify-blob \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ github.ref_name }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --signature ${{ env.BINARY_NAME }}.sig \
+            ${{ env.BINARY_NAME }}
+
+          # Or verify checksum:
+          sha256sum -c ${{ env.BINARY_NAME }}.sha256
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gitlab-jira-hook-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            ${{ env.BINARY_NAME }}
+            ${{ env.BINARY_NAME }}.sig
+            ${{ env.BINARY_NAME }}.sha256
+            ${{ env.BINARY_NAME }}.sha512
+            ${{ env.BINARY_NAME }}.verify
+          retention-days: 1
+
+  build_docker:
+    name: Build and Push Docker Image
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    if: success() # Only run if tests pass, but don't block release on Docker failure
+    permissions:
+      contents: read      # Required to checkout code
+      packages: write     # Required to push Docker images to GHCR
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_NO_V=${VERSION#v}" >> $GITHUB_ENV
+
+          # Generate lowercase repository owner for Docker tags
+          REPO_OWNER_LOWERCASE=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "REPO_OWNER_LOWERCASE=$REPO_OWNER_LOWERCASE" >> $GITHUB_ENV
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            COMMIT=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/gitlab-jira-hook:${{ env.VERSION }}
+            ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/gitlab-jira-hook:latest
+          labels: |
+            org.opencontainers.image.title=gitlab-jira-hook
+            org.opencontainers.image.description="GitLab to Jira Cloud webhook integration"
+            org.opencontainers.image.version=${{ env.VERSION_NO_V }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  create_release:
+    name: Create Release
+    needs: [build_binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      # NOTE: contents:write is required for release creation functionality
+      # This is a recognized and necessary use case for package publishing
+      contents: write     # Required to create GitHub releases and upload release assets
+      actions: read       # Required to download build artifacts from previous jobs
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: ./artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "## Changes" > changelog.md
+          echo "" >> changelog.md
+          
+          # Get current tag and find previous tag properly
+          CURRENT_TAG="${{ env.VERSION }}"
+          echo "Current release tag: $CURRENT_TAG"
+          
+          # Get all tags sorted by version and find the previous one
+          LAST_TAG=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -2 | head -1 2>/dev/null || echo "")
+          
+          if [ -n "$LAST_TAG" ] && [ "$LAST_TAG" != "$CURRENT_TAG" ]; then
+            echo "### Commits since $LAST_TAG:" >> changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" --no-merges $LAST_TAG..HEAD >> changelog.md
+          else
+            echo "### Recent commits:" >> changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" --no-merges -10 >> changelog.md
+          fi
+          
+          echo "" >> changelog.md
+          
+          # Check if CHANGELOG.md contains information for current version
+          VERSION_NO_V="${CURRENT_TAG#v}"
+          if [ -f "CHANGELOG.md" ]; then
+            echo "Checking CHANGELOG.md for version $VERSION_NO_V information..."
+            
+            # Extract changelog section for current version
+            CHANGELOG_SECTION=$(awk "/^## \[$VERSION_NO_V\]/ {found=1; next} /^## \[/ && found {exit} found {print}" CHANGELOG.md 2>/dev/null || echo "")
+            
+            if [ -n "$CHANGELOG_SECTION" ]; then
+              echo "Found changelog information for version $VERSION_NO_V"
+              echo "" >> changelog.md
+              echo "## Release Notes" >> changelog.md
+              echo "" >> changelog.md
+              echo "$CHANGELOG_SECTION" >> changelog.md
+              echo "" >> changelog.md
+            else
+              echo "No specific changelog information found for version $VERSION_NO_V"
+            fi
+          fi
+          echo "## Installation" >> changelog.md
+          echo "" >> changelog.md
+          echo "Download the appropriate binary for your platform from the assets below." >> changelog.md
+          echo "" >> changelog.md
+          echo "### Linux/macOS:" >> changelog.md
+          echo '```bash' >> changelog.md
+          echo "# Download binary" >> changelog.md
+          echo "curl -L -o gitlab-jira-hook https://github.com/atlet99/gitlab-jira-hook/releases/download/${{ env.VERSION }}/gitlab-jira-hook-*-linux-amd64" >> changelog.md
+          echo "" >> changelog.md
+          echo "# Make executable and move to PATH" >> changelog.md
+          echo "chmod +x gitlab-jira-hook" >> changelog.md
+          echo "sudo mv gitlab-jira-hook /usr/local/bin/" >> changelog.md
+          echo '```' >> changelog.md
+          echo "" >> changelog.md
+          echo "### Windows:" >> changelog.md
+          echo "Download the .exe file and add it to your PATH." >> changelog.md
+          echo "" >> changelog.md
+          echo "### Docker:" >> changelog.md
+          echo '```bash' >> changelog.md
+          echo "docker run --rm ghcr.io/atlet99/gitlab-jira-hook:${{ env.VERSION }} --help" >> changelog.md
+          echo '```' >> changelog.md
+          echo "" >> changelog.md
+          echo "### Verification:" >> changelog.md
+          echo "All binaries are signed with Cosign and include checksums for verification:" >> changelog.md
+          echo '```bash' >> changelog.md
+          echo "# Verify checksum" >> changelog.md
+          echo "sha256sum -c gitlab-jira-hook-*-linux-amd64.sha256" >> changelog.md
+          echo "" >> changelog.md
+          echo "# Verify Cosign signature (requires cosign CLI)" >> changelog.md
+          echo "cosign verify-blob \\\\" >> changelog.md
+          echo "  --certificate-identity \"https://github.com/atlet99/gitlab-jira-hook/.github/workflows/release.yml@refs/tags/${{ env.VERSION }}\" \\\\" >> changelog.md
+          echo "  --certificate-oidc-issuer \"https://token.actions.githubusercontent.com\" \\\\" >> changelog.md
+          echo "  --signature gitlab-jira-hook-*-linux-amd64.sig \\\\" >> changelog.md
+          echo "  gitlab-jira-hook-*-linux-amd64" >> changelog.md
+          echo '```' >> changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body_path: changelog.md
+          files: |
+            ./artifacts/**/*
+            cosign.pub
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
