@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-07-17
+
+### Added
+- Docker Compose support for easy local development and deployment
+- Simple nginx reverse proxy configuration for localhost
+- Environment setup script (`scripts/setup-env.sh`) for automated configuration
+- Comprehensive Makefile with modern build flags and version management
+- Version package with build-time variables and getters
+- `--version` flag support in main application
+- Enhanced security scanning with proper report handling
+- GitHub Actions workflows for CI/CD pipeline
+- Release workflow with Cosign key-based signing
+- Cross-platform binary builds for multiple architectures
+- SBOM (Software Bill of Materials) generation with Syft
+- Comprehensive code quality checks and static analysis
+- Vulnerability scanning with govulncheck
+- Error checking with errcheck tool
+
+### Changed
+- Updated Makefile with modern versioning and build flags
+- Enhanced security scan commands to handle missing reports gracefully
+- Improved Cosign signing workflow with proper key management
+- Updated release workflow with better changelog generation
+- Enhanced Docker Compose configuration for simplicity
+- Simplified nginx configuration for localhost development
+- Updated version management to use build-time variables
+
+### Fixed
+- Fixed Makefile build target duplication warnings
+- Corrected security scan report handling when no issues found
+- Fixed Cosign verification instructions in release workflow
+- Resolved staticcheck errors with proper string handling
+- Fixed version package integration with main application
+- Corrected Docker Compose environment variable handling
+
+### Security
+- Implemented Cosign key-based signing for release binaries
+- Enhanced security scanning with multiple output formats
+- Added vulnerability scanning to CI/CD pipeline
+- Improved SBOM generation for supply chain security
+
+### Documentation
+- Added Docker Compose setup documentation
+- Updated release workflow documentation
+- Enhanced Makefile documentation with all available targets
+- Added version management documentation
+
 ## [0.1.0] - 2025-07-17
 
 ### Added
@@ -90,5 +137,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.2
 [0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 

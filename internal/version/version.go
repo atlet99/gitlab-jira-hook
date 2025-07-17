@@ -90,7 +90,7 @@ func Get() *BuildInfo {
 	}
 }
 
-// String returns a formatted version string
+// String returns a formatted version string for the build info
 func (bi *BuildInfo) String() string {
 	return fmt.Sprintf("gitlab-jira-hook version %s (%s) built on %s by %s using %s for %s",
 		bi.Version, bi.Commit, bi.Date, bi.BuiltBy, bi.GoVersion, bi.Platform)
