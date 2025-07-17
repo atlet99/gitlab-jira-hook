@@ -315,65 +315,129 @@ func createSimpleParagraph(text string) Content {
 	}
 }
 
-// addTimestamp appends a separator and a timestamp paragraph to the end of the ADF comment
-func addTimestamp(content []Content) []Content {
-	timestamp := time.Now().Format("2006-01-02 15:04:05 UTC")
-	return append(content,
-		Content{
-			Type: "paragraph",
-			Content: []TextContent{
-				{Type: "text", Text: "---"},
-			},
-		},
-		Content{
-			Type: "paragraph",
-			Content: []TextContent{
-				{Type: "text", Text: "**Timestamp:** ", Marks: []Mark{{Type: "strong"}}},
-				{Type: "text", Text: timestamp, Marks: []Mark{{Type: "code"}}},
-			},
-		},
-	)
-}
-
 // GenerateMergeRequestADFComment generates ADF comment for Merge Request
 func GenerateMergeRequestADFComment(
 	title, url, projectName, projectURL, action, sourceBranch, targetBranch, status, author, description string,
+	participants, approvedBy, reviewers, approvers []string,
+) CommentPayload {
+	return GenerateMergeRequestADFCommentWithBranchURLs(
+		title, url, projectName, projectURL, action, sourceBranch, "", targetBranch, "", status, author, description,
+		participants, approvedBy, reviewers, approvers,
+	)
+}
+
+// GenerateMergeRequestADFCommentWithBranchURLs generates ADF comment for MR with clickable branch links
+func GenerateMergeRequestADFCommentWithBranchURLs(
+	title, url, projectName, projectURL, action, sourceBranch, sourceBranchURL,
+	targetBranch, targetBranchURL, status, author, description string,
+	participants, approvedBy, reviewers, approvers []string,
 ) CommentPayload {
 	var content []Content
 
-	content = append(content, createTitleLink(title, url, "Merge Request"))
-
-	if projectName != "" {
-		content = append(content, createProjectLink(projectName, projectURL))
-	}
-
-	if action != "" {
-		content = append(content, createField("Action", action))
-	}
-
-	if sourceBranch != "" && targetBranch != "" {
-		content = append(content, createBranchesField(sourceBranch, targetBranch))
-	}
-
-	if status != "" {
-		content = append(content, createField("Status", status))
-	}
-
+	// Start with author (like commit format)
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
 
-	if description != "" {
-		content = append(content, createDescriptionField(description)...)
+	// Add MR title as header (like commit ID)
+	content = append(content, createMergeRequestHeader(title, url)...)
+
+	// Add branches with clickable links if URLs are available
+	if sourceBranch != "" && targetBranch != "" {
+		if sourceBranchURL != "" || targetBranchURL != "" {
+			content = append(content, createBranchesFieldWithURLs(sourceBranch, sourceBranchURL, targetBranch, targetBranchURL))
+		} else {
+			content = append(content, createBranchesField(sourceBranch, targetBranch))
+		}
 	}
 
-	content = addTimestamp(content)
+	// Add description (like commit message)
+	if description != "" {
+		content = append(content, createMergeRequestDescription(description))
+	}
+
+	// Add participants if available
+	if len(participants) > 0 {
+		content = append(content, createParticipantsField(participants))
+	}
+	// Add approved by if available
+	if len(approvedBy) > 0 {
+		content = append(content, createApproversField("approved by", approvedBy))
+	}
+	// Add reviewers if available
+	if len(reviewers) > 0 {
+		content = append(content, createApproversField("reviewers", reviewers))
+	}
+	// Add approvers if available
+	if len(approvers) > 0 {
+		content = append(content, createApproversField("approvers", approvers))
+	}
+
+	// Add project info if available
+	if projectName != "" {
+		content = append(content, createProjectLink(projectName, projectURL))
+	}
+
+	// Add action and status
+	if action != "" {
+		content = append(content, createField("action", action))
+	}
+
+	if status != "" {
+		content = append(content, createField("status", status))
+	}
+
+	// Add current date in GOST format
+	content = append(content, createCurrentDateField())
 
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",
 			Version: 1,
 			Content: content,
+		},
+	}
+}
+
+func createMergeRequestHeader(title, url string) []Content {
+	titleLink := TextContent{
+		Type: "text",
+		Text: title,
+		Marks: []Mark{{
+			Type:  "link",
+			Attrs: map[string]interface{}{"href": url},
+		}},
+	}
+	return []Content{
+		{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "merge request: ", Marks: []Mark{{Type: "strong"}}},
+				titleLink,
+			},
+		},
+	}
+}
+
+func createMergeRequestDescription(description string) Content {
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: description},
+		},
+	}
+}
+
+func createCurrentDateField() Content {
+	// Format current time to GOST 7.64-90 format
+	formattedDate := time.Now().Format(DateFormatGOST)
+
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "date: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: formattedDate},
 		},
 	}
 }
@@ -386,6 +450,80 @@ func createBranchesField(sourceBranch, targetBranch string) Content {
 			{Type: "text", Text: sourceBranch, Marks: []Mark{{Type: "code"}}},
 			{Type: "text", Text: " → "},
 			{Type: "text", Text: targetBranch, Marks: []Mark{{Type: "code"}}},
+		},
+	}
+}
+
+// createBranchesFieldWithURLs creates a branches field with clickable links
+func createBranchesFieldWithURLs(sourceBranch, sourceBranchURL, targetBranch, targetBranchURL string) Content {
+	var sourceContent, targetContent TextContent
+
+	// Create source branch content
+	if sourceBranchURL != "" {
+		sourceContent = TextContent{
+			Type: "text",
+			Text: sourceBranch,
+			Marks: []Mark{
+				{Type: "code"},
+				{Type: "link", Attrs: map[string]interface{}{"href": sourceBranchURL}},
+			},
+		}
+	} else {
+		sourceContent = TextContent{
+			Type:  "text",
+			Text:  sourceBranch,
+			Marks: []Mark{{Type: "code"}},
+		}
+	}
+
+	// Create target branch content
+	if targetBranchURL != "" {
+		targetContent = TextContent{
+			Type: "text",
+			Text: targetBranch,
+			Marks: []Mark{
+				{Type: "code"},
+				{Type: "link", Attrs: map[string]interface{}{"href": targetBranchURL}},
+			},
+		}
+	} else {
+		targetContent = TextContent{
+			Type:  "text",
+			Text:  targetBranch,
+			Marks: []Mark{{Type: "code"}},
+		}
+	}
+
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "branches: ", Marks: []Mark{{Type: "strong"}}},
+			sourceContent,
+			{Type: "text", Text: " → "},
+			targetContent,
+		},
+	}
+}
+
+func createParticipantsField(participants []string) Content {
+	// Join participants with commas
+	participantsText := strings.Join(participants, ", ")
+
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "participants: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: participantsText, Marks: []Mark{{Type: "code"}}},
+		},
+	}
+}
+
+func createApproversField(label string, users []string) Content {
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: label + ": ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: strings.Join(users, ", "), Marks: []Mark{{Type: "code"}}},
 		},
 	}
 }
@@ -426,7 +564,7 @@ func GenerateIssueADFComment(
 		content = append(content, createDescriptionField(description)...)
 	}
 
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -447,7 +585,7 @@ func GeneratePipelineADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",
@@ -533,7 +671,7 @@ func GenerateBuildADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",
@@ -690,8 +828,7 @@ func generateSimpleADFComment(
 		)
 	}
 
-	// Add timestamp
-	adfContent = addTimestamp(adfContent)
+	adfContent = append(adfContent, createCurrentDateField())
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -796,8 +933,7 @@ func GenerateTagPushADFComment(
 		})
 	}
 
-	// Add timestamp
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -897,8 +1033,7 @@ func GenerateReleaseADFComment(
 		)
 	}
 
-	// Add timestamp
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -919,7 +1054,7 @@ func GenerateDeploymentADFComment(
 	if author != "" {
 		content = append(content, createAuthorField(author))
 	}
-	content = addTimestamp(content)
+	content = append(content, createCurrentDateField())
 	return CommentPayload{
 		Body: CommentBody{
 			Type:    "doc",

@@ -4,9 +4,10 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
 func TestProcessMergeRequestEvent_SystemHook_LinksToMultipleIssues(t *testing.T) {

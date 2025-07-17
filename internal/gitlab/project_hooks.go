@@ -263,6 +263,29 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 		return nil
 	}
 
+	// Extract participants and approvers from MR
+	var participants, approvedBy, reviewers, approvers []string
+	if event.MergeRequest != nil {
+		if event.MergeRequest.Author != nil {
+			participants = append(participants, event.MergeRequest.Author.Name)
+		}
+		if event.MergeRequest.Assignee != nil {
+			participants = append(participants, event.MergeRequest.Assignee.Name)
+		}
+		for _, participant := range event.MergeRequest.Participants {
+			participants = append(participants, participant.Name)
+		}
+		for _, user := range event.MergeRequest.ApprovedBy {
+			approvedBy = append(approvedBy, user.Name)
+		}
+		for _, user := range event.MergeRequest.Reviewers {
+			reviewers = append(reviewers, user.Name)
+		}
+		for _, user := range event.MergeRequest.Approvers {
+			approvers = append(approvers, user.Name)
+		}
+	}
+
 	// Generate ADF comment for MR
 	comment := jira.GenerateMergeRequestADFComment(
 		attrs.Title,
@@ -275,6 +298,10 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 		attrs.State,
 		attrs.Name,
 		attrs.Description,
+		participants,
+		approvedBy,
+		reviewers,
+		approvers,
 	)
 
 	// Add comment to each issue

@@ -183,16 +183,8 @@ func (h *Handler) processPushEvent(event *Event) error {
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
-			// Construct branch URL if we have project information
-			branchURL := ""
-			if event.PathWithNamespace != "" {
-				// Extract branch name from refs/heads/branch format
-				branchName := event.Ref
-				if strings.HasPrefix(event.Ref, "refs/heads/") {
-					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
-				}
-				branchURL = fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, branchName)
-			}
+			// Construct branch URL using project information from system hook
+			branchURL := h.constructBranchURL(event, event.Ref)
 
 			// Construct author URL if we have GitLab base URL
 			authorURL := ""
@@ -230,6 +222,48 @@ func (h *Handler) processPushEvent(event *Event) error {
 	return nil
 }
 
+// constructBranchURL constructs a proper branch URL using project information
+func (h *Handler) constructBranchURL(event *Event, ref string) string {
+	// Extract branch name from refs/heads/branch format
+	branchName := ref
+	if strings.HasPrefix(ref, "refs/heads/") {
+		branchName = strings.TrimPrefix(ref, "refs/heads/")
+	}
+
+	// Try to use project information from system hook first
+	if event.Project != nil && event.Project.WebURL != "" {
+		return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+	}
+
+	// Fallback to using PathWithNamespace and GitLabBaseURL
+	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		return fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, branchName)
+	}
+
+	// If no project information available, return empty string
+	return ""
+}
+
+// constructProjectURL constructs a project URL using available project information
+func (h *Handler) constructProjectURL(event *Event) (string, string) {
+	// Try to use project information from system hook first
+	if event.Project != nil {
+		return event.Project.Name, event.Project.WebURL
+	}
+
+	// Fallback to using PathWithNamespace and GitLabBaseURL
+	if event.PathWithNamespace != "" && h.config.GitLabBaseURL != "" {
+		projectName := event.PathWithNamespace
+		if event.Name != "" {
+			projectName = event.Name
+		}
+		return projectName, fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.PathWithNamespace)
+	}
+
+	// If no project information available, return empty strings
+	return "", ""
+}
+
 // processMergeRequestEvent processes merge request events
 func (h *Handler) processMergeRequestEvent(event *Event) error {
 	if event.ObjectAttributes == nil {
@@ -259,18 +293,52 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		return nil
 	}
 
-	// Generate ADF comment for MR
-	comment := jira.GenerateMergeRequestADFComment(
+	// Extract participants and approvers from MR
+	var participants, approvedBy, reviewers, approvers []string
+	if event.MergeRequest != nil {
+		if event.MergeRequest.Author != nil {
+			participants = append(participants, event.MergeRequest.Author.Name)
+		}
+		if event.MergeRequest.Assignee != nil {
+			participants = append(participants, event.MergeRequest.Assignee.Name)
+		}
+		for _, participant := range event.MergeRequest.Participants {
+			participants = append(participants, participant.Name)
+		}
+		for _, user := range event.MergeRequest.ApprovedBy {
+			approvedBy = append(approvedBy, user.Name)
+		}
+		for _, user := range event.MergeRequest.Reviewers {
+			reviewers = append(reviewers, user.Name)
+		}
+		for _, user := range event.MergeRequest.Approvers {
+			approvers = append(approvers, user.Name)
+		}
+	}
+
+	// Get project information and construct branch URLs
+	projectName, projectURL := h.constructProjectURL(event)
+	sourceBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.SourceBranch)
+	targetBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.TargetBranch)
+
+	// Generate ADF comment for MR with clickable branch links
+	comment := jira.GenerateMergeRequestADFCommentWithBranchURLs(
 		attrs.Title,
 		attrs.URL,
-		"", // projectName - not in System Hook
-		"", // projectURL - not in System Hook
+		projectName,
+		projectURL,
 		cases.Title(language.English).String(attrs.Action),
 		attrs.SourceBranch,
+		sourceBranchURL,
 		attrs.TargetBranch,
+		targetBranchURL,
 		attrs.State,
 		attrs.Name,
 		attrs.Description,
+		participants,
+		approvedBy,
+		reviewers,
+		approvers,
 	)
 
 	// Add comment to each issue
@@ -999,11 +1067,15 @@ func (h *Handler) processPipelineEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Title
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
+
+	// Get project information
+	projectName, projectURL := h.constructProjectURL(event)
+
 	comment := jira.GeneratePipelineADFComment(
 		event.ObjectAttributes.Ref,
 		event.ObjectAttributes.URL,
-		"", // projectName - not available in System Hook
-		"", // projectURL - not available in System Hook
+		projectName,
+		projectURL,
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Status,
 		event.ObjectAttributes.Sha,
@@ -1031,11 +1103,15 @@ func (h *Handler) processBuildEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Stage
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
+
+	// Get project information
+	projectName, projectURL := h.constructProjectURL(event)
+
 	comment := jira.GenerateBuildADFComment(
 		event.ObjectAttributes.Name,
 		event.ObjectAttributes.URL,
-		"", // projectName - not available in System Hook
-		"", // projectURL - not available in System Hook
+		projectName,
+		projectURL,
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.Status,
 		event.ObjectAttributes.Stage,
@@ -1091,11 +1167,15 @@ func (h *Handler) processIssueEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Description
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
+
+	// Get project information
+	projectName, projectURL := h.constructProjectURL(event)
+
 	comment := jira.GenerateIssueADFComment(
 		event.ObjectAttributes.Title,
 		event.ObjectAttributes.URL,
-		"", // projectName - not available in System Hook
-		"", // projectURL - not available in System Hook
+		projectName,
+		projectURL,
 		cases.Title(language.English).String(event.ObjectAttributes.Action),
 		event.ObjectAttributes.State,
 		event.ObjectAttributes.IssueType,

@@ -93,6 +93,151 @@ func TestCreateProjectLink_EmptyURL(t *testing.T) {
 	}
 }
 
+func TestGenerateMergeRequestADFComment_NewFormat(t *testing.T) {
+	comment := GenerateMergeRequestADFComment(
+		"Test MR for ABC-123",
+		"https://gitlab.com/test/project/merge_requests/123",
+		"test-project",
+		"https://gitlab.com/test/project",
+		"Update",
+		"feature/ABC-456-branch",
+		"main",
+		"opened",
+		"Test User",
+		"This MR addresses ABC-123 and ABC-456",
+		[]string{}, // participants
+		[]string{}, // approvedBy
+		[]string{}, // reviewers
+		[]string{}, // approvers
+	)
+
+	// Marshal to JSON to check the structure
+	jsonData, err := json.Marshal(comment)
+	if err != nil {
+		t.Fatalf("Failed to marshal comment: %v", err)
+	}
+
+	jsonStr := string(jsonData)
+
+	// Print the actual structure for debugging
+	t.Logf("Generated JSON: %s", jsonStr)
+
+	// Check that all key fields are present (order is not important)
+	fields := []string{
+		`"text":"author: "`,
+		`"text":"merge request: "`,
+		`"text":"branches: "`,
+		`"text":"commit: "`,
+		`"text":"project: "`,
+		`"text":"action: "`,
+		`"text":"status: "`,
+		`"text":"date: "`,
+	}
+	for _, field := range fields {
+		if !contains(jsonStr, field) {
+			t.Errorf("Expected field %s in MR comment", field)
+		}
+	}
+
+	// Should not have the old timestamp format
+	if contains(jsonStr, `"text":"**Timestamp:**"`) {
+		t.Error("Should not have old timestamp format")
+	}
+}
+
+func TestGenerateMergeRequestADFComment_WithParticipants(t *testing.T) {
+	participants := []string{"John Doe", "Jane Smith", "Bob Johnson"}
+	comment := GenerateMergeRequestADFComment(
+		"Test MR with participants",
+		"https://gitlab.com/test/project/merge_requests/456",
+		"test-project",
+		"https://gitlab.com/test/project",
+		"Open",
+		"feature/test",
+		"main",
+		"opened",
+		"Test User",
+		"This MR has multiple participants",
+		participants,
+		[]string{}, // approvedBy
+		[]string{}, // reviewers
+		[]string{}, // approvers
+	)
+
+	// Marshal to JSON to check the structure
+	jsonData, err := json.Marshal(comment)
+	if err != nil {
+		t.Fatalf("Failed to marshal comment: %v", err)
+	}
+
+	jsonStr := string(jsonData)
+
+	// Check that participants field is present
+	if !contains(jsonStr, `"text":"participants: "`) {
+		t.Error("Expected participants field in MR comment")
+	}
+
+	// Check that all participants are included
+	for _, participant := range participants {
+		if !contains(jsonStr, participant) {
+			t.Errorf("Expected participant %s in MR comment", participant)
+		}
+	}
+
+	// Check that participants are joined with commas
+	if !contains(jsonStr, "John Doe, Jane Smith, Bob Johnson") {
+		t.Error("Expected participants to be joined with commas")
+	}
+}
+
+func TestGenerateMergeRequestADFComment_WithApprovers(t *testing.T) {
+	participants := []string{"John Doe"}
+	approvedBy := []string{"Alice Brown", "Bob Johnson"}
+	reviewers := []string{"Jane Smith"}
+	approvers := []string{"Eve Adams"}
+	comment := GenerateMergeRequestADFComment(
+		"Test MR with approvers",
+		"https://gitlab.com/test/project/merge_requests/789",
+		"test-project",
+		"https://gitlab.com/test/project",
+		"Open",
+		"feature/test",
+		"main",
+		"opened",
+		"Test User",
+		"This MR has approvers and reviewers",
+		participants,
+		approvedBy,
+		reviewers,
+		approvers,
+	)
+
+	jsonData, err := json.Marshal(comment)
+	if err != nil {
+		t.Fatalf("Failed to marshal comment: %v", err)
+	}
+	jsonStr := string(jsonData)
+
+	if !contains(jsonStr, `"text":"approved by: "`) {
+		t.Error("Expected approved by field in MR comment")
+	}
+	if !contains(jsonStr, `"text":"reviewers: "`) {
+		t.Error("Expected reviewers field in MR comment")
+	}
+	if !contains(jsonStr, `"text":"approvers: "`) {
+		t.Error("Expected approvers field in MR comment")
+	}
+	if !contains(jsonStr, "Alice Brown, Bob Johnson") {
+		t.Error("Expected approved by users to be joined with commas")
+	}
+	if !contains(jsonStr, "Jane Smith") {
+		t.Error("Expected reviewer in MR comment")
+	}
+	if !contains(jsonStr, "Eve Adams") {
+		t.Error("Expected approver in MR comment")
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&

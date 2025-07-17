@@ -258,3 +258,60 @@ func TestProcessIssueEvent_AddsComment(t *testing.T) {
 // Test for handling events without ObjectAttributes
 // Test for handling multiple issueIDs in one event
 // Check that comments were added for both issues
+
+func TestProcessMergeRequestEvent_WithParticipants(t *testing.T) {
+	jira := newMockJiraClient()
+	h := &Handler{
+		config: &config.Config{},
+		logger: slog.Default(),
+		jira:   jira,
+		parser: NewParser(),
+	}
+	event := &Event{
+		EventName: "merge_request",
+		ObjectAttributes: &ObjectAttributes{
+			ID:           123,
+			Title:        "Implement feature ABC-123",
+			Description:  "This MR implements ABC-123 and involves multiple participants",
+			URL:          "https://gitlab.com/test/project/merge_requests/123",
+			Action:       "open",
+			SourceBranch: "feature/ABC-123",
+			TargetBranch: "main",
+			State:        "opened",
+			Name:         "John Doe",
+		},
+		MergeRequest: &MergeRequest{
+			ID:    123,
+			Title: "Implement feature ABC-123",
+			Author: &User{
+				ID:   1,
+				Name: "John Doe",
+			},
+			Assignee: &User{
+				ID:   2,
+				Name: "Jane Smith",
+			},
+			Participants: []User{
+				{ID: 1, Name: "John Doe"},
+				{ID: 2, Name: "Jane Smith"},
+				{ID: 3, Name: "Bob Johnson"},
+				{ID: 4, Name: "Alice Brown"},
+			},
+		},
+	}
+
+	err := h.processMergeRequestEvent(event)
+	require.NoError(t, err)
+	comments := jira.GetComments("ABC-123")
+	require.NotEmpty(t, comments)
+	require.Contains(t, comments[0], "merge request")
+
+	// Check that all participants are included in the comment
+	expectedParticipants := []string{"John Doe", "Jane Smith", "Bob Johnson", "Alice Brown"}
+	for _, participant := range expectedParticipants {
+		require.Contains(t, comments[0], participant, "Expected participant %s in comment", participant)
+	}
+
+	// Check that participants field is present
+	require.Contains(t, comments[0], "participants:", "Expected participants field in comment")
+}

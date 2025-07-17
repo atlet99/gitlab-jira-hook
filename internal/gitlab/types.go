@@ -185,6 +185,14 @@ type MergeRequest struct {
 	Assignee     *User    `json:"assignee"`
 	Author       *User    `json:"author"`
 	Labels       []string `json:"labels"`
+	// Participants includes all users involved in the MR (reviewers, assignees, etc.)
+	Participants []User `json:"participants"`
+	// ApprovedBy contains users who approved the MR
+	ApprovedBy []User `json:"approved_by"`
+	// Reviewers contains users requested for review
+	Reviewers []User `json:"reviewers"`
+	// Approvers contains users who can approve the MR
+	Approvers []User `json:"approvers"`
 }
 
 // Note represents a GitLab comment/note
