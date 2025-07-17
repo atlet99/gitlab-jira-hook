@@ -321,7 +321,7 @@ func GenerateMergeRequestADFComment(
 	participants, approvedBy, reviewers, approvers []string,
 ) CommentPayload {
 	return GenerateMergeRequestADFCommentWithBranchURLs(
-		title, url, projectName, projectURL, action, sourceBranch, "", targetBranch, "", status, author, description,
+		title, url, projectName, projectURL, action, sourceBranch, "", targetBranch, "", status, author, description, "",
 		participants, approvedBy, reviewers, approvers,
 	)
 }
@@ -329,7 +329,7 @@ func GenerateMergeRequestADFComment(
 // GenerateMergeRequestADFCommentWithBranchURLs generates ADF comment for MR with clickable branch links
 func GenerateMergeRequestADFCommentWithBranchURLs(
 	title, url, projectName, projectURL, action, sourceBranch, sourceBranchURL,
-	targetBranch, targetBranchURL, status, author, description string,
+	targetBranch, targetBranchURL, status, author, description, eventTime string,
 	participants, approvedBy, reviewers, approvers []string,
 ) CommentPayload {
 	var content []Content
@@ -387,8 +387,12 @@ func GenerateMergeRequestADFCommentWithBranchURLs(
 		content = append(content, createField("status", status))
 	}
 
-	// Add current date in GOST format
-	content = append(content, createCurrentDateField())
+	// Add event date in GOST format, or current date if event time is not available
+	if eventTime != "" {
+		content = append(content, createEventDateField(eventTime))
+	} else {
+		content = append(content, createCurrentDateField())
+	}
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -432,6 +436,20 @@ func createMergeRequestDescription(description string) Content {
 func createCurrentDateField() Content {
 	// Format current time to GOST 7.64-90 format
 	formattedDate := time.Now().Format(DateFormatGOST)
+
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "date: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: formattedDate},
+		},
+	}
+}
+
+// createEventDateField creates a date field using the event timestamp
+func createEventDateField(eventTime string) Content {
+	// Format the event time to GOST 7.64-90 format
+	formattedDate := formatDateGOST(eventTime)
 
 	return Content{
 		Type: "paragraph",

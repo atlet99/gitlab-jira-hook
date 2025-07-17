@@ -314,12 +314,26 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		for _, user := range event.MergeRequest.Approvers {
 			approvers = append(approvers, user.Name)
 		}
+
+		// Log MR data for debugging
+		h.logger.Debug("MR data extracted",
+			"participants", participants,
+			"approvedBy", approvedBy,
+			"reviewers", reviewers,
+			"approvers", approvers,
+			"mrID", attrs.ID)
 	}
 
 	// Get project information and construct branch URLs
 	projectName, projectURL := h.constructProjectURL(event)
 	sourceBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.SourceBranch)
 	targetBranchURL := h.constructBranchURL(event, "refs/heads/"+attrs.TargetBranch)
+
+	// Use event time (UpdatedAt) for the comment, fallback to CreatedAt if UpdatedAt is empty
+	eventTime := event.UpdatedAt
+	if eventTime == "" {
+		eventTime = event.CreatedAt
+	}
 
 	// Generate ADF comment for MR with clickable branch links
 	comment := jira.GenerateMergeRequestADFCommentWithBranchURLs(
@@ -335,6 +349,7 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		attrs.State,
 		attrs.Name,
 		attrs.Description,
+		eventTime,
 		participants,
 		approvedBy,
 		reviewers,
