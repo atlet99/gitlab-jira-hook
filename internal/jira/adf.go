@@ -16,11 +16,18 @@ func GenerateCommitADFComment(
 ) CommentPayload {
 	content := []Content{createCommitAuthor(authorName, authorURL)}
 	content = append(content, createCommitHeader(commitID, commitURL)...)
-	content = append(content,
-		createCommitBranch(branch, branchURL),
-		createCommitMessage(message, projectWebURL),
-		createCommitDate(date),
-	)
+	content = append(content, createCommitBranch(branch, branchURL))
+
+	// Get commit message and MR link (if any)
+	commitContent, mrContent := createCommitMessage(message, projectWebURL)
+	content = append(content, commitContent)
+
+	// Add MR link if it exists
+	if len(mrContent.Content) > 0 {
+		content = append(content, mrContent)
+	}
+
+	content = append(content, createCommitDate(date))
 
 	if hasFileChanges(added, modified, removed) {
 		content = append(content, createCompactFileChangesSection(added, modified, removed)...)
@@ -129,7 +136,7 @@ func createCommitBranch(branch, branchURL string) Content {
 	}
 }
 
-func createCommitMessage(message, projectWebURL string) Content {
+func createCommitMessage(message, projectWebURL string) (commitContent, mrContent Content) {
 	// Check if message contains "See merge request" and extract MR link
 	mrLink := extractMergeRequestLink(message, projectWebURL)
 	if mrLink != "" {
@@ -137,32 +144,46 @@ func createCommitMessage(message, projectWebURL string) Content {
 		parts := strings.Split(message, "See merge request")
 		commitMsg := strings.TrimSpace(parts[0])
 
-		// Combine all content elements into a single append
-		content := []TextContent{
-			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
-			{Type: "text", Text: commitMsg},
-			{Type: "text", Text: "See merge request ", Marks: []Mark{{Type: "strong"}}},
-			{
-				Type:  "text",
-				Text:  extractMRID(mrLink),
-				Marks: []Mark{{Type: "link", Attrs: map[string]interface{}{"href": mrLink}}},
+		// Create separate paragraphs for commit message and MR link
+		commitContent = Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: commitMsg},
 			},
 		}
 
-		return Content{
-			Type:    "paragraph",
-			Content: content,
+		mrContent = Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "See merge request ", Marks: []Mark{{Type: "strong"}}},
+				{
+					Type:  "text",
+					Text:  extractMRID(mrLink),
+					Marks: []Mark{{Type: "link", Attrs: map[string]interface{}{"href": mrLink}}},
+				},
+			},
 		}
+
+		return commitContent, mrContent
 	}
 
 	// Regular commit message without MR reference
-	return Content{
+	commitContent = Content{
 		Type: "paragraph",
 		Content: []TextContent{
 			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: message},
 		},
 	}
+
+	// Return empty content for MR link
+	mrContent = Content{
+		Type:    "paragraph",
+		Content: []TextContent{},
+	}
+
+	return commitContent, mrContent
 }
 
 // extractMergeRequestLink extracts MR URL from commit message

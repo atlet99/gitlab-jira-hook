@@ -198,16 +198,11 @@ func (h *Handler) processPushEvent(event *Event) error {
 				authorName = commit.Author.Name
 			}
 
-			// Construct author URL using user_id from system hook for proper profile link
+			// Construct author URL using username for proper profile link
 			authorURL := ""
-			if h.config.GitLabBaseURL != "" {
-				if event.UserID > 0 {
-					// Use user_id for profile URL (more reliable than username)
-					authorURL = fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
-				} else if authorName != "" {
-					// Fallback to username-based URL
-					authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
-				}
+			if h.config.GitLabBaseURL != "" && authorName != "" {
+				// Use username for profile URL (correct format)
+				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
 			}
 
 			// Get project web URL for MR links
@@ -216,14 +211,8 @@ func (h *Handler) processPushEvent(event *Event) error {
 				projectWebURL = event.Project.WebURL
 			}
 
-			// Use event time for system hooks, fallback to commit timestamp
-			eventTime := event.UpdatedAt
-			if eventTime == "" {
-				eventTime = event.CreatedAt
-			}
-			if eventTime == "" {
-				eventTime = commit.Timestamp
-			}
+			// Use commit timestamp for push events (this is the actual commit time)
+			eventTime := commit.Timestamp
 
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
