@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sync"
 	"time"
 
@@ -108,7 +109,7 @@ func (c *Client) AddComment(issueID, comment string) error {
 		// Wait for rate limiter
 		c.rateLimiter.Wait()
 
-		// Create comment payload
+		// Create comment payload with simple text format
 		payload := CommentPayload{
 			Body: CommentBody{
 				Type:    "doc",
@@ -119,7 +120,7 @@ func (c *Client) AddComment(issueID, comment string) error {
 						Content: []TextContent{
 							{
 								Type: "text",
-								Text: comment,
+								Text: convertMarkdownToPlainText(comment),
 							},
 						},
 					},
@@ -256,4 +257,21 @@ func intMin(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// convertMarkdownToPlainText converts Markdown-style text to plain text
+func convertMarkdownToPlainText(markdown string) string {
+	// Replace Markdown links with plain text format
+	linkPattern := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	result := linkPattern.ReplaceAllString(markdown, "$1 ($2)")
+
+	// Replace bold text with plain text
+	boldPattern := regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	result = boldPattern.ReplaceAllString(result, "$1")
+
+	// Replace code blocks with plain text
+	codePattern := regexp.MustCompile("`([^`]+)`")
+	result = codePattern.ReplaceAllString(result, "$1")
+
+	return result
 }
