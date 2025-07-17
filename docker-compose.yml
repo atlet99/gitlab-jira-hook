@@ -12,7 +12,7 @@ services:
     container_name: gitlab-jira-hook
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "9988:8080"
     env_file:
       - config.env
     volumes:
@@ -24,17 +24,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Simple nginx reverse proxy for localhost
-  nginx:
-    image: nginx:alpine
-    container_name: gitlab-jira-hook-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - gitlab-jira-hook
-    profiles:
-      - nginx 
