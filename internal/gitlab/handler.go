@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -517,16 +518,16 @@ func (h *Handler) processGroupEvent(event *Event) error {
 // createCommitComment creates a comment for a commit
 func (h *Handler) createCommitComment(commit Commit, event *Event) string {
 	files := ""
-	if commit.Added != "" || commit.Modified != "" || commit.Removed != "" {
+	if len(commit.Added) > 0 || len(commit.Modified) > 0 || len(commit.Removed) > 0 {
 		files = "\nFiles:"
-		if commit.Added != "" {
-			files += "\n  + Added: " + commit.Added
+		if len(commit.Added) > 0 {
+			files += "\n  + Added: " + strings.Join(commit.Added, ", ")
 		}
-		if commit.Modified != "" {
-			files += "\n  ~ Modified: " + commit.Modified
+		if len(commit.Modified) > 0 {
+			files += "\n  ~ Modified: " + strings.Join(commit.Modified, ", ")
 		}
-		if commit.Removed != "" {
-			files += "\n  - Removed: " + commit.Removed
+		if len(commit.Removed) > 0 {
+			files += "\n  - Removed: " + strings.Join(commit.Removed, ", ")
 		}
 	}
 	return fmt.Sprintf(

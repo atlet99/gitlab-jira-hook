@@ -251,16 +251,16 @@ func (h *ProjectHookHandler) createCommitComment(commit Commit, event *Event) st
 	}
 
 	files := ""
-	if commit.Added != "" || commit.Modified != "" || commit.Removed != "" {
+	if len(commit.Added) > 0 || len(commit.Modified) > 0 || len(commit.Removed) > 0 {
 		files = "\nFiles:"
-		if commit.Added != "" {
-			files += "\n  + Added: " + commit.Added
+		if len(commit.Added) > 0 {
+			files += "\n  + Added: " + strings.Join(commit.Added, ", ")
 		}
-		if commit.Modified != "" {
-			files += "\n  ~ Modified: " + commit.Modified
+		if len(commit.Modified) > 0 {
+			files += "\n  ~ Modified: " + strings.Join(commit.Modified, ", ")
 		}
-		if commit.Removed != "" {
-			files += "\n  - Removed: " + commit.Removed
+		if len(commit.Removed) > 0 {
+			files += "\n  - Removed: " + strings.Join(commit.Removed, ", ")
 		}
 	}
 

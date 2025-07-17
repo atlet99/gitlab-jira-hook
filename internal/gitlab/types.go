@@ -109,10 +109,10 @@ type Commit struct {
 	URL     string `json:"url"`
 	Author  Author `json:"author"`
 	// Additional commit fields
-	Timestamp string `json:"timestamp"`
-	Added     string `json:"added"`
-	Modified  string `json:"modified"`
-	Removed   string `json:"removed"`
+	Timestamp string   `json:"timestamp"`
+	Added     []string `json:"added"`
+	Modified  []string `json:"modified"`
+	Removed   []string `json:"removed"`
 }
 
 // Author represents a commit author

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-07-17
+
+### Fixed
+- Fixed JSON parsing error for GitLab commit file arrays: changed Commit struct fields Added, Modified, Removed from string to []string to match GitLab webhook payload format
+- Updated commit comment formatting to properly handle file arrays using strings.Join()
+- Added strings package import in handler.go for array joining functionality
+- Resolved webhook processing failures caused by unmarshal errors when GitLab sends file information as arrays
+
 ## [0.1.3] - 2025-07-17
 
 ### Fixed
@@ -147,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 
