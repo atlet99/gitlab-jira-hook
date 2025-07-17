@@ -141,10 +141,17 @@ jobs:
         with:
           cosign-release: 'v2.4.3'
 
-      - name: Sign binary with Cosign (keyless)
+      - name: Generate Cosign key pair
         run: |
-          # Sign the binary using keyless signing
+          # Generate cosign key pair
+          cosign generate-key-pair
+          echo "Cosign key pair generated"
+
+      - name: Sign binary with Cosign
+        run: |
+          # Sign the binary using cosign key
           cosign sign-blob --yes \
+            --key cosign.key \
             --output-signature ${{ env.BINARY_NAME }}.sig \
             ${{ env.BINARY_NAME }}
 
@@ -158,8 +165,7 @@ jobs:
           # 1. Install cosign: https://docs.sigstore.dev/cosign/installation/
           # 2. Run verification:
           cosign verify-blob \
-            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ github.ref_name }}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --key cosign.pub \
             --signature ${{ env.BINARY_NAME }}.sig \
             ${{ env.BINARY_NAME }}
 
@@ -177,6 +183,7 @@ jobs:
             ${{ env.BINARY_NAME }}.sha256
             ${{ env.BINARY_NAME }}.sha512
             ${{ env.BINARY_NAME }}.verify
+            cosign.pub
           retention-days: 1
 
   build_docker:
@@ -277,6 +284,16 @@ jobs:
         with:
           path: ./artifacts
 
+      - name: Copy cosign.pub
+        run: |
+          # Find and copy cosign.pub from any artifact
+          find ./artifacts -name "cosign.pub" -exec cp {} ./cosign.pub \;
+          if [ ! -f ./cosign.pub ]; then
+            echo "Error: cosign.pub not found in artifacts"
+            exit 1
+          fi
+          echo "cosign.pub copied successfully"
+
       - name: Generate changelog
         id: changelog
         run: |
@@ -351,8 +368,7 @@ jobs:
           echo "" >> changelog.md
           echo "# Verify Cosign signature (requires cosign CLI)" >> changelog.md
           echo "cosign verify-blob \\\\" >> changelog.md
-          echo "  --certificate-identity \"https://github.com/atlet99/gitlab-jira-hook/.github/workflows/release.yml@refs/tags/${{ env.VERSION }}\" \\\\" >> changelog.md
-          echo "  --certificate-oidc-issuer \"https://token.actions.githubusercontent.com\" \\\\" >> changelog.md
+          echo "  --key cosign.pub \\\\" >> changelog.md
           echo "  --signature gitlab-jira-hook-*-linux-amd64.sig \\\\" >> changelog.md
           echo "  gitlab-jira-hook-*-linux-amd64" >> changelog.md
           echo '```' >> changelog.md

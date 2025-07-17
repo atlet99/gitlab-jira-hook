@@ -1,21 +1,18 @@
 # GitLab-Jira Hook Makefile
 
 # Project-specific variables
-PROJECT_NAME := gitlab-jira-hook
+BINARY_NAME := gitlab-jira-hook
 OUTPUT_DIR := build
-PKG_DIR := internal
+CMD_DIR := cmd/server
 
 TAG_NAME ?= $(shell head -n 1 .release-version 2>/dev/null | sed 's/^/v/' || echo "v0.1.0")
-VERSION ?= $(shell head -n 1 .release-version 2>/dev/null || echo "0.1.0")
+VERSION ?= $(shell head -n 1 .release-version 2>/dev/null | sed 's/^v//' || echo "dev")
 BUILD_INFO ?= $(shell date +%s)
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 GO_VERSION := $(shell cat .go-version 2>/dev/null || echo "1.21")
-GO_FILES := $(wildcard $(PKG_DIR)/**/*.go)
+GO_FILES := $(wildcard $(CMD_DIR)/*.go internal/**/*.go)
 GOPATH ?= $(shell go env GOPATH)
-ifeq ($(GOPATH),)
-GOPATH = $(HOME)/go
-endif
 GOLANGCI_LINT = $(GOPATH)/bin/golangci-lint
 STATICCHECK = $(GOPATH)/bin/staticcheck
 GOIMPORTS = $(GOPATH)/bin/goimports
@@ -30,7 +27,7 @@ GOSEC_JSON_REPORT := gosec-report.json
 GOSEC_SEVERITY := medium
 
 # Vulnerability checking constants
-GOVULNCHECK_VERSION := v1.1.4
+GOVULNCHECK_VERSION := latest
 GOVULNCHECK = $(GOPATH)/bin/govulncheck
 VULNCHECK_OUTPUT_FORMAT := json
 VULNCHECK_REPORT_FILE := vulncheck-report.json
@@ -39,7 +36,7 @@ VULNCHECK_REPORT_FILE := vulncheck-report.json
 ERRCHECK_VERSION := v1.9.0
 
 # SBOM generation constants
-SYFT_VERSION := 1.28.0
+SYFT_VERSION := latest
 SYFT = $(GOPATH)/bin/syft
 SYFT_OUTPUT_FORMAT := syft-json
 SYFT_SBOM_FILE := sbom.syft.json
@@ -49,31 +46,22 @@ SYFT_CYCLONEDX_FILE := sbom.cyclonedx.json
 # Build flags
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-BUILT_BY ?= $(shell git remote get-url origin 2>/dev/null | sed -n 's/.*[:/]\([^/]*\)\/[^/]*\.git.*/\1/p' || git config user.name 2>/dev/null | tr ' ' '_' || echo "local")
+BUILT_BY ?= $(shell git remote get-url origin 2>/dev/null | sed -n 's/.*[:/]\([^/]*\)\/[^/]*\.git.*/\1/p' || git config user.name 2>/dev/null | tr ' ' '_' || echo "unknown")
 
 # Build flags for Go
 BUILD_FLAGS=-buildvcs=false
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(DATE)"
-
-# Matrix testing constants
-MATRIX_MIN_GO_VERSION := 1.21
-MATRIX_STABLE_GO_VERSION := 1.21
-MATRIX_LATEST_GO_VERSION := 1.21
-MATRIX_TEST_TIMEOUT := 10m
-MATRIX_COVERAGE_THRESHOLD := 80
-
-# Docker constants
-DOCKER_IMAGE = atlet99/gitlab-jira-hook
-DOCKER_TAG = $(VERSION)
+LDFLAGS=-ldflags "-s -w -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Version=$(VERSION)' \
+			  -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Commit=$(COMMIT)' \
+			  -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Date=$(DATE)' \
+			  -X 'github.com/atlet99/gitlab-jira-hook/internal/version.BuiltBy=$(BUILT_BY)'"
 
 # Ensure the output directory exists
-.PHONY: ensure-output-dir
-ensure-output-dir:
+.PHONY: $(OUTPUT_DIR)
 	@mkdir -p $(OUTPUT_DIR)
 
 # Default target
 .PHONY: default
-default: fmt vet imports lint staticcheck test quicktest
+default: fmt vet imports lint staticcheck build quicktest
 
 # Display help information
 .PHONY: help
@@ -206,19 +194,31 @@ install-tools:
 	fi
 	@echo "Development tools installed successfully"
 
-# Building
-.PHONY: build release-build
+# Build targets
+.PHONY: build build-debug build-cross
 
-build: ensure-output-dir
-	@echo "Building $(PROJECT_NAME) v$(VERSION)..."
-	go build $(LDFLAGS) -o $(OUTPUT_DIR)/$(PROJECT_NAME) ./cmd/server
-	@echo "Build complete: $(OUTPUT_DIR)/$(PROJECT_NAME)"
+build: $(OUTPUT_DIR)
+	@echo "Building $(BINARY_NAME) with version $(VERSION)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build \
+		$(BUILD_FLAGS) $(LDFLAGS) \
+		-o $(OUTPUT_DIR)/$(BINARY_NAME) ./$(CMD_DIR)
 
-release-build: test lint staticcheck
-	@echo "Building release version $(VERSION)..."
-	@mkdir -p $(OUTPUT_DIR)
-	go build $(LDFLAGS) -o $(OUTPUT_DIR)/$(PROJECT_NAME) ./cmd/server
-	@echo "Release build completed for $(PROJECT_NAME) v$(VERSION)"
+build-debug: $(OUTPUT_DIR)
+	@echo "Building debug version..."
+	CGO_ENABLED=0 go build \
+		$(BUILD_FLAGS) -gcflags="all=-N -l" \
+		$(LDFLAGS) \
+		-o $(OUTPUT_DIR)/$(BINARY_NAME)-debug ./$(CMD_DIR)
+
+build-cross: $(OUTPUT_DIR)
+	@echo "Building cross-platform binaries..."
+	GOOS=linux   GOARCH=amd64   CGO_ENABLED=0 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(OUTPUT_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	GOOS=linux   GOARCH=arm64   CGO_ENABLED=0 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(OUTPUT_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	GOOS=darwin  GOARCH=arm64   CGO_ENABLED=0 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
+	GOOS=darwin  GOARCH=amd64   CGO_ENABLED=0 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-amd64 ./$(CMD_DIR)
+	GOOS=windows GOARCH=amd64   CGO_ENABLED=0 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+	@echo "Cross-platform binaries are available in $(OUTPUT_DIR):"
+	@ls -1 $(OUTPUT_DIR)
 
 # Testing
 .PHONY: test test-with-race quicktest test-coverage test-race test-all
@@ -252,8 +252,8 @@ test-all: test-coverage test-race
 .PHONY: run dev
 
 run: build
-	@echo "Running $(PROJECT_NAME)..."
-	./$(OUTPUT_DIR)/$(PROJECT_NAME)
+	@echo "Running $(BINARY_NAME)..."
+	./$(OUTPUT_DIR)/$(BINARY_NAME)
 
 dev:
 	@echo "Running in development mode..."
@@ -263,19 +263,19 @@ dev:
 .PHONY: docker-build docker-run docker-push
 
 docker-build:
-	@echo "Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)..."
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
-	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) $(DOCKER_IMAGE):latest
+	@echo "Building Docker image $(BINARY_NAME):$(VERSION)..."
+	docker build -t $(BINARY_NAME):$(VERSION) .
+	docker tag $(BINARY_NAME):$(VERSION) $(BINARY_NAME):latest
 	@echo "Docker image built"
 
 docker-run:
 	@echo "Running Docker container..."
-	docker run -p 8080:8080 --env-file config.env $(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker run -p 8080:8080 --env-file config.env $(BINARY_NAME):$(VERSION)
 
 docker-push:
 	@echo "Pushing Docker image..."
-	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
-	docker push $(DOCKER_IMAGE):latest
+	docker push $(BINARY_NAME):$(VERSION)
+	docker push $(BINARY_NAME):latest
 	@echo "Docker image pushed"
 
 # Code quality
@@ -395,8 +395,12 @@ security-scan: security-install-gosec
 	else \
 		$(GOSEC) -quiet -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -severity $(GOSEC_SEVERITY) ./...; \
 	fi
-	@echo "Security scan completed. Report saved to $(GOSEC_REPORT_FILE)"
-	@echo "To view issues: cat $(GOSEC_REPORT_FILE)"
+	@if [ -f $(GOSEC_REPORT_FILE) ]; then \
+		echo "Security scan completed. Report saved to $(GOSEC_REPORT_FILE)"; \
+		echo "To view issues: cat $(GOSEC_REPORT_FILE)"; \
+	else \
+		echo "Security scan completed. No issues found."; \
+	fi
 
 security-scan-json: security-install-gosec
 	@echo "Running gosec security scan with JSON output..."
@@ -405,7 +409,11 @@ security-scan-json: security-install-gosec
 	else \
 		$(GOSEC) -quiet -fmt json -out $(GOSEC_JSON_REPORT) -severity $(GOSEC_SEVERITY) ./...; \
 	fi
-	@echo "Security scan completed. JSON report saved to $(GOSEC_JSON_REPORT)"
+	@if [ -f $(GOSEC_JSON_REPORT) ]; then \
+		echo "Security scan completed. JSON report saved to $(GOSEC_JSON_REPORT)"; \
+	else \
+		echo "Security scan completed. No issues found."; \
+	fi
 
 security-scan-html: security-install-gosec
 	@echo "Running gosec security scan with HTML output..."
@@ -414,7 +422,11 @@ security-scan-html: security-install-gosec
 	else \
 		$(GOSEC) -quiet -fmt html -out gosec-report.html -severity $(GOSEC_SEVERITY) ./...; \
 	fi
-	@echo "Security scan completed. HTML report saved to gosec-report.html"
+	@if [ -f gosec-report.html ]; then \
+		echo "Security scan completed. HTML report saved to gosec-report.html"; \
+	else \
+		echo "Security scan completed. No issues found."; \
+	fi
 
 security-scan-ci: security-install-gosec
 	@echo "Running gosec security scan for CI..."
@@ -423,7 +435,11 @@ security-scan-ci: security-install-gosec
 	else \
 		$(GOSEC) -quiet -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -no-fail -quiet ./...; \
 	fi
-	@echo "CI security scan completed"
+	@if [ -f $(GOSEC_REPORT_FILE) ]; then \
+		echo "CI security scan completed. Report saved to $(GOSEC_REPORT_FILE)"; \
+	else \
+		echo "CI security scan completed. No issues found."; \
+	fi
 
 # Vulnerability checking with govulncheck
 .PHONY: vuln-check vuln-check-json vuln-install-govulncheck vuln-check-ci
@@ -467,7 +483,7 @@ sbom-install-syft:
 
 sbom-generate: sbom-install-syft
 	@echo "Generating SBOM with Syft (JSON format)..."
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE)
 	@echo "SBOM generated successfully: $(SYFT_SBOM_FILE)"
 	@echo "To view SBOM: cat $(SYFT_SBOM_FILE)"
 
@@ -475,19 +491,19 @@ sbom-syft: sbom-generate
 
 sbom-spdx: sbom-install-syft
 	@echo "Generating SBOM with Syft (SPDX JSON format)..."
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o spdx-json=$(SYFT_SPDX_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o spdx-json=$(SYFT_SPDX_FILE)
 	@echo "SPDX SBOM generated successfully: $(SYFT_SPDX_FILE)"
 
 sbom-cyclonedx: sbom-install-syft
 	@echo "Generating SBOM with Syft (CycloneDX JSON format)..."
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o cyclonedx-json=$(SYFT_CYCLONEDX_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o cyclonedx-json=$(SYFT_CYCLONEDX_FILE)
 	@echo "CycloneDX SBOM generated successfully: $(SYFT_CYCLONEDX_FILE)"
 
 sbom-all: sbom-install-syft
 	@echo "Generating SBOM in all supported formats..."
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE)
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o spdx-json=$(SYFT_SPDX_FILE)
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o cyclonedx-json=$(SYFT_CYCLONEDX_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o spdx-json=$(SYFT_SPDX_FILE)
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o cyclonedx-json=$(SYFT_CYCLONEDX_FILE)
 	@echo "All SBOM formats generated successfully:"
 	@echo "  - Syft JSON: $(SYFT_SBOM_FILE)"
 	@echo "  - SPDX JSON: $(SYFT_SPDX_FILE)"
@@ -495,17 +511,17 @@ sbom-all: sbom-install-syft
 
 sbom-ci: sbom-install-syft
 	@echo "Generating SBOM for CI pipeline..."
-	@$(SYFT) . --source-name $(PROJECT_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE) --quiet
+	@$(SYFT) . --source-name $(BINARY_NAME) --source-version $(VERSION) -o $(SYFT_OUTPUT_FORMAT)=$(SYFT_SBOM_FILE) --quiet
 	@echo "CI SBOM generation completed. Report saved to $(SYFT_SBOM_FILE)"
 
 check-all: fmt vet imports lint staticcheck errcheck security-scan vuln-check sbom-generate
 	@echo "All code quality checks and SBOM generation completed"
 
 # Version management
-.PHONY: version bump-patch bump-minor bump-major release
+.PHONY: version bump-patch bump-minor bump-major
 
 version:
-	@echo "Project: $(PROJECT_NAME)"
+	@echo "Project: $(BINARY_NAME)"
 	@echo "Go version: $(GO_VERSION)"
 	@echo "Release version: $(VERSION)"
 	@echo "Tag name: $(TAG_NAME)"

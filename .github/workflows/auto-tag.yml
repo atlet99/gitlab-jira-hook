@@ -1,0 +1,292 @@
+name: Auto Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'internal/**'
+  workflow_dispatch:
+    inputs:
+      force_bump:
+        description: 'Force version bump type (patch/minor/major)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+# Set top-level permissions to read-all for security
+# Required write permissions are explicitly set at job level
+permissions: read-all
+
+jobs:
+  auto-tag:
+    name: Auto Tag Release
+    runs-on: ubuntu-latest
+    permissions:
+      # NOTE: contents:write is required for automated tagging functionality
+      # This is necessary to create git tags and update version files
+      contents: write     # Required to create git tags and update .release-version file
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current version
+        id: current_version
+        run: |
+          # Sync tags from remote to ensure we have the latest state
+          git fetch --tags
+          
+          # Get the latest tag from remote, default to v0.0.0 if none exists
+          REMOTE_TAGS=$(git ls-remote --tags origin | grep -v '\^{}' | cut -d'/' -f3 | sort -V | tail -1)
+          if [ -n "$REMOTE_TAGS" ]; then
+            LATEST_TAG="$REMOTE_TAGS"
+            echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+            echo "Found existing tag on remote: $LATEST_TAG"
+          else
+            LATEST_TAG="v0.0.0"
+            echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+            echo "No existing tags found on remote, will start from: $LATEST_TAG"
+          fi
+
+      - name: Determine version bump
+        id: version_bump
+        run: |
+          # Check commit messages for version bump indicators
+          if [ "${{ env.LATEST_TAG }}" = "v0.0.0" ]; then
+            # No tags exist, use all commits
+            COMMITS=$(git log --oneline)
+            echo "No previous tags found, analyzing all commits:"
+          else
+            # Tags exist, check commits since last tag
+            COMMITS=$(git log ${{ env.LATEST_TAG }}..HEAD --oneline)
+            echo "Commits since last tag ${{ env.LATEST_TAG }}:"
+          fi
+          echo "$COMMITS"
+          
+          # Check if we should skip tagging (only check the latest commit)
+          LATEST_COMMIT=$(git log -1 --oneline)
+          if echo "$LATEST_COMMIT" | grep -i "\[skip-tag\]" > /dev/null; then
+            echo "SKIP_TAG=true" >> $GITHUB_ENV
+            echo "Skipping tag creation due to [skip-tag] in latest commit message"
+            exit 0
+          fi
+          
+          # Default to patch bump
+          BUMP_TYPE="patch"
+          
+          # Check if this is a manual dispatch with force_bump
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.force_bump }}" ]; then
+            BUMP_TYPE="${{ github.event.inputs.force_bump }}"
+            echo "Using manual force bump type: $BUMP_TYPE"
+          else
+            # Only check for explicit version bump indicators in commit messages
+            # Use very specific patterns to avoid false positives
+            if echo "$COMMITS" | grep -i -E "(\[BREAKING\]|BREAKING CHANGE|major:)" > /dev/null; then
+              BUMP_TYPE="major"
+              echo "Detected major version indicator in commits"
+            elif echo "$COMMITS" | grep -i -E "(\[MINOR\]|minor:)" > /dev/null; then
+              BUMP_TYPE="minor"
+              echo "Detected minor version indicator in commits"
+            else
+              echo "No explicit version indicators found, defaulting to patch bump"
+            fi
+          fi
+          
+          echo "SKIP_TAG=false" >> $GITHUB_ENV
+          echo "BUMP_TYPE=$BUMP_TYPE" >> $GITHUB_ENV
+          echo "Version bump type: $BUMP_TYPE"
+
+      - name: Calculate new version
+        id: new_version
+        run: |
+          # Get current version from .release-version file (authoritative source)
+          if [ -f .release-version ]; then
+            FILE_VERSION=$(cat .release-version | tr -d '\n' | sed 's/^v//')
+            echo "Current version from .release-version: $FILE_VERSION"
+          else
+            FILE_VERSION="0.0.0"
+            echo "No .release-version file found, using default: $FILE_VERSION"
+          fi
+          
+          # Also check latest git tag for comparison
+          TAG_VERSION="${{ env.LATEST_TAG }}"
+          TAG_VERSION=${TAG_VERSION#v}
+          echo "Latest git tag version: $TAG_VERSION"
+          
+          # Use the higher version between file and tag
+          if [ "$FILE_VERSION" != "0.0.0" ] && [ "$TAG_VERSION" != "0.0.0" ]; then
+            # Compare versions and use the higher one
+            if printf '%s\n%s\n' "$FILE_VERSION" "$TAG_VERSION" | sort -V | tail -1 | grep -q "^$FILE_VERSION$"; then
+              CURRENT_VERSION="$FILE_VERSION"
+              echo "Using file version as current: $CURRENT_VERSION"
+            else
+              CURRENT_VERSION="$TAG_VERSION"
+              echo "Using tag version as current: $CURRENT_VERSION"
+            fi
+          elif [ "$FILE_VERSION" != "0.0.0" ]; then
+            CURRENT_VERSION="$FILE_VERSION"
+            echo "Using file version as current: $CURRENT_VERSION"
+          else
+            CURRENT_VERSION="$TAG_VERSION"
+            echo "Using tag version as current: $CURRENT_VERSION"
+          fi
+          
+          # Split version into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Default values if parsing fails
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          
+          # Custom versioning logic with 9-limit per component
+          # Rules: when component reaches 9, bump next level and reset
+          # Example: 0.1.9 -> 0.2.0, 0.9.9 -> 1.0.0
+          
+          case "${{ env.BUMP_TYPE }}" in
+            "major")
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            "minor")
+              if [ "$MINOR" -ge 9 ]; then
+                # Minor reached limit, bump major
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                echo "Minor version reached limit (9), bumping major: $MAJOR.0.0"
+              else
+                MINOR=$((MINOR + 1))
+                PATCH=0
+              fi
+              ;;
+            "patch")
+              if [ "$PATCH" -ge 9 ]; then
+                # Patch reached limit, bump minor
+                if [ "$MINOR" -ge 9 ]; then
+                  # Minor also at limit, bump major
+                  MAJOR=$((MAJOR + 1))
+                  MINOR=0
+                  PATCH=0
+                  echo "Patch and minor versions reached limit (9), bumping major: $MAJOR.0.0"
+                else
+                  MINOR=$((MINOR + 1))
+                  PATCH=0
+                  echo "Patch version reached limit (9), bumping minor: $MAJOR.$MINOR.0"
+                fi
+              else
+                PATCH=$((PATCH + 1))
+              fi
+              ;;
+          esac
+          
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION (type: ${{ env.BUMP_TYPE }})"
+          
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          # Skip check if we're supposed to skip tagging
+          if [ "${{ env.SKIP_TAG }}" = "true" ]; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+            echo "Skipping tag creation"
+            exit 0
+          fi
+          
+          # Check if tag exists on remote
+          if git ls-remote --tags origin | grep -q "refs/tags/${{ env.NEW_VERSION }}$"; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+            echo "Tag ${{ env.NEW_VERSION }} already exists on remote"
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
+            echo "Tag ${{ env.NEW_VERSION }} does not exist on remote, will create"
+          fi
+
+      - name: Update .release-version file
+        if: env.TAG_EXISTS == 'false' && env.SKIP_TAG == 'false'
+        run: |
+          # Configure git
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get current version from file
+          CURRENT_FILE_VERSION=""
+          if [ -f .release-version ]; then
+            CURRENT_FILE_VERSION=$(cat .release-version | tr -d '\n')
+          fi
+          
+          NEW_FILE_VERSION="${{ env.NEW_VERSION }}"
+          NEW_FILE_VERSION="${NEW_FILE_VERSION#v}"
+          
+          # Always update version file and create tag
+          echo "Updating .release-version from '$CURRENT_FILE_VERSION' to '$NEW_FILE_VERSION'"
+          echo "$NEW_FILE_VERSION" > .release-version
+          
+          # Check if there are changes to commit
+          if git diff --quiet .release-version; then
+            echo "No changes in .release-version file"
+          else
+            # Commit and push the updated version file
+            git add .release-version
+            git commit -m "chore: update version to $NEW_FILE_VERSION [skip-tag]"
+            git push origin main
+            echo "Updated .release-version to: $NEW_FILE_VERSION"
+          fi
+
+      - name: Create and push tag
+        if: env.TAG_EXISTS == 'false' && env.SKIP_TAG == 'false'
+        run: |
+          # Configure git for proper tag creation
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get latest commit info for tag message
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          COMMIT_SHA=$(git rev-parse HEAD)
+          
+          # Create lightweight tag (better for GitHub UI)
+          git tag "${{ env.NEW_VERSION }}"
+          
+          # Push tag to origin
+          git push origin "${{ env.NEW_VERSION }}"
+          
+          echo "Created and pushed lightweight tag: ${{ env.NEW_VERSION }}"
+          echo "Tag points to commit: $COMMIT_SHA"
+          echo "Latest commit: $COMMIT_MSG"
+
+      - name: Tag created successfully
+        if: env.TAG_EXISTS == 'false' && env.SKIP_TAG == 'false'
+        run: |
+          echo "Tag ${{ env.NEW_VERSION }} created successfully"
+          echo "Release workflow will be triggered automatically"
+          echo "Binaries will be available in ~5-10 minutes"
+
+      - name: No changes needed
+        if: env.TAG_EXISTS == 'true' || env.SKIP_TAG == 'true'
+        run: |
+          if [ "${{ env.SKIP_TAG }}" = "true" ]; then
+            echo "Skipping tag creation due to [skip-tag] flag"
+          elif [ "${{ env.TAG_EXISTS }}" = "true" ]; then
+            echo "Tag ${{ env.NEW_VERSION }} already exists"
+          fi 

@@ -5,7 +5,7 @@ FROM golang:1.24.4-alpine3.22@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706
 WORKDIR /app
 
 # Install git and ca-certificates
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -16,8 +16,22 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Build arguments for version information
+ARG VERSION=docker
+ARG COMMIT=unknown
+ARG DATE
+ARG BUILT_BY=docker
+
+# Set build date if not provided
+RUN if [ -z "$DATE" ]; then DATE=$(date -u '+%Y-%m-%d_%H:%M:%S'); fi
+
 # Build the application
-RUN CGO_ENABLED=0 go build -a -installsuffix cgo -o gitlab-jira-hook ./cmd/server
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Version=${VERSION}' \
+              -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Commit=${COMMIT}' \
+              -X 'github.com/atlet99/gitlab-jira-hook/internal/version.Date=${DATE}' \
+              -X 'github.com/atlet99/gitlab-jira-hook/internal/version.BuiltBy=${BUILT_BY}'" \
+    -o gitlab-jira-hook ./cmd/server
 
 # Final stage
 FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1

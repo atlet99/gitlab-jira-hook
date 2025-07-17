@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,23 +14,30 @@ import (
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/server"
+	ver "github.com/atlet99/gitlab-jira-hook/internal/version"
 	"github.com/atlet99/gitlab-jira-hook/pkg/logger"
 )
 
-// Version and BuildTime are set during build
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-)
-
 func main() {
+	// Parse command line flags
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "Show version information")
+	flag.Parse()
+
+	// Show version and exit if requested
+	if showVersion {
+		fmt.Println(ver.GetFullVersionInfo())
+		os.Exit(0)
+	}
+
 	// Initialize logger
 	log := logger.NewLogger()
 
 	// Log startup information
 	log.Info("Starting GitLab-Jira Hook",
-		"version", Version,
-		"buildTime", BuildTime,
+		"version", ver.GetVersion(),
+		"commit", ver.Commit,
+		"builtBy", ver.BuiltBy,
 	)
 
 	// Load configuration

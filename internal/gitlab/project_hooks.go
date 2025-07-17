@@ -155,10 +155,7 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 
 	// Filter by branch (supports mask)
 	if len(h.config.PushBranchFilter) > 0 && event.Ref != "" {
-		branch := event.Ref
-		if strings.HasPrefix(branch, "refs/heads/") {
-			branch = branch[len("refs/heads/"):]
-		}
+		branch := strings.TrimPrefix(event.Ref, "refs/heads/")
 		matched := false
 		for _, pattern := range h.config.PushBranchFilter {
 			if ok, _ := filepath.Match(pattern, branch); ok {
