@@ -178,6 +178,12 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
+			// Construct branch URL if we have project information
+			branchURL := ""
+			if event.Project != nil {
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, event.Ref)
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
@@ -185,6 +191,8 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				commit.Author.Email,
 				commit.Message,
 				commit.Timestamp,
+				event.Ref,
+				branchURL,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,

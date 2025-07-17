@@ -6,23 +6,22 @@ import (
 	"time"
 )
 
-// GenerateCommitADFComment generates ADF comment for a commit
+// GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
-	commitID, commitURL, authorName, authorEmail, message, date string,
+	commitID, commitURL, authorName, authorEmail, message, date, branch, branchURL string,
 	added, modified, removed []string,
 ) CommentPayload {
 	content := createCommitHeader(commitID, commitURL)
 	content = append(content,
 		createCommitAuthor(authorName, authorEmail),
+		createCommitBranch(branch, branchURL),
 		createCommitMessage(message),
 		createCommitDate(date),
 	)
 
 	if hasFileChanges(added, modified, removed) {
-		content = append(content, createFileChangesSection(added, modified, removed)...)
+		content = append(content, createCompactFileChangesSection(added, modified, removed)...)
 	}
-
-	content = addTimestamp(content)
 
 	return CommentPayload{
 		Body: CommentBody{
@@ -69,6 +68,34 @@ func createCommitAuthor(authorName, authorEmail string) Content {
 	}
 }
 
+func createCommitBranch(branch, branchURL string) Content {
+	if branch == "" {
+		return Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "Branch: "},
+				{Type: "text", Text: "unknown", Marks: []Mark{{Type: "code"}}},
+			},
+		}
+	}
+
+	branchLink := TextContent{
+		Type: "text",
+		Text: branch,
+		Marks: []Mark{{
+			Type:  "link",
+			Attrs: map[string]interface{}{"href": branchURL},
+		}},
+	}
+	return Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "Branch: "},
+			branchLink,
+		},
+	}
+}
+
 func createCommitMessage(message string) Content {
 	return Content{
 		Type: "paragraph",
@@ -91,32 +118,33 @@ func hasFileChanges(added, modified, removed []string) bool {
 	return len(added)+len(modified)+len(removed) > 0
 }
 
-func createFileChangesSection(added, modified, removed []string) []Content {
-	var filesParas []Content
+func createCompactFileChangesSection(added, modified, removed []string) []Content {
+	var content []Content
 
-	filesParas = append(filesParas, Content{
-		Type:    "paragraph",
-		Content: []TextContent{{Type: "text", Text: "Files:"}},
-	})
+	// Create a single line with file changes summary
+	var changes []string
 
 	if len(added) > 0 {
-		filesParas = append(filesParas, createFileChangeEntry("  + Added: ", added))
+		changes = append(changes, fmt.Sprintf("+%d", len(added)))
 	}
 	if len(modified) > 0 {
-		filesParas = append(filesParas, createFileChangeEntry("  ~ Modified: ", modified))
+		changes = append(changes, fmt.Sprintf("~%d", len(modified)))
 	}
 	if len(removed) > 0 {
-		filesParas = append(filesParas, createFileChangeEntry("  - Removed: ", removed))
+		changes = append(changes, fmt.Sprintf("-%d", len(removed)))
 	}
 
-	return filesParas
-}
-
-func createFileChangeEntry(prefix string, files []string) Content {
-	return Content{
-		Type:    "paragraph",
-		Content: []TextContent{{Type: "text", Text: prefix + strings.Join(files, ", ")}},
+	if len(changes) > 0 {
+		content = append(content, Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "Files: "},
+				{Type: "text", Text: strings.Join(changes, " "), Marks: []Mark{{Type: "code"}}},
+			},
+		})
 	}
+
+	return content
 }
 
 // Helper functions for creating common ADF elements

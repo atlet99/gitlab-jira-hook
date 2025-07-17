@@ -183,6 +183,12 @@ func (h *Handler) processPushEvent(event *Event) error {
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
+			// Construct branch URL if we have project information
+			branchURL := ""
+			if event.PathWithNamespace != "" {
+				branchURL = fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, event.Ref)
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
@@ -190,6 +196,8 @@ func (h *Handler) processPushEvent(event *Event) error {
 				commit.Author.Email,
 				commit.Message,
 				commit.Timestamp,
+				event.Ref,
+				branchURL,
 				commit.Added,
 				commit.Modified,
 				commit.Removed,
