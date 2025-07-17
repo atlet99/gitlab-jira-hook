@@ -186,16 +186,25 @@ func (h *Handler) processPushEvent(event *Event) error {
 			// Construct branch URL using project information from system hook
 			branchURL := h.constructBranchURL(event, event.Ref)
 
+			// Use username from system hook instead of full name from commit
+			authorName := event.Username
+			if authorName == "" && event.User != nil {
+				authorName = event.User.Username
+			}
+			if authorName == "" {
+				authorName = commit.Author.Name // fallback to commit author name
+			}
+
 			// Construct author URL if we have GitLab base URL
 			authorURL := ""
-			if h.config.GitLabBaseURL != "" {
-				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, commit.Author.Name)
+			if h.config.GitLabBaseURL != "" && authorName != "" {
+				authorURL = fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, authorName)
 			}
 
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
-				commit.Author.Name,
+				authorName,
 				commit.Author.Email,
 				authorURL,
 				commit.Message,
@@ -293,26 +302,56 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 		return nil
 	}
 
-	// Extract participants and approvers from MR
+	// Extract participants and approvers from MR using usernames instead of full names
 	var participants, approvedBy, reviewers, approvers []string
 	if event.MergeRequest != nil {
 		if event.MergeRequest.Author != nil {
-			participants = append(participants, event.MergeRequest.Author.Name)
+			// Use username if available, otherwise fallback to name
+			authorName := event.MergeRequest.Author.Username
+			if authorName == "" {
+				authorName = event.MergeRequest.Author.Name
+			}
+			participants = append(participants, authorName)
 		}
 		if event.MergeRequest.Assignee != nil {
-			participants = append(participants, event.MergeRequest.Assignee.Name)
+			// Use username if available, otherwise fallback to name
+			assigneeName := event.MergeRequest.Assignee.Username
+			if assigneeName == "" {
+				assigneeName = event.MergeRequest.Assignee.Name
+			}
+			participants = append(participants, assigneeName)
 		}
 		for _, participant := range event.MergeRequest.Participants {
-			participants = append(participants, participant.Name)
+			// Use username if available, otherwise fallback to name
+			participantName := participant.Username
+			if participantName == "" {
+				participantName = participant.Name
+			}
+			participants = append(participants, participantName)
 		}
 		for _, user := range event.MergeRequest.ApprovedBy {
-			approvedBy = append(approvedBy, user.Name)
+			// Use username if available, otherwise fallback to name
+			userName := user.Username
+			if userName == "" {
+				userName = user.Name
+			}
+			approvedBy = append(approvedBy, userName)
 		}
 		for _, user := range event.MergeRequest.Reviewers {
-			reviewers = append(reviewers, user.Name)
+			// Use username if available, otherwise fallback to name
+			userName := user.Username
+			if userName == "" {
+				userName = user.Name
+			}
+			reviewers = append(reviewers, userName)
 		}
 		for _, user := range event.MergeRequest.Approvers {
-			approvers = append(approvers, user.Name)
+			// Use username if available, otherwise fallback to name
+			userName := user.Username
+			if userName == "" {
+				userName = user.Name
+			}
+			approvers = append(approvers, userName)
 		}
 
 		// Log MR data for debugging
