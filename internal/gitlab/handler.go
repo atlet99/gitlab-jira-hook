@@ -186,7 +186,12 @@ func (h *Handler) processPushEvent(event *Event) error {
 			// Construct branch URL if we have project information
 			branchURL := ""
 			if event.PathWithNamespace != "" {
-				branchURL = fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, event.Ref)
+				// Extract branch name from refs/heads/branch format
+				branchName := event.Ref
+				if strings.HasPrefix(event.Ref, "refs/heads/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				}
+				branchURL = fmt.Sprintf("%s/%s/-/tree/%s", h.config.GitLabBaseURL, event.PathWithNamespace, branchName)
 			}
 
 			// Construct author URL if we have GitLab base URL

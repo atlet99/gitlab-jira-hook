@@ -181,7 +181,12 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 			// Construct branch URL if we have project information
 			branchURL := ""
 			if event.Project != nil {
-				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, event.Ref)
+				// Extract branch name from refs/heads/branch format
+				branchName := event.Ref
+				if strings.HasPrefix(event.Ref, "refs/heads/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				}
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
 			}
 
 			// Construct author URL if we have project information

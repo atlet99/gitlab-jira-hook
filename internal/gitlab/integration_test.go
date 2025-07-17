@@ -55,7 +55,7 @@ func TestProcessTagPushEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("ABC-123")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Tag Push")
+	require.Contains(t, comments[0], "tag push")
 }
 
 func TestProcessReleaseEvent_AddsComment(t *testing.T) {
@@ -77,7 +77,7 @@ func TestProcessReleaseEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("ABC-456")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Release")
+	require.Contains(t, comments[0], "release")
 }
 
 func TestProcessDeploymentEvent_AddsComment(t *testing.T) {
@@ -102,7 +102,7 @@ func TestProcessDeploymentEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("DEF-789")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Deployment")
+	require.Contains(t, comments[0], "deployment")
 }
 
 func TestProcessFeatureFlagEvent_AddsComment(t *testing.T) {
@@ -125,7 +125,7 @@ func TestProcessFeatureFlagEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("GHI-321")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Feature Flag")
+	require.Contains(t, comments[0], "feature flag")
 }
 
 func TestProcessWikiPageEvent_AddsComment(t *testing.T) {
@@ -149,7 +149,7 @@ func TestProcessWikiPageEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("JKL-654")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Wiki Page")
+	require.Contains(t, comments[0], "wiki page")
 }
 
 func TestProcessPipelineEvent_AddsComment(t *testing.T) {
@@ -175,7 +175,7 @@ func TestProcessPipelineEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("MNO-987")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Pipeline")
+	require.Contains(t, comments[0], "pipeline")
 }
 
 func TestProcessBuildEvent_AddsComment(t *testing.T) {
@@ -201,7 +201,7 @@ func TestProcessBuildEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("PQR-654")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Build/Job")
+	require.Contains(t, comments[0], "build")
 }
 
 func TestProcessNoteEvent_AddsComment(t *testing.T) {
@@ -225,7 +225,7 @@ func TestProcessNoteEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("STU-321")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Comment")
+	require.Contains(t, comments[0], "comment")
 }
 
 func TestProcessIssueEvent_AddsComment(t *testing.T) {
@@ -249,7 +249,7 @@ func TestProcessIssueEvent_AddsComment(t *testing.T) {
 	require.NoError(t, err)
 	comments := jira.GetComments("VWX-987")
 	require.NotEmpty(t, comments)
-	require.Contains(t, comments[0], "Issue")
+	require.Contains(t, comments[0], "issue")
 }
 
 // Tests for checking no comments are added when there is no issueID

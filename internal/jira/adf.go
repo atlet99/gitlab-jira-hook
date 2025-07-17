@@ -195,7 +195,7 @@ func createTitleLink(title, url, label string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**" + label + ":** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: strings.ToLower(label) + ": ", Marks: []Mark{{Type: "strong"}}},
 			titleLink,
 		},
 	}
@@ -213,7 +213,7 @@ func createProjectLink(projectName, projectURL string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Project:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "project: ", Marks: []Mark{{Type: "strong"}}},
 			projectLink,
 		},
 	}
@@ -223,7 +223,7 @@ func createField(label, value string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**" + label + ":** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: strings.ToLower(label) + ": ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: value},
 		},
 	}
@@ -233,7 +233,7 @@ func createAuthorField(author string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Author:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "author: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: author, Marks: []Mark{{Type: "strong"}}},
 		},
 	}
@@ -244,7 +244,7 @@ func createDescriptionField(description string) []Content {
 		{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Description:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "description: ", Marks: []Mark{{Type: "strong"}}},
 			},
 		},
 		{
@@ -346,7 +346,7 @@ func createBranchesField(sourceBranch, targetBranch string) Content {
 	return Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Branches:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "branches: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: sourceBranch, Marks: []Mark{{Type: "code"}}},
 			{Type: "text", Text: " → "},
 			{Type: "text", Text: targetBranch, Marks: []Mark{{Type: "code"}}},
@@ -434,7 +434,7 @@ func createPipelineHeader(ref, url string) []Content {
 	return []Content{{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Pipeline:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "pipeline: ", Marks: []Mark{{Type: "strong"}}},
 			refLink,
 		},
 	}}
@@ -461,7 +461,7 @@ func createPipelineFields(action, status, ref, sha string, duration int) []Conte
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Ref:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "ref: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: ref, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -470,7 +470,7 @@ func createPipelineFields(action, status, ref, sha string, duration int) []Conte
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**SHA:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "sha: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: sha, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -479,7 +479,7 @@ func createPipelineFields(action, status, ref, sha string, duration int) []Conte
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Duration:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "duration: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: fmt.Sprintf("%ds", duration)},
 			},
 		})
@@ -520,7 +520,7 @@ func createBuildHeader(name, url string) []Content {
 	return []Content{{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Build/Job:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "build: ", Marks: []Mark{{Type: "strong"}}},
 			nameLink,
 		},
 	}}
@@ -550,7 +550,7 @@ func createBuildFields(action, status, stage, ref, sha string, duration int) []C
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Ref:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "ref: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: ref, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -559,7 +559,7 @@ func createBuildFields(action, status, stage, ref, sha string, duration int) []C
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**SHA:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "sha: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: sha, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -568,7 +568,7 @@ func createBuildFields(action, status, stage, ref, sha string, duration int) []C
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Duration:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "duration: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: fmt.Sprintf("%ds", duration)},
 			},
 		})
@@ -594,7 +594,7 @@ func generateSimpleADFComment(
 	adfContent = append(adfContent, Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**" + adfTitle + ":** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: strings.ToLower(adfTitle) + ": ", Marks: []Mark{{Type: "strong"}}},
 			titleLink,
 		},
 	})
@@ -612,7 +612,7 @@ func generateSimpleADFComment(
 		adfContent = append(adfContent, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Project:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "project: ", Marks: []Mark{{Type: "strong"}}},
 				projectLink,
 			},
 		})
@@ -623,7 +623,7 @@ func generateSimpleADFComment(
 		adfContent = append(adfContent, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Action:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "action: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: action},
 			},
 		})
@@ -634,7 +634,7 @@ func generateSimpleADFComment(
 		adfContent = append(adfContent, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Author:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "author: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: author, Marks: []Mark{{Type: "strong"}}},
 			},
 		})
@@ -645,7 +645,7 @@ func generateSimpleADFComment(
 		adfContent = append(adfContent,
 			Content{
 				Type:    "paragraph",
-				Content: []TextContent{{Type: "text", Text: "**Content:** ", Marks: []Mark{{Type: "strong"}}}},
+				Content: []TextContent{{Type: "text", Text: "content: ", Marks: []Mark{{Type: "strong"}}}},
 			},
 			Content{
 				Type:    "paragraph",
@@ -703,7 +703,7 @@ func GenerateTagPushADFComment(
 	content = append(content, Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Tag Push:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "tag push: ", Marks: []Mark{{Type: "strong"}}},
 			refLink,
 		},
 	})
@@ -721,7 +721,7 @@ func GenerateTagPushADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Project:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "project: ", Marks: []Mark{{Type: "strong"}}},
 				projectLink,
 			},
 		})
@@ -732,7 +732,7 @@ func GenerateTagPushADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Action:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "action: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: action},
 			},
 		})
@@ -743,7 +743,7 @@ func GenerateTagPushADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Tag:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "tag: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: ref, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -754,7 +754,7 @@ func GenerateTagPushADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Author:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "author: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: author, Marks: []Mark{{Type: "strong"}}},
 			},
 		})
@@ -790,7 +790,7 @@ func GenerateReleaseADFComment(
 	content = append(content, Content{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Release:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "release: ", Marks: []Mark{{Type: "strong"}}},
 			nameLink,
 		},
 	})
@@ -808,7 +808,7 @@ func GenerateReleaseADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Project:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "project: ", Marks: []Mark{{Type: "strong"}}},
 				projectLink,
 			},
 		})
@@ -819,7 +819,7 @@ func GenerateReleaseADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Action:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "action: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: action},
 			},
 		})
@@ -830,7 +830,7 @@ func GenerateReleaseADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Tag:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "tag: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: tag, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -841,7 +841,7 @@ func GenerateReleaseADFComment(
 		content = append(content, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Author:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "author: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: author, Marks: []Mark{{Type: "strong"}}},
 			},
 		})
@@ -852,7 +852,7 @@ func GenerateReleaseADFComment(
 		content = append(content,
 			Content{
 				Type:    "paragraph",
-				Content: []TextContent{{Type: "text", Text: "**Description:** ", Marks: []Mark{{Type: "strong"}}}},
+				Content: []TextContent{{Type: "text", Text: "description: ", Marks: []Mark{{Type: "strong"}}}},
 			},
 			Content{
 				Type:    "paragraph",
@@ -906,7 +906,7 @@ func createDeploymentHeader(ref, url string) []Content {
 	return []Content{{
 		Type: "paragraph",
 		Content: []TextContent{
-			{Type: "text", Text: "**Deployment:** ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: "deployment: ", Marks: []Mark{{Type: "strong"}}},
 			refLink,
 		},
 	}}
@@ -930,7 +930,7 @@ func createDeploymentFields(action, environment, status, ref, sha string) []Cont
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Environment:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "environment: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: environment, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -942,7 +942,7 @@ func createDeploymentFields(action, environment, status, ref, sha string) []Cont
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**Ref:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "ref: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: ref, Marks: []Mark{{Type: "code"}}},
 			},
 		})
@@ -951,7 +951,7 @@ func createDeploymentFields(action, environment, status, ref, sha string) []Cont
 		fields = append(fields, Content{
 			Type: "paragraph",
 			Content: []TextContent{
-				{Type: "text", Text: "**SHA:** ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: "sha: ", Marks: []Mark{{Type: "strong"}}},
 				{Type: "text", Text: sha, Marks: []Mark{{Type: "code"}}},
 			},
 		})
