@@ -26,7 +26,7 @@ type Handler struct {
 // JiraClient defines the interface for Jira client operations
 // (AddComment and TestConnection)
 type JiraClient interface {
-	AddComment(issueID, comment string) error
+	AddComment(issueID string, payload jira.CommentPayload) error
 	TestConnection() error
 }
 
@@ -183,7 +183,17 @@ func (h *Handler) processPushEvent(event *Event) error {
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
-			comment := h.createCommitComment(commit, event)
+			comment := jira.GenerateCommitADFComment(
+				commit.ID,
+				commit.URL,
+				commit.Author.Name,
+				commit.Author.Email,
+				commit.Message,
+				commit.Timestamp,
+				commit.Added,
+				commit.Modified,
+				commit.Removed,
+			)
 			if err := h.jira.AddComment(issueID, comment); err != nil {
 				h.logger.Error("Failed to add comment to Jira",
 					"error", err,
@@ -208,7 +218,18 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(event.ObjectAttributes.Title)
 	for _, issueID := range issueIDs {
-		comment := h.createMergeRequestComment(event)
+		comment := jira.GenerateMergeRequestADFComment(
+			event.ObjectAttributes.Title,
+			event.ObjectAttributes.URL,
+			"", // projectName - нет в System Hook
+			"", // projectURL - нет в System Hook
+			cases.Title(language.English).String(event.ObjectAttributes.Action),
+			event.ObjectAttributes.SourceBranch,
+			event.ObjectAttributes.TargetBranch,
+			event.ObjectAttributes.State,
+			event.ObjectAttributes.Name,
+			event.ObjectAttributes.Description,
+		)
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add comment to Jira",
 				"error", err,
@@ -255,7 +276,7 @@ func (h *Handler) processProjectEvent(event *Event) error {
 		issueIDs := h.parser.ExtractIssueIDs(text)
 
 		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, comment); err != nil {
+			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 				h.logger.Error("Failed to add project rename comment to Jira",
 					"error", err,
 					"issueID", issueID,
@@ -282,7 +303,7 @@ func (h *Handler) processProjectEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add project comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -326,7 +347,7 @@ func (h *Handler) processUserEvent(event *Event) error {
 		issueIDs := h.parser.ExtractIssueIDs(text)
 
 		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, comment); err != nil {
+			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 				h.logger.Error("Failed to add user rename comment to Jira",
 					"error", err,
 					"issueID", issueID,
@@ -350,7 +371,7 @@ func (h *Handler) processUserEvent(event *Event) error {
 		issueIDs := h.parser.ExtractIssueIDs(text)
 
 		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, comment); err != nil {
+			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 				h.logger.Error("Failed to add user failed login comment to Jira",
 					"error", err,
 					"issueID", issueID,
@@ -376,7 +397,7 @@ func (h *Handler) processUserEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add user comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -427,7 +448,7 @@ func (h *Handler) processTeamEvent(event *Event) error {
 	}
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add team comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -473,7 +494,7 @@ func (h *Handler) processGroupEvent(event *Event) error {
 		issueIDs := h.parser.ExtractIssueIDs(text)
 
 		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, comment); err != nil {
+			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 				h.logger.Error("Failed to add group rename comment to Jira",
 					"error", err,
 					"issueID", issueID,
@@ -498,7 +519,7 @@ func (h *Handler) processGroupEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add group comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -513,80 +534,6 @@ func (h *Handler) processGroupEvent(event *Event) error {
 	}
 
 	return nil
-}
-
-// createCommitComment creates a comment for a commit
-func (h *Handler) createCommitComment(commit Commit, event *Event) string {
-	files := ""
-	if len(commit.Added) > 0 || len(commit.Modified) > 0 || len(commit.Removed) > 0 {
-		files = "\nFiles:"
-		if len(commit.Added) > 0 {
-			files += "\n  + Added: " + strings.Join(commit.Added, ", ")
-		}
-		if len(commit.Modified) > 0 {
-			files += "\n  ~ Modified: " + strings.Join(commit.Modified, ", ")
-		}
-		if len(commit.Removed) > 0 {
-			files += "\n  - Removed: " + strings.Join(commit.Removed, ", ")
-		}
-	}
-	return fmt.Sprintf(
-		"Commit [`%s`](%s) by **%s** (%s)\nMessage: %s\nDate: %s%s",
-		commit.ID[:8],
-		commit.URL,
-		commit.Author.Name,
-		commit.Author.Email,
-		commit.Message,
-		commit.Timestamp,
-		files,
-	)
-}
-
-// createMergeRequestComment creates a comment for a merge request
-func (h *Handler) createMergeRequestComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Merge Request [%s](%s)\nAction: %s\nSource: `%s` → Target: `%s`\nStatus: %s\nAuthor: %s\nDescription: %s",
-		attrs.Title,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.SourceBranch,
-		attrs.TargetBranch,
-		attrs.State,
-		attrs.Name,
-		attrs.Description,
-	)
-}
-
-// createPipelineComment creates a comment for a pipeline event
-func (h *Handler) createPipelineComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Pipeline [`%s`](%s)\nStatus: %s\nRef: `%s`\nSHA: `%s`\nDuration: %ds\nAuthor: %s",
-		attrs.Ref,
-		attrs.URL,
-		attrs.Status,
-		attrs.Ref,
-		attrs.Sha,
-		attrs.Duration,
-		attrs.Name,
-	)
-}
-
-// createBuildComment creates a comment for a build/job event
-func (h *Handler) createBuildComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Build/Job: [%s](%s)\nStage: %s\nStatus: %s\nRef: `%s`\nSHA: `%s`\nDuration: %ds\nAuthor: %s",
-		attrs.Name,
-		attrs.URL,
-		attrs.Stage,
-		attrs.Status,
-		attrs.Ref,
-		attrs.Sha,
-		attrs.Duration,
-		attrs.Name,
-	)
 }
 
 // isAllowedEvent checks if the event is allowed by project/group filter
@@ -691,7 +638,7 @@ func (h *Handler) processRepositoryEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add repository comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -725,7 +672,7 @@ func (h *Handler) processTeamCreateDestroyEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add team comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -759,7 +706,7 @@ func (h *Handler) processGroupCreateDestroyEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add group comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -795,7 +742,7 @@ func (h *Handler) processProjectMembershipEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add project membership comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -833,7 +780,7 @@ func (h *Handler) processKeyEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(username)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add key comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -855,7 +802,14 @@ func (h *Handler) processTagPushEvent(event *Event) error {
 	}
 	// Extract issueID from ref
 	issueIDs := h.parser.ExtractIssueIDs(event.ObjectAttributes.Ref)
-	comment := h.createTagPushComment(event)
+	comment := jira.GenerateTagPushADFComment(
+		event.ObjectAttributes.Ref,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Name,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add tag push comment to Jira", "error", err, "issueID", issueID)
@@ -877,7 +831,16 @@ func (h *Handler) processReleaseEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Description
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createReleaseComment(event)
+	comment := jira.GenerateReleaseADFComment(
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Ref,
+		event.ObjectAttributes.Description,
+		event.ObjectAttributes.Name,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add release comment to Jira", "error", err, "issueID", issueID)
@@ -899,7 +862,17 @@ func (h *Handler) processDeploymentEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Environment
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createDeploymentComment(event)
+	comment := jira.GenerateDeploymentADFComment(
+		event.ObjectAttributes.Ref,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Environment,
+		event.ObjectAttributes.Status,
+		event.ObjectAttributes.Sha,
+		event.ObjectAttributes.Name,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add deployment comment to Jira", "error", err, "issueID", issueID)
@@ -921,7 +894,15 @@ func (h *Handler) processFeatureFlagEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Description
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createFeatureFlagComment(event)
+	comment := jira.GenerateFeatureFlagADFComment(
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Description,
+		event.ObjectAttributes.Name,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add feature flag comment to Jira", "error", err, "issueID", issueID)
@@ -943,7 +924,15 @@ func (h *Handler) processWikiPageEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Content
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createWikiPageComment(event)
+	comment := jira.GenerateWikiPageADFComment(
+		event.ObjectAttributes.Title,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.Content,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add wiki page comment to Jira", "error", err, "issueID", issueID)
@@ -965,7 +954,17 @@ func (h *Handler) processPipelineEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Title
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createPipelineComment(event)
+	comment := jira.GeneratePipelineADFComment(
+		event.ObjectAttributes.Ref,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Status,
+		event.ObjectAttributes.Sha,
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.Duration,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add pipeline comment to Jira", "error", err, "issueID", issueID)
@@ -987,7 +986,19 @@ func (h *Handler) processBuildEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Stage
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createBuildComment(event)
+	comment := jira.GenerateBuildADFComment(
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Status,
+		event.ObjectAttributes.Stage,
+		event.ObjectAttributes.Ref,
+		event.ObjectAttributes.Sha,
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.Duration,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add build comment to Jira", "error", err, "issueID", issueID)
@@ -1005,7 +1016,15 @@ func (h *Handler) processNoteEvent(event *Event) error {
 	}
 	// Extract issueID from note
 	issueIDs := h.parser.ExtractIssueIDs(event.ObjectAttributes.Note)
-	comment := h.createNoteComment(event)
+	comment := jira.GenerateNoteADFComment(
+		event.ObjectAttributes.Note,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.Note,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add note comment to Jira", "error", err, "issueID", issueID)
@@ -1027,7 +1046,18 @@ func (h *Handler) processIssueEvent(event *Event) error {
 		text += " " + event.ObjectAttributes.Description
 	}
 	issueIDs := h.parser.ExtractIssueIDs(text)
-	comment := h.createIssueComment(event)
+	comment := jira.GenerateIssueADFComment(
+		event.ObjectAttributes.Title,
+		event.ObjectAttributes.URL,
+		"", // projectName - not available in System Hook
+		"", // projectURL - not available in System Hook
+		cases.Title(language.English).String(event.ObjectAttributes.Action),
+		event.ObjectAttributes.State,
+		event.ObjectAttributes.IssueType,
+		event.ObjectAttributes.Priority,
+		event.ObjectAttributes.Name,
+		event.ObjectAttributes.Description,
+	)
 	for _, issueID := range issueIDs {
 		if err := h.jira.AddComment(issueID, comment); err != nil {
 			h.logger.Error("Failed to add issue comment to Jira", "error", err, "issueID", issueID)
@@ -1036,102 +1066,6 @@ func (h *Handler) processIssueEvent(event *Event) error {
 		}
 	}
 	return nil
-}
-
-// createDeploymentComment creates a comment for a deployment event
-func (h *Handler) createDeploymentComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Deployment [%s](%s)\nEnvironment: `%s`\nStatus: %s\nRef: `%s`\nSHA: `%s`\nAuthor: %s",
-		attrs.Ref,
-		attrs.URL,
-		attrs.Environment,
-		attrs.Status,
-		attrs.Ref,
-		attrs.Sha,
-		attrs.Name,
-	)
-}
-
-// createReleaseComment creates a comment for a release event
-func (h *Handler) createReleaseComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Release [%s](%s)\nTag: `%s`\nDescription: %s\nAuthor: %s",
-		attrs.Name,
-		attrs.URL,
-		attrs.Ref,
-		attrs.Description,
-		attrs.Name,
-	)
-}
-
-// createTagPushComment creates a comment for a tag push event
-func (h *Handler) createTagPushComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Tag Push [%s](%s)\nAction: %s\nRef: `%s`\nAuthor: %s",
-		attrs.Ref,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.Ref,
-		attrs.Name,
-	)
-}
-
-// createIssueComment creates a comment for an issue event
-func (h *Handler) createIssueComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Issue [%s](%s)\nAction: %s\nStatus: %s\nType: %s\nPriority: %s\nAuthor: %s\nDescription: %s",
-		attrs.Title,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.State,
-		attrs.IssueType,
-		attrs.Priority,
-		attrs.Name,
-		attrs.Description,
-	)
-}
-
-// createNoteComment creates a comment for a note/comment event
-func (h *Handler) createNoteComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Comment [%s](%s)\nAction: %s\nAuthor: %s\nContent: %s",
-		attrs.Title,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.Name,
-		attrs.Note,
-	)
-}
-
-// createWikiPageComment creates a comment for a wiki page event
-func (h *Handler) createWikiPageComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Wiki Page [%s](%s)\nAction: %s\nAuthor: %s\nContent: %s",
-		attrs.Title,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.Name,
-		attrs.Content[:min(len(attrs.Content), 100)]+"...",
-	)
-}
-
-// createFeatureFlagComment creates a comment for a feature flag event
-func (h *Handler) createFeatureFlagComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	return fmt.Sprintf(
-		"Feature Flag [%s](%s)\nAction: %s\nDescription: %s\nAuthor: %s",
-		attrs.Name,
-		attrs.URL,
-		cases.Title(language.English).String(attrs.Action),
-		attrs.Description,
-		attrs.Name,
-	)
 }
 
 // min returns the minimum of two integers

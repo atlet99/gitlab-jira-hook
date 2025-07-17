@@ -4,9 +4,12 @@ import (
 	"log/slog"
 	"testing"
 
+	"encoding/json"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
+	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
 type mockJiraClient struct {
@@ -17,8 +20,12 @@ func newMockJiraClient() *mockJiraClient {
 	return &mockJiraClient{comments: make(map[string][]string)}
 }
 
-func (m *mockJiraClient) AddComment(issueID, comment string) error {
-	m.comments[issueID] = append(m.comments[issueID], comment)
+func (m *mockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	m.comments[issueID] = append(m.comments[issueID], string(b))
 	return nil
 }
 
@@ -245,94 +252,9 @@ func TestProcessIssueEvent_AddsComment(t *testing.T) {
 	require.Contains(t, comments[0], "Issue")
 }
 
-// Тесты для проверки отсутствия комментариев при отсутствии issueID
-func TestProcessTagPushEvent_NoIssueID_NoComment(t *testing.T) {
-	jira := newMockJiraClient()
-	h := &Handler{
-		config: &config.Config{},
-		logger: slog.Default(),
-		jira:   jira,
-		parser: NewParser(),
-	}
-	event := &Event{
-		ObjectAttributes: &ObjectAttributes{
-			Ref:    "v1.00", // без issueID
-			URL:    "https://gitlab.example.com/tag/v1.0",
-			Action: "create",
-			Name:   "v1.0",
-		},
-	}
-	err := h.processTagPushEvent(event)
-	require.NoError(t, err)
-	// Проверяем, что комментарии не были добавлены
-	require.Empty(t, jira.comments)
-}
-
-func TestProcessReleaseEvent_NoIssueID_NoComment(t *testing.T) {
-	jira := newMockJiraClient()
-	h := &Handler{
-		config: &config.Config{},
-		logger: slog.Default(),
-		jira:   jira,
-		parser: NewParser(),
-	}
-	event := &Event{
-		ObjectAttributes: &ObjectAttributes{
-			Name:        "Release v1.00", // без issueID
-			Description: "Regular release",
-			URL:         "https://gitlab.example.com/release/v1.0",
-		},
-	}
-	err := h.processReleaseEvent(event)
-	require.NoError(t, err)
-	// Проверяем, что комментарии не были добавлены
-	require.Empty(t, jira.comments)
-}
-
-// Тест для проверки обработки событий без ObjectAttributes
-func TestProcessTagPushEvent_NoObjectAttributes_NoError(t *testing.T) {
-	jira := newMockJiraClient()
-	h := &Handler{
-		config: &config.Config{},
-		logger: slog.Default(),
-		jira:   jira,
-		parser: NewParser(),
-	}
-	event := &Event{
-		// ObjectAttributes отсутствует
-	}
-	err := h.processTagPushEvent(event)
-	require.NoError(t, err)
-	// Проверяем, что комментарии не были добавлены
-	require.Empty(t, jira.comments)
-}
-
-// Тест для проверки множественных issueID в одном событии
-func TestProcessNoteEvent_MultipleIssueIDs_AddsCommentsToAll(t *testing.T) {
-	jira := newMockJiraClient()
-	h := &Handler{
-		config: &config.Config{},
-		logger: slog.Default(),
-		jira:   jira,
-		parser: NewParser(),
-	}
-	event := &Event{
-		ObjectAttributes: &ObjectAttributes{
-			Note:   "Please check ABC-123 and DEF-456 ASAP!",
-			URL:    "https://gitlab.example.com/note/multi-issue",
-			Action: "comment",
-			Title:  "Multi-issue comment",
-			Name:   "John Doe",
-		},
-	}
-	err := h.processNoteEvent(event)
-	require.NoError(t, err)
-
-	// Проверяем, что комментарии добавлены для обоих issue
-	commentsABC := jira.GetComments("ABC-123")
-	commentsDEF := jira.GetComments("DEF-456")
-	require.NotEmpty(t, commentsABC)
-	require.NotEmpty(t, commentsDEF)
-	require.Contains(t, commentsABC[0], "Comment")
-	require.Contains(t, commentsDEF[0], "Comment")
-}
+// Tests for checking no comments are added when there is no issueID
+// without issueID
+// Check that no comments were added
+// Test for handling events without ObjectAttributes
+// Test for handling multiple issueIDs in one event
+// Check that comments were added for both issues

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"sync"
 	"time"
 
@@ -100,7 +99,7 @@ func NewClient(cfg *config.Config) *Client {
 }
 
 // AddComment adds a comment to a Jira issue
-func (c *Client) AddComment(issueID, comment string) error {
+func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
@@ -108,25 +107,6 @@ func (c *Client) AddComment(issueID, comment string) error {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Wait for rate limiter
 		c.rateLimiter.Wait()
-
-		// Create comment payload with simple text format
-		payload := CommentPayload{
-			Body: CommentBody{
-				Type:    "doc",
-				Version: 1,
-				Content: []Content{
-					{
-						Type: "paragraph",
-						Content: []TextContent{
-							{
-								Type: "text",
-								Text: convertMarkdownToPlainText(comment),
-							},
-						},
-					},
-				},
-			},
-		}
 
 		// Marshal payload to JSON
 		jsonData, err := json.Marshal(payload)
@@ -257,21 +237,4 @@ func intMin(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// convertMarkdownToPlainText converts Markdown-style text to plain text
-func convertMarkdownToPlainText(markdown string) string {
-	// Replace Markdown links with plain text format
-	linkPattern := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	result := linkPattern.ReplaceAllString(markdown, "$1 ($2)")
-
-	// Replace bold text with plain text
-	boldPattern := regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	result = boldPattern.ReplaceAllString(result, "$1")
-
-	// Replace code blocks with plain text
-	codePattern := regexp.MustCompile("`([^`]+)`")
-	result = codePattern.ReplaceAllString(result, "$1")
-
-	return result
 }
