@@ -19,7 +19,15 @@ type Content struct {
 }
 
 // TextContent represents text content
+// Marks for formatting (bold, link, etc.)
 type TextContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	Marks []Mark `json:"marks,omitempty"`
+}
+
+// Mark describes text formatting (bold, link, etc.)
+type Mark struct {
+	Type  string                 `json:"type"`
+	Attrs map[string]interface{} `json:"attrs,omitempty"`
 }

@@ -11,34 +11,61 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
+	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
+	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
+	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
 // ProjectHookHandler handles GitLab Project Hook requests
 type ProjectHookHandler struct {
-	config *config.Config
-	logger *slog.Logger
-	jira   JiraClient // Use interface instead of concrete type
-	parser *Parser
+	config     *config.Config
+	logger     *slog.Logger
+	jira       JiraClient // Use interface instead of concrete type
+	parser     *Parser
+	monitor    *monitoring.WebhookMonitor
+	workerPool webhook.WorkerPoolInterface
 }
 
 // NewProjectHookHandler creates a new GitLab Project Hook handler
 func NewProjectHookHandler(cfg *config.Config, logger *slog.Logger) *ProjectHookHandler {
 	return &ProjectHookHandler{
-		config: cfg,
-		logger: logger,
-		jira:   jira.NewClient(cfg),
-		parser: NewParser(),
+		config:  cfg,
+		logger:  logger,
+		jira:    jira.NewClient(cfg),
+		parser:  NewParser(),
+		monitor: nil, // Will be set by server
 	}
+}
+
+// SetMonitor sets the webhook monitor for metrics recording
+func (h *ProjectHookHandler) SetMonitor(monitor *monitoring.WebhookMonitor) {
+	h.monitor = monitor
+}
+
+// SetWorkerPool sets the worker pool for async processing
+func (h *ProjectHookHandler) SetWorkerPool(workerPool webhook.WorkerPoolInterface) {
+	h.workerPool = workerPool
 }
 
 // HandleProjectHook handles incoming GitLab Project Hook requests
 func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	success := false
+
+	defer func() {
+		// Record metrics if monitor is available
+		if h.monitor != nil {
+			h.monitor.RecordRequest("/gitlab-project-hook", success, time.Since(start))
+		}
+	}()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -88,7 +115,10 @@ func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
 		h.logger.Error("Failed to write response", "error", err)
+		return
 	}
+
+	success = true
 }
 
 // validateProjectToken validates the GitLab project secret token
@@ -178,7 +208,45 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
-			comment := h.createCommitComment(commit, event)
+			// Construct branch URL if we have project information
+			branchURL := ""
+			if event.Project != nil {
+				// Extract branch name from refs/heads/branch format
+				branchName := event.Ref
+				if strings.HasPrefix(event.Ref, "refs/heads/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				}
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+			}
+
+			// Construct author URL if we have project information
+			authorURL := ""
+			if event.Project != nil {
+				authorURL = fmt.Sprintf("%s/%s", event.Project.WebURL, commit.Author.Name)
+			}
+
+			// Get project web URL for MR links
+			projectWebURL := ""
+			if event.Project != nil {
+				projectWebURL = event.Project.WebURL
+			}
+
+			comment := jira.GenerateCommitADFComment(
+				commit.ID,
+				commit.URL,
+				commit.Author.Name,
+				commit.Author.Email,
+				authorURL,
+				commit.Message,
+				commit.Timestamp,
+				event.Ref,
+				branchURL,
+				projectWebURL,
+				h.config.Timezone,
+				commit.Added,
+				commit.Modified,
+				commit.Removed,
+			)
 			if err := h.jira.AddComment(issueID, comment); err != nil {
 				h.logger.Error("Failed to add commit comment to Jira",
 					"error", err,
@@ -205,91 +273,83 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 
 	attrs := event.ObjectAttributes
 	projectName := "Unknown Project"
-	if event.Project != nil {
-		projectName = event.Project.Name
-	}
-
-	// Extract Jira issue IDs from title and description
-	text := attrs.Title
-	if attrs.Description != "" {
-		text += " " + attrs.Description
-	}
-
-	issueIDs := h.parser.ExtractIssueIDs(text)
-	for _, issueID := range issueIDs {
-		comment := h.createMergeRequestComment(event)
-		if err := h.jira.AddComment(issueID, comment); err != nil {
-			h.logger.Error("Failed to add merge request comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"mrID", attrs.ID,
-				"projectName", projectName)
-		} else {
-			h.logger.Info("Added merge request comment to Jira issue",
-				"issueID", issueID,
-				"mrID", attrs.ID,
-				"projectName", projectName)
-		}
-	}
-
-	return nil
-}
-
-// createCommitComment creates a comment for a commit
-func (h *ProjectHookHandler) createCommitComment(commit Commit, event *Event) string {
-	projectName := "Unknown Project"
 	projectURL := ""
 	if event.Project != nil {
 		projectName = event.Project.Name
 		projectURL = event.Project.WebURL
 	}
 
-	// Safely truncate commit ID
-	commitID := commit.ID
-	if len(commitID) > 8 {
-		commitID = commitID[:8]
-	}
+	// Get issue-keys from all relevant fields
+	var allTexts []string
+	allTexts = append(allTexts, attrs.Title)
+	allTexts = append(allTexts, attrs.Description)
+	allTexts = append(allTexts, attrs.SourceBranch)
+	allTexts = append(allTexts, attrs.TargetBranch)
+	// TODO: if there are comments, add them here
 
-	files := ""
-	if commit.Added != "" || commit.Modified != "" || commit.Removed != "" {
-		files = "\nFiles:"
-		if commit.Added != "" {
-			files += "\n  + Added: " + commit.Added
-		}
-		if commit.Modified != "" {
-			files += "\n  ~ Modified: " + commit.Modified
-		}
-		if commit.Removed != "" {
-			files += "\n  - Removed: " + commit.Removed
+	issueKeySet := make(map[string]struct{})
+	for _, text := range allTexts {
+		for _, key := range h.parser.ExtractIssueIDs(text) {
+			if key != "" {
+				issueKeySet[key] = struct{}{}
+			}
 		}
 	}
 
-	return fmt.Sprintf(
-		"Commit [`%s`](%s) by **%s** (%s)\nProject: [%s](%s)\nMessage: %s\nDate: %s%s",
-		commitID,
-		commit.URL,
-		commit.Author.Name,
-		commit.Author.Email,
-		projectName,
-		projectURL,
-		commit.Message,
-		commit.Timestamp,
-		files,
-	)
-}
-
-// createMergeRequestComment creates a comment for a merge request
-func (h *ProjectHookHandler) createMergeRequestComment(event *Event) string {
-	attrs := event.ObjectAttributes
-	projectName := "Unknown Project"
-	projectURL := ""
-	if event.Project != nil {
-		projectName = event.Project.Name
-		projectURL = event.Project.WebURL
+	// If no issue keys are found, do nothing
+	if len(issueKeySet) == 0 {
+		return nil
 	}
 
-	return fmt.Sprintf(
-		"Merge Request [%s](%s)\nProject: [%s](%s)\nAction: %s\nSource: `%s` → Target: `%s`\nStatus: %s\nAuthor: %s\nDescription: %s",
+	// Extract participants and approvers from MR
+	var participants, approvedBy, reviewers, approvers []userlink.UserWithLink
+	if event.MergeRequest != nil {
+		if event.MergeRequest.Author != nil {
+			name := event.MergeRequest.Author.Username
+			if name == "" {
+				name = event.MergeRequest.Author.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
+		}
+		if event.MergeRequest.Assignee != nil {
+			name := event.MergeRequest.Assignee.Username
+			if name == "" {
+				name = event.MergeRequest.Assignee.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
+		}
+		for _, participant := range event.MergeRequest.Participants {
+			name := participant.Username
+			if name == "" {
+				name = participant.Name
+			}
+			participants = append(participants, userlink.UserWithLink{Name: name, URL: ""})
+		}
+		for _, user := range event.MergeRequest.ApprovedBy {
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			approvedBy = append(approvedBy, userlink.UserWithLink{Name: name, URL: ""})
+		}
+		for _, user := range event.MergeRequest.Reviewers {
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			reviewers = append(reviewers, userlink.UserWithLink{Name: name, URL: ""})
+		}
+		for _, user := range event.MergeRequest.Approvers {
+			name := user.Username
+			if name == "" {
+				name = user.Name
+			}
+			approvers = append(approvers, userlink.UserWithLink{Name: name, URL: ""})
+		}
+	}
+
+	// Generate ADF comment for MR
+	comment := jira.GenerateMergeRequestADFComment(
 		attrs.Title,
 		attrs.URL,
 		projectName,
@@ -300,7 +360,30 @@ func (h *ProjectHookHandler) createMergeRequestComment(event *Event) string {
 		attrs.State,
 		attrs.Name,
 		attrs.Description,
+		h.config.Timezone,
+		participants,
+		approvedBy,
+		reviewers,
+		approvers,
 	)
+
+	// Add comment to each issue
+	for issueID := range issueKeySet {
+		if err := h.jira.AddComment(issueID, comment); err != nil {
+			h.logger.Error("Failed to add MR comment to Jira",
+				"error", err,
+				"issueID", issueID,
+				"mrID", attrs.ID,
+				"projectName", projectName)
+		} else {
+			h.logger.Info("Added MR comment to Jira issue",
+				"issueID", issueID,
+				"mrID", attrs.ID,
+				"projectName", projectName)
+		}
+	}
+
+	return nil
 }
 
 func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {
@@ -331,7 +414,7 @@ func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {
 	// Extract Jira issue IDs from tag name
 	issueIDs := h.parser.ExtractIssueIDs(attrs.Ref)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add tag comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -382,7 +465,7 @@ func (h *ProjectHookHandler) processReleaseEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add release comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -432,7 +515,7 @@ func (h *ProjectHookHandler) processDeploymentEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add deployment comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -482,7 +565,7 @@ func (h *ProjectHookHandler) processFeatureFlagEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add feature flag comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -532,7 +615,7 @@ func (h *ProjectHookHandler) processWikiPageEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add wiki comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -585,7 +668,7 @@ func (h *ProjectHookHandler) processPipelineEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add pipeline comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -639,7 +722,7 @@ func (h *ProjectHookHandler) processBuildEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add build comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -684,7 +767,7 @@ func (h *ProjectHookHandler) processNoteEvent(event *Event) error {
 	// Extract Jira issue IDs from comment content
 	issueIDs := h.parser.ExtractIssueIDs(attrs.Note)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add note comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -737,7 +820,7 @@ func (h *ProjectHookHandler) processIssueEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add issue comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -761,7 +844,12 @@ func (h *ProjectHookHandler) isAllowedEvent(event *Event) bool {
 	}
 	if event.Project != nil && len(h.config.AllowedProjects) > 0 {
 		for _, p := range h.config.AllowedProjects {
+			// Check exact match
 			if event.Project.PathWithNamespace == p || event.Project.Name == p {
+				return true
+			}
+			// Check if project path starts with allowed group (for group-based filtering)
+			if strings.HasPrefix(event.Project.PathWithNamespace, p+"/") {
 				return true
 			}
 		}

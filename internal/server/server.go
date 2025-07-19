@@ -3,19 +3,24 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/atlet99/gitlab-jira-hook/internal/async"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/gitlab"
+	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
 )
 
 // Server represents the HTTP server
 type Server struct {
 	*http.Server
-	config *config.Config
-	logger *slog.Logger
+	config     *config.Config
+	logger     *slog.Logger
+	monitor    *monitoring.WebhookMonitor
+	workerPool *async.WorkerPool
 }
 
 // New creates a new HTTP server
@@ -25,6 +30,23 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create Project Hook handler
 	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
 
+	// Create webhook monitor
+	webhookMonitor := monitoring.NewWebhookMonitor(cfg, logger)
+
+	// Set monitor in handlers for metrics recording
+	gitlabHandler.SetMonitor(webhookMonitor)
+	projectHookHandler.SetMonitor(webhookMonitor)
+
+	// Create worker pool for async processing
+	workerPool := async.NewWorkerPool(cfg, logger, webhookMonitor)
+
+	// Set worker pool in handlers
+	gitlabHandler.SetWorkerPool(workerPool)
+	projectHookHandler.SetWorkerPool(workerPool)
+
+	// Create monitoring handler
+	monitoringHandler := monitoring.NewHandler(webhookMonitor, logger)
+
 	// Create mux
 	mux := http.NewServeMux()
 
@@ -32,6 +54,13 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("/gitlab-hook", gitlabHandler.HandleWebhook)
 	mux.HandleFunc("/gitlab-project-hook", projectHookHandler.HandleProjectHook)
 	mux.HandleFunc("/health", handleHealth)
+
+	// Register monitoring routes
+	mux.HandleFunc("/monitoring/status", monitoringHandler.HandleStatus)
+	mux.HandleFunc("/monitoring/metrics", monitoringHandler.HandleMetrics)
+	mux.HandleFunc("/monitoring/health", monitoringHandler.HandleHealth)
+	mux.HandleFunc("/monitoring/detailed", monitoringHandler.HandleDetailedStatus)
+	mux.HandleFunc("/monitoring/reconnect", monitoringHandler.HandleReconnect)
 
 	// Create server
 	const readHeaderTimeout = 30 * time.Second
@@ -42,10 +71,36 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	}
 
 	return &Server{
-		Server: srv,
-		config: cfg,
-		logger: logger,
+		Server:     srv,
+		config:     cfg,
+		logger:     logger,
+		monitor:    webhookMonitor,
+		workerPool: workerPool,
 	}
+}
+
+// Start starts the server and monitoring
+func (s *Server) Start() error {
+	// Start webhook monitoring
+	s.monitor.Start()
+
+	// Start worker pool
+	s.workerPool.Start()
+
+	s.logger.Info("Starting HTTP server", "port", s.config.Port)
+	return s.ListenAndServe()
+}
+
+// Shutdown gracefully shuts down the server and monitoring
+func (s *Server) Shutdown(ctx context.Context) error {
+	// Stop webhook monitoring
+	s.monitor.Stop()
+
+	// Stop worker pool
+	s.workerPool.Stop()
+
+	// Shutdown HTTP server
+	return s.Server.Shutdown(ctx)
 }
 
 // handleHealth handles health check requests

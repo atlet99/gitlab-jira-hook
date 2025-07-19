@@ -248,6 +248,57 @@ test-race:
 test-all: test-coverage test-race
 	@echo "All tests completed"
 
+# Benchmark targets
+.PHONY: benchmark benchmark-cpu benchmark-memory benchmark-all benchmark-webhook benchmark-worker-pool benchmark-parser benchmark-profile benchmark-analyze benchmark-configs benchmark-report
+
+# Run all benchmarks
+benchmark:
+	go test -bench=. -benchmem ./internal/benchmarks/
+
+# Run CPU-intensive benchmarks
+benchmark-cpu:
+	go test -bench=Benchmark.* -benchmem -cpu=1,2,4,8 ./internal/benchmarks/
+
+# Run memory usage benchmarks
+benchmark-memory:
+	go test -bench=BenchmarkMemoryUsage -benchmem ./internal/benchmarks/
+
+# Run all benchmarks with detailed output
+benchmark-all:
+	go test -bench=. -benchmem -benchtime=5s -count=3 ./internal/benchmarks/
+
+# Run specific benchmark
+benchmark-webhook:
+	go test -bench=BenchmarkGitLabHandler -benchmem ./internal/benchmarks/
+
+benchmark-worker-pool:
+	go test -bench=BenchmarkWorkerPool -benchmem ./internal/benchmarks/
+
+benchmark-parser:
+	go test -bench=BenchmarkParser -benchmem ./internal/benchmarks/
+
+# Run benchmarks with profiling
+benchmark-profile:
+	go test -bench=BenchmarkGitLabHandler -benchmem -cpuprofile=cpu.prof -memprofile=mem.prof ./internal/benchmarks/
+
+# Analyze profiling results
+benchmark-analyze:
+	go tool pprof -text cpu.prof
+	go tool pprof -text mem.prof
+
+# Run benchmarks with different configurations
+benchmark-configs:
+	@echo "Running benchmarks with different worker pool sizes..."
+	WORKER_POOL_SIZE=5 go test -bench=BenchmarkWorkerPool -benchmem ./internal/benchmarks/
+	WORKER_POOL_SIZE=10 go test -bench=BenchmarkWorkerPool -benchmem ./internal/benchmarks/
+	WORKER_POOL_SIZE=20 go test -bench=BenchmarkWorkerPool -benchmem ./internal/benchmarks/
+
+# Run benchmarks and generate report
+benchmark-report:
+	@echo "Running comprehensive benchmark suite..."
+	go test -bench=. -benchmem -benchtime=10s -count=5 ./internal/benchmarks/ > benchmark_results.txt
+	@echo "Benchmark results saved to benchmark_results.txt"
+
 # Development
 .PHONY: run dev
 

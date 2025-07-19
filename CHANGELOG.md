@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-07-19
+
+### Added
+- Support for GitLab `repository_update` system hook event
+- Enhanced repository update event processing with detailed change information
+- New test coverage for repository update event handler
+- Dynamic worker pool scaling for asynchronous webhook processing
+  - Automatic scaling up/down based on queue length
+  - Configurable min/max workers and scaling thresholds
+  - Real-time metrics for scaling events and queue length
+  - New configuration parameters: `min_workers`, `max_workers`, `scale_up_threshold`, `scale_down_threshold`, `scale_interval`
+- Enhanced worker pool metrics with current worker count and scaling statistics
+- Comprehensive unit tests for dynamic scaling functionality
+
+### Fixed
+- Fixed JSON parsing error for GitLab commit file arrays: changed Commit struct fields Added, Modified, Removed from string to []string to match GitLab webhook payload format
+- Updated commit comment formatting to properly handle file arrays using strings.Join()
+- Added strings package import in handler.go for array joining functionality
+- Resolved webhook processing failures caused by unmarshal errors when GitLab sends file information as arrays
+- Enhanced project filtering logic to support group-based filtering: now allows projects by group prefix (e.g., "devops" allows "devops/login/stg")
+- Added strings.HasPrefix() support for both System Hook and Project Hook handlers
+- Added comprehensive tests for group prefix filtering functionality
+- Fixed context leak in worker pool: properly handle context.WithCancel() return values
+- Removed unused cancel field from Worker struct to eliminate linter warnings
+- Fixed worker pool scaling tests to properly reflect business logic
+- Corrected GetStats() method to return accurate current worker count
+
+### Changed
+- Worker pool now starts with minimum workers instead of fixed pool size
+- Improved worker pool performance through adaptive scaling
+
+### Technical
+- Added thread-safe scaling operations with proper mutex protection
+- Implemented periodic queue monitoring with configurable intervals
+- Enhanced structured logging for scaling events
+
 ## [0.1.3] - 2025-07-17
 
 ### Fixed
@@ -147,7 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 

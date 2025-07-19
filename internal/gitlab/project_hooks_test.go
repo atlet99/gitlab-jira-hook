@@ -13,6 +13,7 @@ import (
 	"log/slog"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
+	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
 // MockJiraClient is a mock implementation of JiraClient interface
@@ -20,8 +21,8 @@ type MockJiraClient struct {
 	mock.Mock
 }
 
-func (m *MockJiraClient) AddComment(issueID, comment string) error {
-	args := m.Called(issueID, comment)
+func (m *MockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
+	args := m.Called(issueID, payload)
 	return args.Error(0)
 }
 
@@ -105,7 +106,7 @@ func TestProjectHookHandler_HandleProjectHook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockJira := &MockJiraClient{}
 			if tt.name == "Valid push event" {
-				mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+				mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 			}
 			handler := &ProjectHookHandler{
 				config: cfg,
@@ -164,7 +165,7 @@ func TestProjectHookHandler_ProcessPushEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processPushEvent(event)
 	assert.NoError(t, err)
@@ -199,7 +200,7 @@ func TestProjectHookHandler_ProcessMergeRequestEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processMergeRequestEvent(event)
 	assert.NoError(t, err)
@@ -234,7 +235,7 @@ func TestProjectHookHandler_ProcessIssueEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processIssueEvent(event)
 	assert.NoError(t, err)
@@ -266,7 +267,7 @@ func TestProjectHookHandler_ProcessNoteEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processNoteEvent(event)
 	assert.NoError(t, err)
@@ -300,7 +301,7 @@ func TestProjectHookHandler_ProcessPipelineEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processPipelineEvent(event)
 	assert.NoError(t, err)
@@ -335,7 +336,7 @@ func TestProjectHookHandler_ProcessBuildEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processBuildEvent(event)
 	assert.NoError(t, err)
@@ -366,7 +367,7 @@ func TestProjectHookHandler_ProcessTagPushEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processTagPushEvent(event)
 	assert.NoError(t, err)
@@ -398,7 +399,7 @@ func TestProjectHookHandler_ProcessReleaseEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processReleaseEvent(event)
 	assert.NoError(t, err)
@@ -432,7 +433,7 @@ func TestProjectHookHandler_ProcessDeploymentEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processDeploymentEvent(event)
 	assert.NoError(t, err)
@@ -463,7 +464,7 @@ func TestProjectHookHandler_ProcessFeatureFlagEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processFeatureFlagEvent(event)
 	assert.NoError(t, err)
@@ -495,7 +496,7 @@ func TestProjectHookHandler_ProcessWikiPageEvent(t *testing.T) {
 		},
 	}
 
-	mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
 	err := handler.processWikiPageEvent(event)
 	assert.NoError(t, err)
@@ -609,7 +610,7 @@ func TestProjectHookHandler_ProcessPushEvent_BranchFilter(t *testing.T) {
 			}
 
 			if tt.shouldProcess {
-				mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+				mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 			}
 
 			err := handler.processPushEvent(event)
@@ -625,7 +626,7 @@ func TestProjectHookHandler_ProcessPushEvent_BranchFilter(t *testing.T) {
 }
 
 func TestProjectHookHandler_ProcessPushEvent_BranchFilter_Integration(t *testing.T) {
-	// Тест интеграции с реальными паттернами веток
+	// Integration test with real branch patterns
 	realWorldPatterns := []string{
 		"main",
 		"master",
@@ -694,7 +695,7 @@ func TestProjectHookHandler_ProcessPushEvent_BranchFilter_Integration(t *testing
 			}
 
 			if tc.shouldProcess {
-				mockJira.On("AddComment", "PROJ-123", mock.AnythingOfType("string")).Return(nil)
+				mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 			}
 
 			err := handler.processPushEvent(event)

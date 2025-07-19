@@ -38,6 +38,13 @@ func TestIsAllowedEvent_Handler(t *testing.T) {
 			want:            true,
 		},
 		{
+			name:            "project allowed by group prefix",
+			allowedProjects: []string{"devops"},
+			allowedGroups:   nil,
+			event:           &Event{Project: &Project{PathWithNamespace: "devops/login/stg"}},
+			want:            true,
+		},
+		{
 			name:            "group allowed by name",
 			allowedProjects: nil,
 			allowedGroups:   []string{"bar-group"},
@@ -104,6 +111,13 @@ func TestIsAllowedEvent_ProjectHookHandler(t *testing.T) {
 			allowedProjects: []string{"group/foo"},
 			allowedGroups:   nil,
 			event:           &Event{Project: &Project{PathWithNamespace: "group/foo"}},
+			want:            true,
+		},
+		{
+			name:            "project allowed by group prefix",
+			allowedProjects: []string{"devops"},
+			allowedGroups:   nil,
+			event:           &Event{Project: &Project{PathWithNamespace: "devops/login/stg"}},
 			want:            true,
 		},
 		{
