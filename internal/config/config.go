@@ -19,9 +19,11 @@ const (
 	DefaultJiraRetryMaxAttempts = 3
 	DefaultJiraRetryBaseDelayMs = 200
 	DefaultTimezone             = "Etc/GMT-5" // UTC+5
+	DefaultWorkerPoolSize       = 10
+	DefaultJobQueueSize         = 100
 )
 
-// Config holds all configuration for the application
+// Config holds application configuration
 type Config struct {
 	Port                 string
 	GitLabSecret         string
@@ -37,6 +39,18 @@ type Config struct {
 	JiraRetryBaseDelayMs int
 	PushBranchFilter     []string // comma-separated list of branch names to filter
 	Timezone             string   // timezone for date formatting
+	WorkerPoolSize       int      // number of workers in the pool
+	JobQueueSize         int      // size of the job queue
+	// MinWorkers is the minimum number of workers in the pool
+	MinWorkers int `yaml:"min_workers" env:"MIN_WORKERS" default:"2"`
+	// MaxWorkers is the maximum number of workers in the pool
+	MaxWorkers int `yaml:"max_workers" env:"MAX_WORKERS" default:"32"`
+	// ScaleUpThreshold is the queue length above which the pool will scale up
+	ScaleUpThreshold int `yaml:"scale_up_threshold" env:"SCALE_UP_THRESHOLD" default:"10"`
+	// ScaleDownThreshold is the queue length below which the pool will scale down
+	ScaleDownThreshold int `yaml:"scale_down_threshold" env:"SCALE_DOWN_THRESHOLD" default:"2"`
+	// ScaleInterval is the interval (in seconds) between scaling checks
+	ScaleInterval int `yaml:"scale_interval" env:"SCALE_INTERVAL" default:"10"`
 }
 
 // Load loads configuration from environment variables
@@ -62,6 +76,8 @@ func Load() (*Config, error) {
 		JiraRetryBaseDelayMs: parseIntEnv("JIRA_RETRY_BASE_DELAY_MS", DefaultJiraRetryBaseDelayMs),
 		PushBranchFilter:     parseCSVEnv("PUSH_BRANCH_FILTER"),
 		Timezone:             getEnv("TIMEZONE", DefaultTimezone),
+		WorkerPoolSize:       parseIntEnv("WORKER_POOL_SIZE", DefaultWorkerPoolSize),
+		JobQueueSize:         parseIntEnv("JOB_QUEUE_SIZE", DefaultJobQueueSize),
 	}
 
 	// Validate required fields

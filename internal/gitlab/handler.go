@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,15 +17,17 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
+	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
 // Handler handles GitLab webhook requests
 type Handler struct {
-	config  *config.Config
-	logger  *slog.Logger
-	jira    JiraClient
-	parser  *Parser
-	monitor *monitoring.WebhookMonitor
+	config     *config.Config
+	logger     *slog.Logger
+	jira       JiraClient
+	parser     *Parser
+	monitor    *monitoring.WebhookMonitor
+	workerPool webhook.WorkerPoolInterface
 }
 
 // JiraClient defines the interface for Jira client operations
@@ -37,17 +40,23 @@ type JiraClient interface {
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
 	return &Handler{
-		config:  cfg,
-		logger:  logger,
-		jira:    jira.NewClient(cfg),
-		parser:  NewParser(),
-		monitor: nil, // Will be set by server
+		config:     cfg,
+		logger:     logger,
+		jira:       jira.NewClient(cfg),
+		parser:     NewParser(),
+		monitor:    nil, // Will be set by server
+		workerPool: nil, // Will be set by server
 	}
 }
 
 // SetMonitor sets the webhook monitor for metrics recording
 func (h *Handler) SetMonitor(monitor *monitoring.WebhookMonitor) {
 	h.monitor = monitor
+}
+
+// SetWorkerPool sets the worker pool for async processing
+func (h *Handler) SetWorkerPool(workerPool webhook.WorkerPoolInterface) {
+	h.workerPool = workerPool
 }
 
 // HandleWebhook handles incoming GitLab webhook requests
@@ -105,11 +114,24 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process the event
-	if err := h.processEvent(event); err != nil {
-		h.logger.Error("Failed to process event", "error", err, "eventType", event.Type)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+	// Convert to interface event
+	interfaceEvent := h.convertToInterfaceEvent(event)
+
+	// Submit job for async processing if worker pool is available
+	if h.workerPool != nil {
+		if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
+			h.logger.Error("Failed to submit job to worker pool", "error", err, "eventType", event.Type)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		h.logger.Info("Job submitted for async processing", "eventType", event.Type)
+	} else {
+		// Fallback to synchronous processing
+		if err := h.processEvent(event); err != nil {
+			h.logger.Error("Failed to process event", "error", err, "eventType", event.Type)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Return success
@@ -197,6 +219,79 @@ func (h *Handler) processEvent(event *Event) error {
 		h.logger.Debug("Unsupported event type", "type", event.Type)
 		return nil
 	}
+}
+
+// ProcessEventAsync processes the webhook event asynchronously with context (webhook.Event)
+func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue processing
+	}
+	if event == nil {
+		return nil
+	}
+	// Преобразуем обратно в *Event для существующей логики
+	orig := &Event{
+		Type:      event.Type,
+		EventName: event.EventName,
+	}
+	if event.Project != nil {
+		orig.Project = &Project{
+			ID:                event.Project.ID,
+			Name:              event.Project.Name,
+			PathWithNamespace: event.Project.PathWithNamespace,
+			WebURL:            event.Project.WebURL,
+		}
+	}
+	if event.Group != nil {
+		orig.Group = &Group{
+			ID:       event.Group.ID,
+			Name:     event.Group.Name,
+			FullPath: event.Group.FullPath,
+		}
+	}
+	if event.User != nil {
+		orig.User = &User{
+			ID:       event.User.ID,
+			Username: event.User.Username,
+			Name:     event.User.Name,
+			Email:    event.User.Email,
+		}
+	}
+	if event.Commits != nil {
+		for _, c := range event.Commits {
+			orig.Commits = append(orig.Commits, Commit{
+				ID:        c.ID,
+				Message:   c.Message,
+				URL:       c.URL,
+				Author:    Author{Name: c.Author.Name, Email: c.Author.Email},
+				Timestamp: c.Timestamp.Format(time.RFC3339),
+				Added:     c.Added,
+				Modified:  c.Modified,
+				Removed:   c.Removed,
+			})
+		}
+	}
+	if event.ObjectAttributes != nil {
+		orig.ObjectAttributes = &ObjectAttributes{
+			ID:          event.ObjectAttributes.ID,
+			Title:       event.ObjectAttributes.Title,
+			Description: event.ObjectAttributes.Description,
+			State:       event.ObjectAttributes.State,
+			Action:      event.ObjectAttributes.Action,
+			Ref:         event.ObjectAttributes.Ref,
+			URL:         event.ObjectAttributes.URL,
+			Sha:         event.ObjectAttributes.SHA,
+			Name:        event.ObjectAttributes.Name,
+			Duration:    event.ObjectAttributes.Duration,
+			Status:      event.ObjectAttributes.Status,
+			IssueType:   event.ObjectAttributes.IssueType,
+			Priority:    event.ObjectAttributes.Priority,
+		}
+	}
+	return h.processEvent(orig)
 }
 
 // processPushEvent processes push events
@@ -1439,6 +1534,80 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// convertToInterfaceEvent преобразует *gitlab.Event в *webhook.Event
+func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
+	if e == nil {
+		return nil
+	}
+	var commits []webhook.Commit
+	for _, c := range e.Commits {
+		var ts time.Time
+		if t, err := parseTime(c.Timestamp); err == nil {
+			ts = t
+		}
+		commits = append(commits, webhook.Commit{
+			ID:        c.ID,
+			Message:   c.Message,
+			URL:       c.URL,
+			Author:    webhook.Author{Name: c.Author.Name, Email: c.Author.Email},
+			Timestamp: ts,
+			Added:     c.Added,
+			Modified:  c.Modified,
+			Removed:   c.Removed,
+		})
+	}
+	return &webhook.Event{
+		Type:      e.Type,
+		EventName: e.EventName,
+		Project: &webhook.Project{
+			ID:                e.Project.ID,
+			Name:              e.Project.Name,
+			PathWithNamespace: e.Project.PathWithNamespace,
+			WebURL:            e.Project.WebURL,
+		},
+		Group: &webhook.Group{
+			ID:       e.Group.ID,
+			Name:     e.Group.Name,
+			FullPath: e.Group.FullPath,
+		},
+		User: &webhook.User{
+			ID:       e.User.ID,
+			Username: e.User.Username,
+			Name:     e.User.Name,
+			Email:    e.User.Email,
+		},
+		Commits: commits,
+		ObjectAttributes: &webhook.ObjectAttributes{
+			ID:          e.ObjectAttributes.ID,
+			Title:       e.ObjectAttributes.Title,
+			Description: e.ObjectAttributes.Description,
+			State:       e.ObjectAttributes.State,
+			Action:      e.ObjectAttributes.Action,
+			Ref:         e.ObjectAttributes.Ref,
+			URL:         e.ObjectAttributes.URL,
+			SHA:         e.ObjectAttributes.Sha,
+			Name:        e.ObjectAttributes.Name,
+			Duration:    e.ObjectAttributes.Duration,
+			Status:      e.ObjectAttributes.Status,
+			IssueType:   e.ObjectAttributes.IssueType,
+			Priority:    e.ObjectAttributes.Priority,
+		},
+	}
+}
+
+// parseTime пытается распарсить строку времени в time.Time
+func parseTime(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	// Попробуем RFC3339, иначе вернем zero time
+	ts, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return ts, nil
 }
 
 // constructUserProfileURL constructs a user profile URL using available user information

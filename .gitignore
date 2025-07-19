@@ -65,3 +65,9 @@ benchmark-report.md
 
 # Sarif files
 *.sarif
+
+
+# benchmark files
+benchmark_results.txt
+cpu.prof
+mem.prof

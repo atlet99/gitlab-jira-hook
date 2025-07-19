@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/atlet99/gitlab-jira-hook/internal/async"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/gitlab"
 	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
@@ -16,9 +17,10 @@ import (
 // Server represents the HTTP server
 type Server struct {
 	*http.Server
-	config  *config.Config
-	logger  *slog.Logger
-	monitor *monitoring.WebhookMonitor
+	config     *config.Config
+	logger     *slog.Logger
+	monitor    *monitoring.WebhookMonitor
+	workerPool *async.WorkerPool
 }
 
 // New creates a new HTTP server
@@ -34,6 +36,13 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Set monitor in handlers for metrics recording
 	gitlabHandler.SetMonitor(webhookMonitor)
 	projectHookHandler.SetMonitor(webhookMonitor)
+
+	// Create worker pool for async processing
+	workerPool := async.NewWorkerPool(cfg, logger, webhookMonitor)
+
+	// Set worker pool in handlers
+	gitlabHandler.SetWorkerPool(workerPool)
+	projectHookHandler.SetWorkerPool(workerPool)
 
 	// Create monitoring handler
 	monitoringHandler := monitoring.NewHandler(webhookMonitor, logger)
@@ -62,10 +71,11 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	}
 
 	return &Server{
-		Server:  srv,
-		config:  cfg,
-		logger:  logger,
-		monitor: webhookMonitor,
+		Server:     srv,
+		config:     cfg,
+		logger:     logger,
+		monitor:    webhookMonitor,
+		workerPool: workerPool,
 	}
 }
 
@@ -73,6 +83,9 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 func (s *Server) Start() error {
 	// Start webhook monitoring
 	s.monitor.Start()
+
+	// Start worker pool
+	s.workerPool.Start()
 
 	s.logger.Info("Starting HTTP server", "port", s.config.Port)
 	return s.ListenAndServe()
@@ -82,6 +95,9 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	// Stop webhook monitoring
 	s.monitor.Stop()
+
+	// Stop worker pool
+	s.workerPool.Stop()
 
 	// Shutdown HTTP server
 	return s.Server.Shutdown(ctx)

@@ -20,15 +20,17 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
+	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
 // ProjectHookHandler handles GitLab Project Hook requests
 type ProjectHookHandler struct {
-	config  *config.Config
-	logger  *slog.Logger
-	jira    JiraClient // Use interface instead of concrete type
-	parser  *Parser
-	monitor *monitoring.WebhookMonitor
+	config     *config.Config
+	logger     *slog.Logger
+	jira       JiraClient // Use interface instead of concrete type
+	parser     *Parser
+	monitor    *monitoring.WebhookMonitor
+	workerPool webhook.WorkerPoolInterface
 }
 
 // NewProjectHookHandler creates a new GitLab Project Hook handler
@@ -45,6 +47,11 @@ func NewProjectHookHandler(cfg *config.Config, logger *slog.Logger) *ProjectHook
 // SetMonitor sets the webhook monitor for metrics recording
 func (h *ProjectHookHandler) SetMonitor(monitor *monitoring.WebhookMonitor) {
 	h.monitor = monitor
+}
+
+// SetWorkerPool sets the worker pool for async processing
+func (h *ProjectHookHandler) SetWorkerPool(workerPool webhook.WorkerPoolInterface) {
+	h.workerPool = workerPool
 }
 
 // HandleProjectHook handles incoming GitLab Project Hook requests
