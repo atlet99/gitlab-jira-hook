@@ -206,6 +206,7 @@ func (pwp *PriorityWorkerPool) GetStats() PriorityPoolStats {
 		worker.mu.RUnlock()
 	}
 
+	stats.TotalWorkers = len(pwp.workers)
 	stats.ActiveWorkers = activeWorkers
 	stats.IdleWorkers = stats.TotalWorkers - activeWorkers
 

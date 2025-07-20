@@ -1558,28 +1558,45 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 			Removed:   c.Removed,
 		})
 	}
-	return &webhook.Event{
+
+	result := &webhook.Event{
 		Type:      e.Type,
 		EventName: e.EventName,
-		Project: &webhook.Project{
+		Commits:   commits,
+	}
+
+	// Safely set Project if available
+	if e.Project != nil {
+		result.Project = &webhook.Project{
 			ID:                e.Project.ID,
 			Name:              e.Project.Name,
 			PathWithNamespace: e.Project.PathWithNamespace,
 			WebURL:            e.Project.WebURL,
-		},
-		Group: &webhook.Group{
+		}
+	}
+
+	// Safely set Group if available
+	if e.Group != nil {
+		result.Group = &webhook.Group{
 			ID:       e.Group.ID,
 			Name:     e.Group.Name,
 			FullPath: e.Group.FullPath,
-		},
-		User: &webhook.User{
+		}
+	}
+
+	// Safely set User if available
+	if e.User != nil {
+		result.User = &webhook.User{
 			ID:       e.User.ID,
 			Username: e.User.Username,
 			Name:     e.User.Name,
 			Email:    e.User.Email,
-		},
-		Commits: commits,
-		ObjectAttributes: &webhook.ObjectAttributes{
+		}
+	}
+
+	// Safely set ObjectAttributes if available
+	if e.ObjectAttributes != nil {
+		result.ObjectAttributes = &webhook.ObjectAttributes{
 			ID:          e.ObjectAttributes.ID,
 			Title:       e.ObjectAttributes.Title,
 			Description: e.ObjectAttributes.Description,
@@ -1593,8 +1610,10 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 			Status:      e.ObjectAttributes.Status,
 			IssueType:   e.ObjectAttributes.IssueType,
 			Priority:    e.ObjectAttributes.Priority,
-		},
+		}
 	}
+
+	return result
 }
 
 // parseTime пытается распарсить строку времени в time.Time

@@ -85,13 +85,13 @@ PUSH_BRANCH_FILTER=main,release-*,hotfix/*
 
 ### Dynamic Worker Pool Scaling
 
-| Parameter             | Description                                                      | Default |
-|-----------------------|------------------------------------------------------------------|---------|
-| `min_workers`         | Minimum number of workers in the pool                             | 2       |
-| `max_workers`         | Maximum number of workers in the pool                             | 32      |
-| `scale_up_threshold`  | Queue length above which the pool will scale up                   | 10      |
-| `scale_down_threshold`| Queue length below which the pool will scale down                 | 2       |
-| `scale_interval`      | Interval (in seconds) between scaling checks                      | 10      |
+| Parameter              | Description                                       | Default |
+| ---------------------- | ------------------------------------------------- | ------- |
+| `min_workers`          | Minimum number of workers in the pool             | 2       |
+| `max_workers`          | Maximum number of workers in the pool             | 32      |
+| `scale_up_threshold`   | Queue length above which the pool will scale up   | 10      |
+| `scale_down_threshold` | Queue length below which the pool will scale down | 2       |
+| `scale_interval`       | Interval (in seconds) between scaling checks      | 10      |
 
 These parameters can be set via config file or environment variables. See `internal/config/config.go` for details.
 

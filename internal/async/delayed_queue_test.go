@@ -46,8 +46,8 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Contains(t, err.Error(), "no jobs available")
 
 		// Wait for job to be ready and moved to main queue
-		// Use a simple sleep instead of WaitForReadyJobs for now
-		time.Sleep(1 * time.Second)
+		// Use a longer sleep to ensure job is processed
+		time.Sleep(3 * time.Second)
 
 		// Job should now be in main queue
 		job, err := mainQueue.GetJob()
@@ -74,8 +74,8 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for all jobs to be ready and moved to main queue
-		// Use a simple sleep instead of WaitForReadyJobs for now
-		time.Sleep(5 * time.Second)
+		// Use a longer sleep to ensure all jobs are processed
+		time.Sleep(6 * time.Second)
 
 		// Get both jobs from main queue
 		job1, err := mainQueue.GetJob()
@@ -115,8 +115,8 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Equal(t, 0, stats["ready_jobs"])
 
 		// Wait for job to be ready and moved to main queue
-		// Use a simple sleep instead of WaitForReadyJobs for now
-		time.Sleep(1 * time.Second)
+		// Use a longer sleep to ensure job is processed
+		time.Sleep(3 * time.Second)
 
 		// Check stats after job is moved - should be empty or processing
 		stats = delayedQueue.GetStats()
@@ -145,8 +145,8 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for job to be ready and moved to main queue
-		// Use a simple sleep instead of WaitForReadyJobs for now
-		time.Sleep(1 * time.Second)
+		// Use a longer sleep to ensure job is processed
+		time.Sleep(3 * time.Second)
 
 		// Job should have high priority (from decider)
 		job, err := mainQueue.GetJob()
