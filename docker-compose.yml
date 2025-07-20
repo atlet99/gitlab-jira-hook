@@ -15,9 +15,14 @@ services:
       - "9988:8080"
     env_file:
       - config.env
+    environment:
+      # Set timezone from config or use default
+      - TZ=${TIMEZONE:-Etc/GMT-5}
     volumes:
       # Mount logs directory for persistent logs
       - ./logs:/app/logs
+      # Mount timezone data for container timezone support
+      - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s

@@ -99,7 +99,7 @@ func NewClient(cfg *config.Config) *Client {
 }
 
 // AddComment adds a comment to a Jira issue
-func (c *Client) AddComment(issueID, comment string) error {
+func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
@@ -107,25 +107,6 @@ func (c *Client) AddComment(issueID, comment string) error {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Wait for rate limiter
 		c.rateLimiter.Wait()
-
-		// Create comment payload
-		payload := CommentPayload{
-			Body: CommentBody{
-				Type:    "doc",
-				Version: 1,
-				Content: []Content{
-					{
-						Type: "paragraph",
-						Content: []TextContent{
-							{
-								Type: "text",
-								Text: comment,
-							},
-						},
-					},
-				},
-			},
-		}
 
 		// Marshal payload to JSON
 		jsonData, err := json.Marshal(payload)

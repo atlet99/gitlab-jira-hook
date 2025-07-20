@@ -58,6 +58,7 @@ type Event struct {
 	// User membership events
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
+	UserName string `json:"user_name"` // Full name from system hook
 	// Project membership events
 	ProjectID   int    `json:"project_id"`
 	ProjectName string `json:"project_name"`
@@ -100,6 +101,9 @@ type Event struct {
 	TotalCommitsCount int    `json:"total_commits_count"`
 	// Tag events
 	TagPush bool `json:"tag_push"`
+	// Repository update event specific fields
+	Changes []Change `json:"changes"`
+	Refs    []string `json:"refs"`
 }
 
 // Commit represents a Git commit
@@ -109,10 +113,10 @@ type Commit struct {
 	URL     string `json:"url"`
 	Author  Author `json:"author"`
 	// Additional commit fields
-	Timestamp string `json:"timestamp"`
-	Added     string `json:"added"`
-	Modified  string `json:"modified"`
-	Removed   string `json:"removed"`
+	Timestamp string   `json:"timestamp"`
+	Added     []string `json:"added"`
+	Modified  []string `json:"modified"`
+	Removed   []string `json:"removed"`
 }
 
 // Author represents a commit author
@@ -128,6 +132,9 @@ type ObjectAttributes struct {
 	State  string `json:"state"`
 	Action string `json:"action"`
 	URL    string `json:"url"`
+	// Time fields from system hook
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 	// Additional fields for project hooks
 	Note        string `json:"note"`
 	Content     string `json:"content"`
@@ -185,6 +192,14 @@ type MergeRequest struct {
 	Assignee     *User    `json:"assignee"`
 	Author       *User    `json:"author"`
 	Labels       []string `json:"labels"`
+	// Participants includes all users involved in the MR (reviewers, assignees, etc.)
+	Participants []User `json:"participants"`
+	// ApprovedBy contains users who approved the MR
+	ApprovedBy []User `json:"approved_by"`
+	// Reviewers contains users requested for review
+	Reviewers []User `json:"reviewers"`
+	// Approvers contains users who can approve the MR
+	Approvers []User `json:"approvers"`
 }
 
 // Note represents a GitLab comment/note
@@ -359,4 +374,11 @@ type Group struct {
 	RequestAccessEnabled bool   `json:"request_access_enabled"`
 	// Additional group fields
 	Parent *Group `json:"parent"`
+}
+
+// Change represents a repository change in repository_update event
+type Change struct {
+	Before string `json:"before"`
+	After  string `json:"after"`
+	Ref    string `json:"ref"`
 }

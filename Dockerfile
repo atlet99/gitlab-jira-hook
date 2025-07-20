@@ -1,5 +1,5 @@
-# Build stage v1.24.4-alpine3.22
-FROM golang:1.24.4-alpine3.22@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a AS builder
+# Build stage v1.24.5-alpine3.22
+FROM golang:1.24.5-alpine3.22@sha256:daae04ebad0c21149979cd8e9db38f565ecefd8547cf4a591240dc1972cf1399 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -36,8 +36,8 @@ RUN CGO_ENABLED=0 go build \
 # Final stage
 FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates and timezone data for HTTPS requests and timezone support
+RUN apk --no-cache add ca-certificates tzdata
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
