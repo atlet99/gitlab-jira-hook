@@ -5,41 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.4] - 2025-07-19
+## [0.1.4] - 2025-07-20
 
 ### Added
-- Support for GitLab `repository_update` system hook event
-- Enhanced repository update event processing with detailed change information
-- New test coverage for repository update event handler
-- Dynamic worker pool scaling for asynchronous webhook processing
-  - Automatic scaling up/down based on queue length
-  - Configurable min/max workers and scaling thresholds
-  - Real-time metrics for scaling events and queue length
-  - New configuration parameters: `min_workers`, `max_workers`, `scale_up_threshold`, `scale_down_threshold`, `scale_interval`
-- Enhanced worker pool metrics with current worker count and scaling statistics
-- Comprehensive unit tests for dynamic scaling functionality
+- **Dynamic Job Prioritization System** with auto-detection of optimal resource usage
+  - Priority-based job queue with configurable priority levels (High, Normal, Low)
+  - Automatic priority assignment based on event types (merge requests get high priority)
+  - Customizable priority decider interface for advanced use cases
+  - Priority-aware job processing and ordering
+- **Delayed Job Scheduling** with proper execution order
+  - Delayed job queue for time-based task execution
+  - Configurable delay intervals with millisecond precision
+  - Automatic job movement from delayed queue to main priority queue
+  - Background scheduler with 5ms processing interval for optimal responsiveness
+  - Support for delayed merge request processing and rate limiting
+- **Advanced Worker Pool with Middleware Support**
+  - Middleware chain for job processing (logging, retry, timeout, circuit breaker)
+  - Exponential backoff retry mechanism with configurable parameters
+  - Circuit breaker pattern for fault tolerance
+  - Request timeout handling with configurable timeouts
+  - Comprehensive job lifecycle management
+- **Auto-Configuration System** for optimal resource usage
+  - CPU-based worker count detection (2x CPU cores by default)
+  - Memory-based resource limits with automatic adjustment
+  - Configurable memory per worker (128MB default) and per job (2MB default)
+  - Automatic queue size calculation based on available resources
+  - Support for container environments (Docker/Kubernetes) with cgroup detection
+- **Enhanced Configuration Management**
+  - New configuration parameters for advanced queue management
+  - Auto-detection of optimal worker and queue sizes
+  - Memory limit detection from cgroups and /proc/meminfo
+  - Configurable retry policies and backoff strategies
+  - Monitoring and health check configuration options
+- **Comprehensive Testing Suite**
+  - Unit tests for all new async components
+  - Integration tests for delayed job processing
+  - Middleware chain testing with various scenarios
+  - Performance and scaling tests
+  - Error handling and edge case coverage
 
 ### Fixed
-- Fixed JSON parsing error for GitLab commit file arrays: changed Commit struct fields Added, Modified, Removed from string to []string to match GitLab webhook payload format
-- Updated commit comment formatting to properly handle file arrays using strings.Join()
-- Added strings package import in handler.go for array joining functionality
-- Resolved webhook processing failures caused by unmarshal errors when GitLab sends file information as arrays
-- Enhanced project filtering logic to support group-based filtering: now allows projects by group prefix (e.g., "devops" allows "devops/login/stg")
-- Added strings.HasPrefix() support for both System Hook and Project Hook handlers
-- Added comprehensive tests for group prefix filtering functionality
-- Fixed context leak in worker pool: properly handle context.WithCancel() return values
-- Removed unused cancel field from Worker struct to eliminate linter warnings
-- Fixed worker pool scaling tests to properly reflect business logic
-- Corrected GetStats() method to return accurate current worker count
+- **Deadlock Resolution** in worker pool statistics update
+  - Fixed race condition in `updateStats` method causing test hangs
+  - Removed deferred call holding locks during job processing
+  - Improved thread safety in worker pool operations
+- **Test Stability Improvements**
+  - Fixed timing issues in delayed queue tests with proper sleep intervals
+  - Resolved race conditions in worker pool scaling tests
+  - Added proper error handling for unchecked return values
+  - Improved test synchronization and reliability
+- **Configuration Validation**
+  - Enhanced configuration loading with proper error handling
+  - Added validation for new configuration parameters
+  - Improved default value handling and fallback mechanisms
+  - Fixed environment variable parsing for new options
 
 ### Changed
-- Worker pool now starts with minimum workers instead of fixed pool size
-- Improved worker pool performance through adaptive scaling
+- **Worker Pool Architecture** completely redesigned for better performance
+  - Replaced simple worker pool with priority-based system
+  - Added middleware support for extensible job processing
+  - Implemented delayed job scheduling for time-sensitive operations
+  - Enhanced resource management with auto-detection capabilities
+- **Configuration Structure** reorganized for better maintainability
+  - Grouped related configuration parameters logically
+  - Added comprehensive documentation for all new options
+  - Improved default value handling and validation
+  - Enhanced environment variable support for new features
+- **Performance Optimizations**
+  - Reduced scheduler interval to 5ms for faster job processing
+  - Optimized memory usage with configurable limits
+  - Improved thread safety and concurrency handling
+  - Enhanced error recovery and retry mechanisms
 
 ### Technical
-- Added thread-safe scaling operations with proper mutex protection
-- Implemented periodic queue monitoring with configurable intervals
-- Enhanced structured logging for scaling events
+- **New Async Package** with comprehensive job processing capabilities
+  - `PriorityQueue` for priority-based job ordering
+  - `DelayedQueue` for time-delayed job execution
+  - `PriorityWorkerPool` with middleware support
+  - `Middleware` interfaces for extensible processing
+- **Resource Management** with intelligent auto-detection
+  - CPU count detection for optimal worker allocation
+  - Memory limit detection from container environments
+  - Configurable resource limits and safeguards
+  - Automatic fallback to reasonable defaults
+- **Enhanced Logging and Monitoring**
+  - Structured logging for all async operations
+  - Detailed metrics for queue and worker performance
+  - Health check integration for monitoring systems
+  - Comprehensive error reporting and debugging information
 
 ## [0.1.3] - 2025-07-17
 

@@ -10,4 +10,6 @@ var (
 	ErrWorkerPoolStopped = errors.New("worker pool is stopped")
 	// ErrJobTimeout is returned when a job processing times out
 	ErrJobTimeout = errors.New("job processing timeout")
+	// ErrNoJobsAvailable is returned when no jobs are available in the queue
+	ErrNoJobsAvailable = errors.New("no jobs available")
 )

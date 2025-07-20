@@ -28,7 +28,7 @@ const (
 // DefaultMaxWorkerMultiplier is the default multiplier for max workers if not set
 const DefaultMaxWorkerMultiplier = 2
 
-// WebhookJob represents a webhook processing job
+// WebhookJob represents a webhook processing job (legacy)
 type WebhookJob struct {
 	Event     *webhook.Event
 	Handler   webhook.EventHandler
