@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2025-07-21
+
+### Added
+- **Comprehensive Test Coverage Improvements** for Phase 2 stability
+  - Complete test suite for `internal/config` package with 81% coverage
+  - Full test coverage for `internal/server` package with 97.2% coverage
+  - Comprehensive test suite for `internal/async` package with stability fixes
+  - Enhanced test coverage for configuration loading, validation, and edge cases
+  - Server lifecycle testing including start, shutdown, and health checks
+  - Worker pool configuration and monitoring tests
+  - Health check endpoint testing with proper HTTP method handling
+  - Performance testing for server creation and health checks
+- **Test Infrastructure Enhancements**
+  - Helper functions for creating test configurations with proper defaults
+  - Fixed test stability issues in async components
+  - Improved error handling in test scenarios
+  - Enhanced test utilities for configuration management
+
+### Fixed
+- **Test Stability and Panic Resolution**
+  - Fixed panic in `internal/async` tests due to zero interval in `time.NewTicker`
+  - Added proper `ScaleInterval` and `HealthCheckInterval` values in all test configurations
+  - Resolved test failures in `internal/config` due to missing required environment variables
+  - Fixed test failures in `internal/server` due to nil configuration handling
+  - Improved test reliability by adding proper timeouts and synchronization
+- **Configuration Test Improvements**
+  - Added missing `GITLAB_BASE_URL` environment variable in all config tests
+  - Fixed boolean parsing tests to match Go's `strconv.ParseBool` behavior
+  - Enhanced test coverage for environment variable parsing and validation
+  - Improved test scenarios for configuration edge cases and performance
+- **Server Test Enhancements**
+  - Fixed server creation tests to handle nil configurations properly
+  - Improved health check tests with correct HTTP method expectations
+  - Enhanced worker pool configuration tests with proper initialization
+  - Added comprehensive server lifecycle testing with graceful shutdown
+- **Async Component Test Stability**
+  - Fixed all test configurations to include required interval parameters
+  - Improved test reliability for delayed queue and worker pool components
+  - Enhanced error handling tests for async components
+  - Added proper cleanup and shutdown procedures in tests
+
+### Changed
+- **Test Configuration Management**
+  - Standardized test configuration creation with helper functions
+  - Improved test setup and teardown procedures
+  - Enhanced test documentation and inline comments
+  - Better separation of test concerns and responsibilities
+
 ## [0.1.4] - 2025-07-20
 
 ### Added

@@ -22,12 +22,14 @@ import (
 
 // Handler handles GitLab webhook requests
 type Handler struct {
-	config     *config.Config
-	logger     *slog.Logger
-	jira       JiraClient
-	parser     *Parser
-	monitor    *monitoring.WebhookMonitor
-	workerPool webhook.WorkerPoolInterface
+	config         *config.Config
+	logger         *slog.Logger
+	jira           JiraClient
+	parser         *Parser
+	monitor        *monitoring.WebhookMonitor
+	workerPool     webhook.WorkerPoolInterface
+	eventProcessor *EventProcessor
+	urlBuilder     *URLBuilder
 }
 
 // JiraClient defines the interface for Jira client operations
@@ -39,13 +41,19 @@ type JiraClient interface {
 
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
+	urlBuilder := NewURLBuilder(cfg)
+	jiraClient := jira.NewClient(cfg)
+	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, logger)
+
 	return &Handler{
-		config:     cfg,
-		logger:     logger,
-		jira:       jira.NewClient(cfg),
-		parser:     NewParser(),
-		monitor:    nil, // Will be set by server
-		workerPool: nil, // Will be set by server
+		config:         cfg,
+		logger:         logger,
+		jira:           jiraClient,
+		parser:         NewParser(),
+		monitor:        nil, // Will be set by server
+		workerPool:     nil, // Will be set by server
+		eventProcessor: eventProcessor,
+		urlBuilder:     urlBuilder,
 	}
 }
 
@@ -117,26 +125,25 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Convert to interface event
 	interfaceEvent := h.convertToInterfaceEvent(event)
 
-	// Submit job for async processing if worker pool is available
-	if h.workerPool != nil {
-		if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
-			h.logger.Error("Failed to submit job to worker pool", "error", err, "eventType", event.Type)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		h.logger.Info("Job submitted for async processing", "eventType", event.Type)
-	} else {
-		// Fallback to synchronous processing
-		if err := h.processEvent(event); err != nil {
-			h.logger.Error("Failed to process event", "error", err, "eventType", event.Type)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
+	// Always submit job for async processing - no fallback to synchronous processing
+	if h.workerPool == nil {
+		h.logger.Error("Worker pool not available - cannot process webhook asynchronously")
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
 	}
 
-	// Return success
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+	// Submit job for async processing
+	if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
+		h.logger.Error("Failed to submit job to worker pool", "error", err, "eventType", event.Type)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("Job submitted for async processing", "eventType", event.Type)
+
+	// Return success immediately - processing will happen asynchronously
+	w.WriteHeader(http.StatusAccepted)
+	if _, err := w.Write([]byte(`{"status":"accepted","message":"webhook queued for processing"}`)); err != nil {
 		h.logger.Error("Failed to write response", "error", err)
 		return
 	}
@@ -223,20 +230,60 @@ func (h *Handler) processEvent(event *Event) error {
 
 // ProcessEventAsync processes the webhook event asynchronously with context (webhook.Event)
 func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) error {
+	// Check context cancellation
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 		// Continue processing
 	}
+
 	if event == nil {
 		return nil
 	}
-	// Преобразуем обратно в *Event для существующей логики
+
+	// Log start of async processing
+	h.logger.Info("Starting async event processing",
+		"eventType", event.Type,
+		"eventName", event.EventName,
+		"project", getProjectName(event),
+		"user", getUserName(event))
+
+	// Convert to internal Event type for processing
+	orig, err := h.convertFromInterfaceEvent(event)
+	if err != nil {
+		h.logger.Error("Failed to convert interface event", "error", err, "eventType", event.Type)
+		return err
+	}
+
+	// Process the event with context
+	err = h.processEventWithContext(ctx, orig)
+	if err != nil {
+		h.logger.Error("Failed to process event asynchronously",
+			"error", err,
+			"eventType", event.Type,
+			"project", getProjectName(event))
+		return err
+	}
+
+	h.logger.Info("Completed async event processing",
+		"eventType", event.Type,
+		"project", getProjectName(event))
+
+	return nil
+}
+
+// convertFromInterfaceEvent converts webhook.Event back to internal Event type
+func (h *Handler) convertFromInterfaceEvent(event *webhook.Event) (*Event, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is nil")
+	}
+
 	orig := &Event{
 		Type:      event.Type,
 		EventName: event.EventName,
 	}
+
 	if event.Project != nil {
 		orig.Project = &Project{
 			ID:                event.Project.ID,
@@ -245,6 +292,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			WebURL:            event.Project.WebURL,
 		}
 	}
+
 	if event.Group != nil {
 		orig.Group = &Group{
 			ID:       event.Group.ID,
@@ -252,6 +300,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			FullPath: event.Group.FullPath,
 		}
 	}
+
 	if event.User != nil {
 		orig.User = &User{
 			ID:       event.User.ID,
@@ -260,6 +309,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			Email:    event.User.Email,
 		}
 	}
+
 	if event.Commits != nil {
 		for _, c := range event.Commits {
 			orig.Commits = append(orig.Commits, Commit{
@@ -274,6 +324,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			})
 		}
 	}
+
 	if event.ObjectAttributes != nil {
 		orig.ObjectAttributes = &ObjectAttributes{
 			ID:          event.ObjectAttributes.ID,
@@ -291,7 +342,47 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			Priority:    event.ObjectAttributes.Priority,
 		}
 	}
-	return h.processEvent(orig)
+
+	return orig, nil
+}
+
+// processEventWithContext processes an event with context support
+func (h *Handler) processEventWithContext(ctx context.Context, event *Event) error {
+	// Check context cancellation before processing
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Use the event processor to handle the event
+	err := h.eventProcessor.ProcessEvent(ctx, event)
+	if err != nil {
+		// Check context cancellation after processing
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Helper functions for logging
+func getProjectName(event *webhook.Event) string {
+	if event.Project != nil {
+		return event.Project.Name
+	}
+	return "unknown"
+}
+
+func getUserName(event *webhook.Event) string {
+	if event.User != nil {
+		return event.User.Username
+	}
+	return "unknown"
 }
 
 // processPushEvent processes push events

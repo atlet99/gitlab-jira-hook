@@ -196,7 +196,7 @@ func TestPriorityWorkerPool(t *testing.T) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

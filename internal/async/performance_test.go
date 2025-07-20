@@ -25,7 +25,7 @@ func BenchmarkPriorityQueue(b *testing.B) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	decider := &DefaultPriorityDecider{}
@@ -75,7 +75,7 @@ func BenchmarkDelayedQueue(b *testing.B) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -110,7 +110,8 @@ func BenchmarkPriorityWorkerPool(b *testing.B) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
+		ScaleInterval:       1,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -166,7 +167,7 @@ func BenchmarkConcurrentOperations(b *testing.B) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -213,7 +214,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

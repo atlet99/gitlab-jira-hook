@@ -488,7 +488,12 @@ func NewHealthChecker(cfg *config.Config, queue *PriorityQueue) *HealthChecker {
 
 // Start starts the health checker
 func (hc *HealthChecker) Start() {
-	hc.ticker = time.NewTicker(time.Duration(hc.config.HealthCheckInterval) * time.Second)
+	// Use default interval if HealthCheckInterval is 0 or negative
+	interval := hc.config.HealthCheckInterval
+	if interval <= 0 {
+		interval = 30 // Default to 30 seconds
+	}
+	hc.ticker = time.NewTicker(time.Duration(interval) * time.Second)
 
 	hc.wg.Add(1)
 	go func() {

@@ -62,11 +62,12 @@ func TestWorkerPoolScaling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				MinWorkers:         tt.minWorkers,
-				MaxWorkers:         tt.maxWorkers,
-				ScaleUpThreshold:   tt.scaleUpThresh,
-				ScaleDownThreshold: tt.scaleDownThresh,
-				ScaleInterval:      1,
+				MinWorkers:          tt.minWorkers,
+				MaxWorkers:          tt.maxWorkers,
+				ScaleUpThreshold:    tt.scaleUpThresh,
+				ScaleDownThreshold:  tt.scaleDownThresh,
+				ScaleInterval:       1,
+				HealthCheckInterval: 5,
 			}
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -118,11 +119,12 @@ func TestWorkerPoolScaling(t *testing.T) {
 
 func TestWorkerPoolMetrics(t *testing.T) {
 	cfg := &config.Config{
-		MinWorkers:         2,
-		MaxWorkers:         10,
-		ScaleUpThreshold:   5,
-		ScaleDownThreshold: 2,
-		ScaleInterval:      1,
+		MinWorkers:          2,
+		MaxWorkers:          10,
+		ScaleUpThreshold:    5,
+		ScaleDownThreshold:  2,
+		ScaleInterval:       1,
+		HealthCheckInterval: 5,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -164,11 +166,12 @@ func TestWorkerPoolMetrics(t *testing.T) {
 
 func TestWorkerPoolScalingMonitor(t *testing.T) {
 	cfg := &config.Config{
-		MinWorkers:         2,
-		MaxWorkers:         5,
-		ScaleUpThreshold:   3,
-		ScaleDownThreshold: 1,
-		ScaleInterval:      1,
+		MinWorkers:          2,
+		MaxWorkers:          5,
+		ScaleUpThreshold:    3,
+		ScaleDownThreshold:  1,
+		ScaleInterval:       1,
+		HealthCheckInterval: 5,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 

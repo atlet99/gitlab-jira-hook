@@ -29,6 +29,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 
@@ -95,6 +96,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 
@@ -151,6 +153,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 
@@ -199,6 +202,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 
@@ -251,6 +255,7 @@ func TestResourceEfficiency(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 
@@ -296,6 +301,7 @@ func TestResourceEfficiency(t *testing.T) {
 			BackoffMultiplier:   2.0,
 			MaxBackoffMs:        1000,
 			MetricsEnabled:      true,
+			ScaleInterval:       1,
 			HealthCheckInterval: 5,
 		}
 

@@ -20,7 +20,8 @@ type Server struct {
 	config     *config.Config
 	logger     *slog.Logger
 	monitor    *monitoring.WebhookMonitor
-	workerPool *async.WorkerPool
+	workerPool *async.PriorityWorkerPool
+	adapter    *async.WorkerPoolAdapter
 }
 
 // New creates a new HTTP server
@@ -37,12 +38,15 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	gitlabHandler.SetMonitor(webhookMonitor)
 	projectHookHandler.SetMonitor(webhookMonitor)
 
-	// Create worker pool for async processing
-	workerPool := async.NewWorkerPool(cfg, logger, webhookMonitor)
+	// Create priority worker pool for async processing
+	workerPool := async.NewPriorityWorkerPool(cfg, logger, webhookMonitor, nil)
 
-	// Set worker pool in handlers
-	gitlabHandler.SetWorkerPool(workerPool)
-	projectHookHandler.SetWorkerPool(workerPool)
+	// Create adapter for compatibility with webhook.WorkerPoolInterface
+	adapter := async.NewWorkerPoolAdapter(workerPool)
+
+	// Set worker pool in handlers using adapter
+	gitlabHandler.SetWorkerPool(adapter)
+	projectHookHandler.SetWorkerPool(adapter)
 
 	// Create monitoring handler
 	monitoringHandler := monitoring.NewHandler(webhookMonitor, logger)
@@ -76,6 +80,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		logger:     logger,
 		monitor:    webhookMonitor,
 		workerPool: workerPool,
+		adapter:    adapter,
 	}
 }
 

@@ -14,6 +14,59 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
+// waitForJob waits for a job to be available in the queue with timeout
+func waitForJob(t *testing.T, queue *PriorityQueue, timeout time.Duration) *Job {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if job, err := queue.GetJob(); err == nil {
+			return job
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timeout waiting for job")
+	return nil
+}
+
+// waitForJobCount waits for a specific number of jobs to be available
+func waitForJobCount(t *testing.T, queue *PriorityQueue, expectedCount int, timeout time.Duration) []*Job {
+	deadline := time.Now().Add(timeout)
+	jobs := make([]*Job, 0, expectedCount)
+
+	for time.Now().Before(deadline) {
+		if job, err := queue.GetJob(); err == nil {
+			jobs = append(jobs, job)
+			if len(jobs) == expectedCount {
+				return jobs
+			}
+		} else {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	t.Fatalf("timeout waiting for %d jobs, got %d", expectedCount, len(jobs))
+	return jobs
+}
+
+// waitForStats waits for delayed queue stats to match expected values
+func waitForStats(t *testing.T, delayedQueue *DelayedQueue, expectedStats map[string]interface{}, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		stats := delayedQueue.GetStats()
+		matches := true
+		for key, expectedValue := range expectedStats {
+			if stats[key] != expectedValue {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timeout waiting for stats to match expected values")
+}
+
 func TestDelayedQueue(t *testing.T) {
 	cfg := &config.Config{
 		JobQueueSize:        100,
@@ -23,6 +76,7 @@ func TestDelayedQueue(t *testing.T) {
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
 		HealthCheckInterval: 30,
+		ScaleInterval:       1,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -45,13 +99,8 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Error(t, err) // Should return "no jobs available"
 		assert.Contains(t, err.Error(), "no jobs available")
 
-		// Wait for job to be ready and moved to main queue
-		// Use a longer sleep to ensure job is processed
-		time.Sleep(3 * time.Second)
-
-		// Job should now be in main queue
-		job, err := mainQueue.GetJob()
-		require.NoError(t, err)
+		// Wait for job to be ready and moved to main queue with proper timeout
+		job := waitForJob(t, mainQueue, 3*time.Second)
 		assert.Equal(t, event, job.Event)
 		assert.Equal(t, PriorityHigh, job.Priority)
 	})
@@ -74,22 +123,15 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for all jobs to be ready and moved to main queue
-		// Use a longer sleep to ensure all jobs are processed
-		time.Sleep(6 * time.Second)
-
-		// Get both jobs from main queue
-		job1, err := mainQueue.GetJob()
-		require.NoError(t, err)
-		job2, err := mainQueue.GetJob()
-		require.NoError(t, err)
+		jobs := waitForJobCount(t, mainQueue, 2, 3*time.Second)
 
 		// Check that both events are present (order may vary due to scheduling)
-		eventTypes := []string{job1.Event.Type, job2.Event.Type}
+		eventTypes := []string{jobs[0].Event.Type, jobs[1].Event.Type}
 		assert.Contains(t, eventTypes, "push")
 		assert.Contains(t, eventTypes, "merge_request")
 
 		// Check that one job has high priority
-		priorities := []JobPriority{job1.Priority, job2.Priority}
+		priorities := []JobPriority{jobs[0].Priority, jobs[1].Priority}
 		assert.Contains(t, priorities, PriorityHigh)
 	})
 
@@ -115,18 +157,16 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Equal(t, 0, stats["ready_jobs"])
 
 		// Wait for job to be ready and moved to main queue
-		// Use a longer sleep to ensure job is processed
-		time.Sleep(3 * time.Second)
+		job := waitForJob(t, mainQueue, 3*time.Second)
+		assert.Equal(t, event, job.Event)
+
+		// Give some time for stats to update
+		time.Sleep(10 * time.Millisecond)
 
 		// Check stats after job is moved - should be empty or processing
 		stats = delayedQueue.GetStats()
 		// Just verify that job is being processed
 		assert.LessOrEqual(t, stats["total_delayed_jobs"].(int), 1)
-
-		// Verify job is in main queue
-		job, err := mainQueue.GetJob()
-		require.NoError(t, err)
-		assert.Equal(t, event, job.Event)
 	})
 
 	t.Run("delayed job with priority decider", func(t *testing.T) {
@@ -145,12 +185,7 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for job to be ready and moved to main queue
-		// Use a longer sleep to ensure job is processed
-		time.Sleep(3 * time.Second)
-
-		// Job should have high priority (from decider)
-		job, err := mainQueue.GetJob()
-		require.NoError(t, err)
+		job := waitForJob(t, mainQueue, 3*time.Second)
 		assert.Equal(t, PriorityHigh, job.Priority)
 	})
 
@@ -189,6 +224,7 @@ func TestPriorityWorkerPoolWithDelayedJobs(t *testing.T) {
 		MaxBackoffMs:        200,
 		MetricsEnabled:      false,
 		HealthCheckInterval: 5,
+		ScaleInterval:       1,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -206,8 +242,15 @@ func TestPriorityWorkerPoolWithDelayedJobs(t *testing.T) {
 		err := pool.SubmitDelayedJob(event, handler, 100*time.Millisecond, PriorityHigh)
 		assert.NoError(t, err)
 
-		// Wait for processing
-		time.Sleep(200 * time.Millisecond)
+		// Wait for processing with proper timeout
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			stats := pool.GetStats()
+			if stats.TotalJobsProcessed > 0 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 
 		// Check stats
 		stats := pool.GetStats()
@@ -230,8 +273,15 @@ func TestPriorityWorkerPoolWithDelayedJobs(t *testing.T) {
 		delayedStats := pool.GetDelayedQueueStats()
 		assert.Equal(t, 1, delayedStats["total_delayed_jobs"])
 
-		// Wait for job to be processed
-		time.Sleep(250 * time.Millisecond)
+		// Wait for job to be processed with proper timeout
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			delayedStats = pool.GetDelayedQueueStats()
+			if delayedStats["total_delayed_jobs"] == 0 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 
 		// Check delayed queue stats again
 		delayedStats = pool.GetDelayedQueueStats()
