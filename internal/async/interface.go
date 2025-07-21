@@ -11,7 +11,12 @@ import (
 // WorkerPoolInterface defines the interface for worker pool operations
 type WorkerPoolInterface interface {
 	SubmitJob(event *webhook.Event, handler webhook.EventHandler) error
-	SubmitDelayedJob(event *webhook.Event, handler webhook.EventHandler, delay time.Duration, priority ...JobPriority) error
+	SubmitDelayedJob(
+		event *webhook.Event,
+		handler webhook.EventHandler,
+		delay time.Duration,
+		priority ...JobPriority,
+	) error
 	GetStats() webhook.PoolStats
 	GetDelayedQueueStats() map[string]interface{}
 	GetPendingDelayedJobs() []*DelayedJob
@@ -59,7 +64,12 @@ type PriorityQueueInterface interface {
 
 // DelayedQueueInterface defines the interface for delayed job queue operations
 type DelayedQueueInterface interface {
-	SubmitDelayedJob(event *webhook.Event, handler webhook.EventHandler, delay time.Duration, priority ...JobPriority) error
+	SubmitDelayedJob(
+		event *webhook.Event,
+		handler webhook.EventHandler,
+		delay time.Duration,
+		priority ...JobPriority,
+	) error
 	GetStats() map[string]interface{}
 	GetPendingJobs() []*DelayedJob
 	Shutdown()

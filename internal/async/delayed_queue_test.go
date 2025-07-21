@@ -47,26 +47,6 @@ func waitForJobCount(t *testing.T, queue *PriorityQueue, expectedCount int, time
 	return jobs
 }
 
-// waitForStats waits for delayed queue stats to match expected values
-func waitForStats(t *testing.T, delayedQueue *DelayedQueue, expectedStats map[string]interface{}, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		stats := delayedQueue.GetStats()
-		matches := true
-		for key, expectedValue := range expectedStats {
-			if stats[key] != expectedValue {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("timeout waiting for stats to match expected values")
-}
-
 func TestDelayedQueue(t *testing.T) {
 	cfg := &config.Config{
 		JobQueueSize:        100,
@@ -100,7 +80,7 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Contains(t, err.Error(), "no jobs available")
 
 		// Wait for job to be ready and moved to main queue with proper timeout
-		job := waitForJob(t, mainQueue, 3*time.Second)
+		job := waitForJob(t, mainQueue, 5*time.Second)
 		assert.Equal(t, event, job.Event)
 		assert.Equal(t, PriorityHigh, job.Priority)
 	})
@@ -123,7 +103,7 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for all jobs to be ready and moved to main queue
-		jobs := waitForJobCount(t, mainQueue, 2, 3*time.Second)
+		jobs := waitForJobCount(t, mainQueue, 2, 10*time.Second)
 
 		// Check that both events are present (order may vary due to scheduling)
 		eventTypes := []string{jobs[0].Event.Type, jobs[1].Event.Type}

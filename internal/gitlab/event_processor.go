@@ -69,7 +69,7 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 
 // processPushEvent processes push events
 func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) error {
-	if event.Commits == nil || len(event.Commits) == 0 {
+	if len(event.Commits) == 0 {
 		ep.logger.Info("No commits in push event")
 		return nil
 	}

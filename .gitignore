@@ -38,7 +38,8 @@ Thumbs.db
 *.log
 
 # Coverage reports
-coverage.html
+coverage.*
+*.html
 
 # Temporary files
 *.tmp

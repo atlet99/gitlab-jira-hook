@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAsyncError(t *testing.T) {
+func TestError(t *testing.T) {
 	t.Run("basic async error", func(t *testing.T) {
-		err := NewAsyncError("TEST_ERROR", "test message", nil)
+		err := NewError("TEST_ERROR", "test message", nil)
 		assert.Equal(t, "TEST_ERROR: test message", err.Error())
 		assert.Equal(t, "TEST_ERROR", err.Code)
 		assert.Equal(t, "test message", err.Message)
@@ -19,14 +19,14 @@ func TestAsyncError(t *testing.T) {
 
 	t.Run("async error with wrapped error", func(t *testing.T) {
 		originalErr := errors.New("original error")
-		err := NewAsyncError("TEST_ERROR", "test message", originalErr)
+		err := NewError("TEST_ERROR", "test message", originalErr)
 		assert.Equal(t, "TEST_ERROR: test message - original error", err.Error())
 		assert.Equal(t, originalErr, err.Unwrap())
 	})
 
 	t.Run("async error with context", func(t *testing.T) {
-		err := NewAsyncError("TEST_ERROR", "test message", nil)
-		err.WithContext("key1", "value1").WithContext("key2", 42)
+		err := NewError("TEST_ERROR", "test message", nil)
+		_ = err.WithContext("key1", "value1").WithContext("key2", 42)
 
 		context := err.GetContext()
 		assert.Equal(t, "value1", context["key1"])
@@ -34,9 +34,9 @@ func TestAsyncError(t *testing.T) {
 	})
 
 	t.Run("async error comparison", func(t *testing.T) {
-		err1 := NewAsyncError("TEST_ERROR", "test message", nil)
-		err2 := NewAsyncError("TEST_ERROR", "different message", nil)
-		err3 := NewAsyncError("DIFFERENT_ERROR", "test message", nil)
+		err1 := NewError("TEST_ERROR", "test message", nil)
+		err2 := NewError("TEST_ERROR", "different message", nil)
+		err3 := NewError("DIFFERENT_ERROR", "test message", nil)
 
 		assert.True(t, err1.Is(err2))
 		assert.False(t, err1.Is(err3))
@@ -59,9 +59,9 @@ func TestJobError(t *testing.T) {
 
 	t.Run("job error with context", func(t *testing.T) {
 		jobErr := NewJobError("job-123", "push", PriorityHigh, 0, nil)
-		jobErr.WithContext("worker_id", 5).WithContext("duration", time.Second)
+		_ = jobErr.BaseError.WithContext("worker_id", 5).WithContext("duration", time.Second)
 
-		context := jobErr.GetContext()
+		context := jobErr.BaseError.GetContext()
 		assert.Equal(t, 5, context["worker_id"])
 		assert.Equal(t, time.Second, context["duration"])
 	})
@@ -244,7 +244,7 @@ func TestErrorTypeChecking(t *testing.T) {
 func TestErrorWrapping(t *testing.T) {
 	t.Run("wrap async error", func(t *testing.T) {
 		originalErr := errors.New("original error")
-		wrappedErr := WrapAsyncError(originalErr, "WRAPPED_ERROR", "wrapped message")
+		wrappedErr := WrapError(originalErr, "WRAPPED_ERROR", "wrapped message")
 
 		assert.Equal(t, "WRAPPED_ERROR: wrapped message - original error", wrappedErr.Error())
 		assert.Equal(t, originalErr, wrappedErr.Unwrap())
@@ -253,7 +253,7 @@ func TestErrorWrapping(t *testing.T) {
 	t.Run("error chain", func(t *testing.T) {
 		originalErr := errors.New("original error")
 		jobErr := NewJobError("job-123", "push", PriorityHigh, 0, originalErr)
-		wrappedErr := WrapAsyncError(jobErr, "WRAPPED_ERROR", "wrapped message")
+		wrappedErr := WrapError(jobErr, "WRAPPED_ERROR", "wrapped message")
 
 		assert.Equal(t, "WRAPPED_ERROR: wrapped message - JOB_ERROR: job processing failed - original error", wrappedErr.Error())
 		assert.Equal(t, jobErr, wrappedErr.Unwrap())
@@ -263,8 +263,8 @@ func TestErrorWrapping(t *testing.T) {
 
 func TestErrorContext(t *testing.T) {
 	t.Run("error with multiple context values", func(t *testing.T) {
-		err := NewAsyncError("TEST_ERROR", "test message", nil)
-		err.WithContext("string_key", "string_value").
+		err := NewError("TEST_ERROR", "test message", nil)
+		_ = err.WithContext("string_key", "string_value").
 			WithContext("int_key", 42).
 			WithContext("bool_key", true).
 			WithContext("float_key", 3.14)
@@ -277,8 +277,8 @@ func TestErrorContext(t *testing.T) {
 	})
 
 	t.Run("error context overwrite", func(t *testing.T) {
-		err := NewAsyncError("TEST_ERROR", "test message", nil)
-		err.WithContext("key", "value1").WithContext("key", "value2")
+		err := NewError("TEST_ERROR", "test message", nil)
+		_ = err.WithContext("key", "value1").WithContext("key", "value2")
 
 		context := err.GetContext()
 		assert.Equal(t, "value2", context["key"])
@@ -292,7 +292,7 @@ func TestErrorIntegration(t *testing.T) {
 		timeoutErr := NewTimeoutError("http_request", 30*time.Second, time.Now(), originalErr)
 		retryableErr := NewRetryableError(timeoutErr, 3, 2, 5*time.Second, true)
 		jobErr := NewJobError("job-456", "merge_request", PriorityHigh, 2, retryableErr)
-		finalErr := WrapAsyncError(jobErr, "WEBHOOK_ERROR", "webhook processing failed")
+		finalErr := WrapError(jobErr, "WEBHOOK_ERROR", "webhook processing failed")
 
 		// Test error chain
 		assert.Contains(t, finalErr.Error(), "WEBHOOK_ERROR")

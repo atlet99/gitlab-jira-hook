@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// JiraClientInterface defines the interface for Jira client operations
-type JiraClientInterface interface {
+// ClientInterface defines the interface for Jira client operations
+type ClientInterface interface {
 	// Comment operations
 	AddComment(issueID string, payload CommentPayload) error
 	AddCommentWithContext(ctx context.Context, issueID string, payload CommentPayload) error
@@ -258,7 +258,7 @@ type Config struct {
 	CustomFields map[string]string `json:"custom_fields"`
 }
 
-// Event types for webhook processing
+// PushEvent represents a push event from GitLab
 type PushEvent struct {
 	Project    string    `json:"project"`
 	Repository string    `json:"repository"`
@@ -268,6 +268,7 @@ type PushEvent struct {
 	Timestamp  time.Time `json:"timestamp"`
 }
 
+// MergeRequestEvent represents a merge request event from GitLab
 type MergeRequestEvent struct {
 	Project      string    `json:"project"`
 	Repository   string    `json:"repository"`
@@ -279,6 +280,7 @@ type MergeRequestEvent struct {
 	Timestamp    time.Time `json:"timestamp"`
 }
 
+// IssueEvent represents an issue event from GitLab
 type IssueEvent struct {
 	Project     string    `json:"project"`
 	IssueKey    string    `json:"issue_key"`
@@ -289,6 +291,7 @@ type IssueEvent struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
+// CommentEvent represents a comment event from GitLab
 type CommentEvent struct {
 	Project   string    `json:"project"`
 	IssueKey  string    `json:"issue_key"`
@@ -298,6 +301,7 @@ type CommentEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// Commit represents a Git commit
 type Commit struct {
 	ID        string    `json:"id"`
 	Message   string    `json:"message"`

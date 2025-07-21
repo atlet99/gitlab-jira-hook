@@ -73,6 +73,10 @@ func (rl *RateLimiter) Wait() {
 
 // NewClient creates a new Jira API client
 func NewClient(cfg *config.Config) *Client {
+	if cfg == nil {
+		return nil
+	}
+
 	// Create HTTP client with timeout
 	const clientTimeout = 30 * time.Second
 	httpClient := &http.Client{

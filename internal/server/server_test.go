@@ -9,9 +9,10 @@ import (
 
 	"log/slog"
 
-	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
 // createTestConfig creates a minimal test configuration

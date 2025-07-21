@@ -53,7 +53,12 @@ func (a *WorkerPoolAdapter) Stop() {
 }
 
 // SubmitDelayedJob submits a delayed job to the priority worker pool
-func (a *WorkerPoolAdapter) SubmitDelayedJob(event *webhook.Event, handler webhook.EventHandler, delay time.Duration, priority ...JobPriority) error {
+func (a *WorkerPoolAdapter) SubmitDelayedJob(
+	event *webhook.Event,
+	handler webhook.EventHandler,
+	delay time.Duration,
+	priority ...JobPriority,
+) error {
 	return a.pool.SubmitDelayedJob(event, handler, delay, priority...)
 }
 

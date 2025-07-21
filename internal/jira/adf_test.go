@@ -251,3 +251,394 @@ func containsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestGenerateCommitADFComment(t *testing.T) {
+	comment := GenerateCommitADFComment(
+		"abc123", "https://gitlab.com/test/project/commit/abc123",
+		"Test User", "test@example.com", "https://gitlab.com/test/user",
+		"Fix ABC-123 issue", "2024-01-01T12:00:00Z", "main", "https://gitlab.com/test/project/-/tree/main",
+		"https://gitlab.com/test/project", "+05:00",
+		[]string{"file1.txt"}, []string{"file2.txt"}, []string{},
+	)
+
+	// Marshal to JSON to check the structure
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"username: "`)
+	assert.Contains(t, jsonStr, `"text":"Test User"`)
+	assert.Contains(t, jsonStr, `"text":"commit: "`)
+	assert.Contains(t, jsonStr, `"text":"Fix ABC-123 issue"`)
+}
+
+func TestCreateCommitHeader(t *testing.T) {
+	header := createCommitHeader("abc123", "https://gitlab.com/test/project/commit/abc123")
+
+	jsonData, err := json.Marshal(header)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"type":"paragraph"`)
+	assert.Contains(t, jsonStr, `"text":"commit: "`)
+	assert.Contains(t, jsonStr, `"type":"strong"`)
+}
+
+func TestCreateCommitAuthor(t *testing.T) {
+	authorField := createCommitAuthor("Test User", "https://gitlab.com/test/user")
+
+	jsonData, err := json.Marshal(authorField)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"username: "`)
+	assert.Contains(t, jsonStr, `"text":"Test User"`)
+	assert.Contains(t, jsonStr, `"type":"strong"`)
+}
+
+func TestCreateCommitMessage(t *testing.T) {
+	message := "Fix ABC-123 issue with proper error handling"
+
+	commitContent, _ := createCommitMessage(message, "https://gitlab.com/test/project")
+
+	jsonData, err := json.Marshal(commitContent)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"commit: "`)
+	assert.Contains(t, jsonStr, `"text":"Fix ABC-123 issue with proper error handling"`)
+	assert.Contains(t, jsonStr, `"type":"strong"`)
+}
+
+func TestExtractMergeRequestLink(t *testing.T) {
+	tests := []struct {
+		name     string
+		message  string
+		expected string
+	}{
+		{
+			name:     "with merge request link",
+			message:  "Fix ABC-123\n\nSee merge request test/project!123",
+			expected: "https://gitlab.com/test/project/-/merge_requests/123",
+		},
+		{
+			name:     "without merge request link",
+			message:  "Fix ABC-123",
+			expected: "",
+		},
+		{
+			name:     "with multiple merge request links",
+			message:  "Fix ABC-123\n\nSee merge request test/project!123",
+			expected: "https://gitlab.com/test/project/-/merge_requests/123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractMergeRequestLink(tt.message, "https://gitlab.com/test/project")
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractMRID(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "valid MR ID",
+			input:    "test/project!123",
+			expected: "123",
+		},
+		{
+			name:     "invalid MR ID",
+			input:    "abc",
+			expected: "abc",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractMRID(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCreateCommitDate(t *testing.T) {
+	dateField := createCommitDate("2024-01-01T12:00:00Z", "+05:00")
+
+	jsonData, err := json.Marshal(dateField)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"date: "`)
+	assert.Contains(t, jsonStr, `"type":"strong"`)
+}
+
+func TestFormatDateGOST(t *testing.T) {
+	// This function should format date according to GOST 7.64-90
+	// We'll test that it returns a properly formatted string
+	formatted := formatDateGOST("2024-01-01T12:00:00Z")
+
+	// Should contain date in format DD.MM.YYYY HH:MM (without seconds)
+	assert.Regexp(t, `^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$`, formatted)
+}
+
+func TestHasFileChanges(t *testing.T) {
+	tests := []struct {
+		name     string
+		added    []string
+		modified []string
+		removed  []string
+		expected bool
+	}{
+		{
+			name:     "with changes",
+			added:    []string{"file1.txt"},
+			modified: []string{},
+			removed:  []string{},
+			expected: true,
+		},
+		{
+			name:     "without changes",
+			added:    []string{},
+			modified: []string{},
+			removed:  []string{},
+			expected: false,
+		},
+		{
+			name:     "with modified files",
+			added:    []string{},
+			modified: []string{"file2.txt"},
+			removed:  []string{},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasFileChanges(tt.added, tt.modified, tt.removed)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCreateCompactFileChangesSection(t *testing.T) {
+	added := []string{"file1.txt"}
+	modified := []string{"file2.txt"}
+	removed := []string{"file3.txt"}
+
+	section := createCompactFileChangesSection(added, modified, removed)
+
+	jsonData, err := json.Marshal(section)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"files: "`)
+	assert.Contains(t, jsonStr, `"text":"+1 ~1 -1"`)
+}
+
+func TestCreateDescriptionField(t *testing.T) {
+	description := "This is a test description"
+
+	field := createDescriptionField(description)
+
+	jsonData, err := json.Marshal(field)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"description: "`)
+	assert.Contains(t, jsonStr, `"text":"This is a test description"`)
+	assert.Contains(t, jsonStr, `"type":"strong"`)
+}
+
+func TestCreateSimpleADF(t *testing.T) {
+	content := CreateSimpleADF("Test message")
+
+	jsonData, err := json.Marshal(content)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"type":"doc"`)
+	assert.Contains(t, jsonStr, `"text":"Test message"`)
+}
+
+func TestCreateSimpleParagraph(t *testing.T) {
+	paragraph := createSimpleParagraph("Test paragraph")
+
+	jsonData, err := json.Marshal(paragraph)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"type":"paragraph"`)
+	assert.Contains(t, jsonStr, `"text":"Test paragraph"`)
+}
+
+func TestGenerateIssueADFComment(t *testing.T) {
+	comment := GenerateIssueADFComment(
+		"Test Issue", "https://gitlab.com/test/project/issues/123",
+		"test-project", "https://gitlab.com/test/project",
+		"open", "opened", "issue", "medium",
+		"Test User", "Test description", "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"issue: "`)
+	assert.Contains(t, jsonStr, `"text":"Test Issue"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGeneratePipelineADFComment(t *testing.T) {
+	comment := GeneratePipelineADFComment(
+		"main", "https://gitlab.com/test/project/pipelines/456",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "success", "abc123", "Test User", 120, "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"pipeline: "`)
+	assert.Contains(t, jsonStr, `"text":"success"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateBuildADFComment(t *testing.T) {
+	comment := GenerateBuildADFComment(
+		"test-build", "https://gitlab.com/test/project/builds/789",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "success", "test-stage", "main", "abc123", "Test User", 60, "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"build: "`)
+	assert.Contains(t, jsonStr, `"text":"success"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateSimpleADFComment(t *testing.T) {
+	comment := generateSimpleADFComment(
+		"Test Title", "https://gitlab.com/test/project",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "Test User", "Test content", "", "Test ADF Title",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"type":"doc"`)
+	assert.Contains(t, jsonStr, `"text":"Test content"`)
+}
+
+func TestGenerateNoteADFComment(t *testing.T) {
+	comment := GenerateNoteADFComment(
+		"Test Note", "https://gitlab.com/test/project/notes/101",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "Test User", "Test note content", "",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"comment: "`)
+	assert.Contains(t, jsonStr, `"text":"Test note content"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateFeatureFlagADFComment(t *testing.T) {
+	comment := GenerateFeatureFlagADFComment(
+		"test-feature", "https://gitlab.com/test/project/feature_flags/202",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "Test feature flag description", "Test User", "",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"feature flag: "`)
+	assert.Contains(t, jsonStr, `"text":"test-feature"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateWikiPageADFComment(t *testing.T) {
+	comment := GenerateWikiPageADFComment(
+		"Test Wiki Page", "https://gitlab.com/test/project/wikis/303",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "Test User", "Test content", "",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"wiki page: "`)
+	assert.Contains(t, jsonStr, `"text":"Test Wiki Page"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateTagPushADFComment(t *testing.T) {
+	comment := GenerateTagPushADFComment(
+		"v1.0.0", "https://gitlab.com/test/project/tags/v1.0.0",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "Test User", "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"tag: "`)
+	assert.Contains(t, jsonStr, `"text":"v1.0.0"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateReleaseADFComment(t *testing.T) {
+	comment := GenerateReleaseADFComment(
+		"Release v1.0.0", "https://gitlab.com/test/project/releases/404",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "v1.0.0", "Test release", "Test User", "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"release: "`)
+	assert.Contains(t, jsonStr, `"text":"Release v1.0.0"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
+
+func TestGenerateDeploymentADFComment(t *testing.T) {
+	comment := GenerateDeploymentADFComment(
+		"main", "https://gitlab.com/test/project/deployments/505",
+		"test-project", "https://gitlab.com/test/project",
+		"create", "production", "success", "abc123", "Test User", "+05:00",
+	)
+
+	jsonData, err := json.Marshal(comment)
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"text":"deployment: "`)
+	assert.Contains(t, jsonStr, `"text":"production"`)
+	assert.Contains(t, jsonStr, `"text":"success"`)
+	assert.Contains(t, jsonStr, `"text":"test-project"`)
+}
