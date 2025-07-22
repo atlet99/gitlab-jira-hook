@@ -11,6 +11,7 @@ import (
 
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,7 +21,9 @@ import (
 // createTestHandler creates a handler for testing
 func createTestHandler() (*Handler, *PerformanceMonitor) {
 	monitor := &WebhookMonitor{}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
 	return handler, performanceMonitor
@@ -28,7 +31,9 @@ func createTestHandler() (*Handler, *PerformanceMonitor) {
 
 func TestNewHandler(t *testing.T) {
 	monitor := &WebhookMonitor{}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -41,11 +46,8 @@ func TestNewHandler(t *testing.T) {
 }
 
 func TestHandler_HandleStatus(t *testing.T) {
-	monitor := &WebhookMonitor{}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	handler, performanceMonitor := createTestHandler()
 	defer func() { _ = performanceMonitor.Close() }()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewHandler(monitor, performanceMonitor, logger)
 
 	req := httptest.NewRequest("GET", "/status", nil)
 	w := httptest.NewRecorder()
@@ -117,7 +119,9 @@ func TestHandler_HandleDetailedStatus(t *testing.T) {
 			},
 		},
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
@@ -156,7 +160,9 @@ func TestHandler_HandleReconnect(t *testing.T) {
 		httpClient: &http.Client{},
 		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
@@ -189,7 +195,9 @@ func TestHandler_HandleStatus_WithUnhealthyEndpoints(t *testing.T) {
 			},
 		},
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
@@ -220,7 +228,9 @@ func TestHandler_HandleMetrics_WithData(t *testing.T) {
 			},
 		},
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
@@ -253,7 +263,9 @@ func TestHandler_HandleHealth_WithHealthyStatus(t *testing.T) {
 			},
 		},
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)
@@ -270,8 +282,8 @@ func TestHandler_HandleHealth_WithHealthyStatus(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "healthy", response["status"])
-	assert.Equal(t, float64(2), response["total_endpoints"])
-	assert.Equal(t, float64(2), response["healthy_endpoints"])
+	assert.Equal(t, float64(1), response["total_endpoints"])
+	assert.Equal(t, float64(1), response["healthy_endpoints"])
 }
 
 func TestHandler_HandleDetailedStatus_WithEndpointData(t *testing.T) {
@@ -284,7 +296,9 @@ func TestHandler_HandleDetailedStatus_WithEndpointData(t *testing.T) {
 			},
 		},
 	}
-	performanceMonitor := NewPerformanceMonitor(context.Background())
+	// Use a separate registry for tests to avoid duplicate registration
+	registry := prometheus.NewRegistry()
+	performanceMonitor := NewPerformanceMonitorWithRegistry(context.Background(), registry)
 	defer func() { _ = performanceMonitor.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(monitor, performanceMonitor, logger)

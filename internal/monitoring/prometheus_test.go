@@ -209,11 +209,9 @@ func TestPrometheusMetrics_StartStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	metrics := NewPrometheusMetrics(logger)
 
-	// Start metrics server in background
-	go func() {
-		err := metrics.Start("9091")
-		assert.NoError(t, err)
-	}()
+	// Start metrics server
+	err := metrics.Start("9091")
+	require.NoError(t, err)
 
 	// Wait a bit for server to start
 	time.Sleep(100 * time.Millisecond)

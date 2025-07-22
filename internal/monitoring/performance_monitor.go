@@ -184,6 +184,41 @@ func NewPerformanceMonitor(ctx context.Context) *PerformanceMonitor {
 	return pm
 }
 
+// NewPerformanceMonitorWithRegistry creates a new performance monitor instance with custom registry
+func NewPerformanceMonitorWithRegistry(ctx context.Context, registry prometheus.Registerer) *PerformanceMonitor {
+	ctx, cancel := context.WithCancel(ctx)
+
+	pm := &PerformanceMonitor{
+		startTime:             time.Now(),
+		lastMetricsUpdate:     time.Now(),
+		metricsUpdateInterval: defaultMetricsUpdateInterval,
+		targetResponseTime:    defaultTargetResponseTime,
+		targetThroughput:      defaultTargetThroughput,
+		targetErrorRate:       defaultTargetErrorRate,
+		targetMemoryUsage:     defaultTargetMemoryUsage,
+		maxConcurrentRequests: defaultMaxConcurrentRequests,
+		historyMaxSize:        defaultHistoryMaxSize,
+		ctx:                   ctx,
+		cancel:                cancel,
+		alertThresholds: &AlertThresholds{
+			ResponseTimeWarning:  defaultResponseTimeWarning,
+			ResponseTimeCritical: defaultResponseTimeCritical,
+			ErrorRateWarning:     defaultErrorRateWarning,
+			ErrorRateCritical:    defaultErrorRateCritical,
+			MemoryUsageWarning:   defaultMemoryUsageWarning,
+			MemoryUsageCritical:  defaultMemoryUsageCritical,
+			ThroughputWarning:    defaultThroughputWarning,
+			ThroughputCritical:   defaultThroughputCritical,
+		},
+	}
+
+	pm.initializeMetricsWithRegistry(registry)
+	go pm.metricsUpdateLoop()
+	go pm.memoryMonitoringLoop()
+
+	return pm
+}
+
 // initializeMetrics initializes Prometheus metrics
 func (pm *PerformanceMonitor) initializeMetrics() {
 	pm.responseTimeHistogram = promauto.NewHistogramVec(
@@ -276,6 +311,108 @@ func (pm *PerformanceMonitor) initializeMetrics() {
 	)
 
 	pm.gcFrequencyGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gc_frequency_per_second",
+			Help: "GC frequency per second",
+		},
+		[]string{},
+	)
+}
+
+// initializeMetricsWithRegistry initializes Prometheus metrics with custom registry
+func (pm *PerformanceMonitor) initializeMetricsWithRegistry(registry prometheus.Registerer) {
+	factory := promauto.With(registry)
+
+	pm.responseTimeHistogram = factory.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "response_time_seconds",
+			Help:    "Response time distribution",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"endpoint", "method", "status"},
+	)
+
+	pm.responseTimeCounter = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "response_time_total",
+			Help: "Total response time",
+		},
+		[]string{"endpoint", "method"},
+	)
+
+	pm.requestsPerSecond = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "requests_per_second",
+			Help: "Current requests per second",
+		},
+		[]string{"endpoint"},
+	)
+
+	pm.throughputCounter = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "requests_total",
+			Help: "Total requests processed",
+		},
+		[]string{"endpoint", "status"},
+	)
+
+	pm.errorRateGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "error_rate",
+			Help: "Current error rate percentage",
+		},
+		[]string{"endpoint"},
+	)
+
+	pm.errorCounter = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "errors_total",
+			Help: "Total errors",
+		},
+		[]string{"endpoint", "error_type"},
+	)
+
+	pm.memoryUsageGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "memory_usage_bytes",
+			Help: "Current memory usage in bytes",
+		},
+		[]string{"type"},
+	)
+
+	pm.memoryAllocGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "memory_alloc_bytes",
+			Help: "Memory allocated in bytes",
+		},
+		[]string{},
+	)
+
+	pm.memorySysGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "memory_sys_bytes",
+			Help: "System memory in bytes",
+		},
+		[]string{},
+	)
+
+	pm.goroutineGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "goroutines_total",
+			Help: "Number of goroutines",
+		},
+		[]string{},
+	)
+
+	pm.gcDurationGauge = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gc_duration_seconds",
+			Help: "GC duration in seconds",
+		},
+		[]string{},
+	)
+
+	pm.gcFrequencyGauge = factory.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "gc_frequency_per_second",
 			Help: "GC frequency per second",

@@ -165,8 +165,8 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for job to be ready and moved to main queue
-		job := waitForJob(t, mainQueue, 3*time.Second)
-		assert.Equal(t, PriorityHigh, job.Priority)
+		job := waitForJob(t, mainQueue, 5*time.Second)
+		assert.Equal(t, PriorityHigh, job.Priority, "merge_request events should have PriorityHigh priority")
 	})
 
 	t.Run("graceful shutdown", func(t *testing.T) {

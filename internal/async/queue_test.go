@@ -274,7 +274,7 @@ type mockEventHandler struct{}
 
 func (m *mockEventHandler) ProcessEventAsync(ctx context.Context, event *webhook.Event) error {
 	// Simulate some processing time
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	return nil
 }
 

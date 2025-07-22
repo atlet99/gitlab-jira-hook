@@ -30,6 +30,7 @@ type Handler struct {
 	workerPool     webhook.WorkerPoolInterface
 	eventProcessor *EventProcessor
 	urlBuilder     *URLBuilder
+	debugLogger    *DebugLogger
 }
 
 // JiraClient defines the interface for Jira client operations
@@ -44,6 +45,7 @@ func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
 	urlBuilder := NewURLBuilder(cfg)
 	jiraClient := jira.NewClient(cfg)
 	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, logger)
+	debugLogger := NewDebugLogger(logger)
 
 	return &Handler{
 		config:         cfg,
@@ -54,6 +56,7 @@ func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
 		workerPool:     nil, // Will be set by server
 		eventProcessor: eventProcessor,
 		urlBuilder:     urlBuilder,
+		debugLogger:    debugLogger,
 	}
 }
 
@@ -108,6 +111,11 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("Failed to parse webhook event", "error", err)
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
+	}
+
+	// Debug logging if enabled
+	if h.config.DebugMode {
+		h.debugLogger.LogWebhookRequest(r, body, event)
 	}
 
 	// Event filtering by project/group
