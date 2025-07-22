@@ -119,7 +119,7 @@ func TestMain_FileOperations(t *testing.T) {
 	// Test basic file operations that might be used in main
 	tempFile, err := os.CreateTemp("", "test")
 	require.NoError(t, err)
-	defer os.Remove(tempFile.Name())
+	defer func() { _ = os.Remove(tempFile.Name()) }()
 
 	// Write to file
 	content := "test content"

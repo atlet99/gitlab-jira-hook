@@ -579,10 +579,20 @@ func (chr *ConsistentHashRing) hash(key string) uint32 {
 		// Fallback to simple hash if write fails
 		// Use modulo to prevent integer overflow
 		keyLen := len(key)
-		if keyLen > maxUint32Value {
+		// Safe conversion: ensure keyLen is within uint32 bounds
+		if keyLen < 0 {
+			keyLen = 0
+		} else if keyLen > maxUint32Value {
 			keyLen = maxUint32Value
 		}
-		return uint32(keyLen & (maxUint32Value - 1))
+		// Now keyLen is guaranteed to be in [0, maxUint32Value] range
+		// Use explicit bounds checking to satisfy gosec
+		if keyLen > 0 && keyLen <= maxUint32Value {
+			// Use uint32 arithmetic to avoid int overflow
+			uKeyLen := uint32(keyLen)
+			return uKeyLen & (maxUint32Value - 1)
+		}
+		return 0
 	}
 	return h.Sum32()
 }

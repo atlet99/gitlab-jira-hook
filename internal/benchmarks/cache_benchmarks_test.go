@@ -60,7 +60,7 @@ func BenchmarkRateLimiterOnly(b *testing.B) {
 		ctx := req.Context()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			rateLimiter.AllowWithContext(ctx, req)
+			_ = rateLimiter.AllowWithContext(ctx, req)
 		}
 	})
 }

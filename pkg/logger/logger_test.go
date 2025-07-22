@@ -118,7 +118,7 @@ func TestNewLogger_LoggingFunctionality(t *testing.T) {
 	// Close pipe and read output
 	w.Close()
 	os.Stdout = originalStdout
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	// Parse JSON output
 	var logEntry map[string]interface{}
@@ -194,7 +194,7 @@ func TestNewLogger_StructuredLogging(t *testing.T) {
 	// Close pipe and read output
 	w.Close()
 	os.Stdout = originalStdout
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	// Parse JSON output
 	var logEntry map[string]interface{}
@@ -235,7 +235,7 @@ func TestNewLogger_ErrorLogging(t *testing.T) {
 	// Close pipe and read output
 	w.Close()
 	os.Stdout = originalStdout
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	// Parse JSON output
 	var logEntry map[string]interface{}

@@ -14,7 +14,6 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/cache"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/server"
-	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
 // BenchmarkCachePerformance benchmarks cache operations
@@ -68,7 +67,7 @@ func BenchmarkRateLimiter(b *testing.B) {
 		ctx := req.Context()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			rateLimiter.AllowWithContext(ctx, req)
+			_ = rateLimiter.AllowWithContext(ctx, req)
 		}
 	})
 }
@@ -209,13 +208,4 @@ func BenchmarkConcurrentRequests(b *testing.B) {
 			}
 		})
 	})
-}
-
-// mockEventHandler implements webhook.EventHandler for testing
-type mockEventHandler struct{}
-
-func (h *mockEventHandler) Handle(event *webhook.Event) error {
-	// Simulate some processing time
-	time.Sleep(1 * time.Millisecond)
-	return nil
 }

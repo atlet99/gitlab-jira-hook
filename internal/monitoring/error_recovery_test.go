@@ -359,8 +359,8 @@ func TestErrorRecoveryManager_GetAllStats(t *testing.T) {
 	manager.RegisterAction("error2", action2)
 
 	ctx := context.Background()
-	manager.Recover(ctx, "error1", errors.New("error1"))
-	manager.Recover(ctx, "error2", errors.New("error2"))
+	_ = manager.Recover(ctx, "error1", errors.New("error1"))
+	_ = manager.Recover(ctx, "error2", errors.New("error2"))
 
 	allStats := manager.GetAllStats()
 	assert.Len(t, allStats, 2)
@@ -385,7 +385,7 @@ func TestErrorRecoveryManager_ClearHistory(t *testing.T) {
 	manager.RegisterAction("clear_error", action)
 
 	ctx := context.Background()
-	manager.Recover(ctx, "clear_error", errors.New("initial error"))
+	_ = manager.Recover(ctx, "clear_error", errors.New("initial error"))
 
 	// Verify history exists
 	history := manager.GetRecoveryHistory("clear_error")
@@ -431,8 +431,8 @@ func TestErrorRecoveryManager_ClearAllHistory(t *testing.T) {
 	manager.RegisterAction("error2", action2)
 
 	ctx := context.Background()
-	manager.Recover(ctx, "error1", errors.New("error1"))
-	manager.Recover(ctx, "error2", errors.New("error2"))
+	_ = manager.Recover(ctx, "error1", errors.New("error1"))
+	_ = manager.Recover(ctx, "error2", errors.New("error2"))
 
 	// Verify history exists
 	history1 := manager.GetRecoveryHistory("error1")

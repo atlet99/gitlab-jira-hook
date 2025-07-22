@@ -31,13 +31,14 @@ const (
 // Server represents the main application server
 type Server struct {
 	*http.Server
-	config      *config.Config
-	logger      *slog.Logger
-	monitor     *monitoring.WebhookMonitor
-	workerPool  *async.PriorityWorkerPool
-	adapter     *async.WorkerPoolAdapter
-	rateLimiter *HTTPRateLimiter
-	cache       cache.Cache
+	config             *config.Config
+	logger             *slog.Logger
+	monitor            *monitoring.WebhookMonitor
+	performanceMonitor *monitoring.PerformanceMonitor
+	workerPool         *async.PriorityWorkerPool
+	adapter            *async.WorkerPoolAdapter
+	rateLimiter        *HTTPRateLimiter
+	cache              cache.Cache
 }
 
 // New creates a new server instance
@@ -64,8 +65,11 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	gitlabHandler.SetWorkerPool(adapter)
 	projectHookHandler.SetWorkerPool(adapter)
 
+	// Create performance monitor
+	performanceMonitor := monitoring.NewPerformanceMonitor(context.Background())
+
 	// Create monitoring handler
-	monitoringHandler := monitoring.NewHandler(webhookMonitor, logger)
+	monitoringHandler := monitoring.NewHandler(webhookMonitor, performanceMonitor, logger)
 
 	// Create rate limiter
 	rateLimiter := NewHTTPRateLimiter(&RateLimiterConfig{
@@ -81,10 +85,13 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create mux
 	mux := http.NewServeMux()
 
-	// Register routes with rate limiting
-	mux.Handle("/gitlab-hook", RateLimitMiddleware(rateLimiter)(http.HandlerFunc(gitlabHandler.HandleWebhook)))
+	// Register routes with rate limiting and performance monitoring
+	mux.Handle("/gitlab-hook",
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(gitlabHandler.HandleWebhook))))
 	mux.Handle("/gitlab-project-hook",
-		RateLimitMiddleware(rateLimiter)(http.HandlerFunc(projectHookHandler.HandleProjectHook)))
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(projectHookHandler.HandleProjectHook))))
 	mux.HandleFunc("/health", handleHealth)
 
 	// Register monitoring routes (no rate limiting for internal monitoring)
@@ -94,6 +101,12 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("/monitoring/detailed", monitoringHandler.HandleDetailedStatus)
 	mux.HandleFunc("/monitoring/reconnect", monitoringHandler.HandleReconnect)
 
+	// Register performance monitoring routes
+	mux.HandleFunc("/performance", monitoringHandler.HandlePerformance)
+	mux.HandleFunc("/performance/history", monitoringHandler.HandlePerformanceHistory)
+	mux.HandleFunc("/performance/targets", monitoringHandler.HandlePerformanceTargets)
+	mux.HandleFunc("/performance/reset", monitoringHandler.HandlePerformanceReset)
+
 	// Create server
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -102,14 +115,15 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	}
 
 	return &Server{
-		Server:      srv,
-		config:      cfg,
-		logger:      logger,
-		monitor:     webhookMonitor,
-		workerPool:  workerPool,
-		adapter:     adapter,
-		rateLimiter: rateLimiter,
-		cache:       appCache,
+		Server:             srv,
+		config:             cfg,
+		logger:             logger,
+		monitor:            webhookMonitor,
+		performanceMonitor: performanceMonitor,
+		workerPool:         workerPool,
+		adapter:            adapter,
+		rateLimiter:        rateLimiter,
+		cache:              appCache,
 	}
 }
 
@@ -129,6 +143,13 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	// Stop webhook monitoring
 	s.monitor.Stop()
+
+	// Stop performance monitoring
+	if s.performanceMonitor != nil {
+		if err := s.performanceMonitor.Close(); err != nil {
+			s.logger.Error("Failed to close performance monitor", "error", err)
+		}
+	}
 
 	// Stop worker pool
 	s.workerPool.Stop()
@@ -152,6 +173,11 @@ func (s *Server) GetCache() cache.Cache {
 // GetRateLimiter returns the rate limiter instance
 func (s *Server) GetRateLimiter() *HTTPRateLimiter {
 	return s.rateLimiter
+}
+
+// GetPerformanceMonitor returns the performance monitor instance
+func (s *Server) GetPerformanceMonitor() *monitoring.PerformanceMonitor {
+	return s.performanceMonitor
 }
 
 // handleHealth handles health check requests

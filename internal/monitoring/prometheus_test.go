@@ -41,7 +41,7 @@ func TestPrometheusMetrics_RecordHTTPRequest(t *testing.T) {
 
 	// Get the metric value
 	pb := &dto.Metric{}
-	metric.Write(pb)
+	_ = metric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 }
 
@@ -57,7 +57,7 @@ func TestPrometheusMetrics_RecordJobProcessing(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	metric.Write(pb)
+	_ = metric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 }
 
@@ -75,19 +75,19 @@ func TestPrometheusMetrics_RecordCacheOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	hitMetric.Write(pb)
+	_ = hitMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 
 	missMetric, err := metrics.cacheMissesTotal.GetMetricWithLabelValues("l1")
 	require.NoError(t, err)
 
-	missMetric.Write(pb)
+	_ = missMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 
 	sizeMetric, err := metrics.cacheSize.GetMetricWithLabelValues("l1")
 	require.NoError(t, err)
 
-	sizeMetric.Write(pb)
+	_ = sizeMetric.Write(pb)
 	assert.Equal(t, float64(100), pb.GetGauge().GetValue())
 }
 
@@ -104,13 +104,13 @@ func TestPrometheusMetrics_RecordRateLimiting(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	hitMetric.Write(pb)
+	_ = hitMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 
 	blockMetric, err := metrics.rateLimitBlocks.GetMetricWithLabelValues("/api", "192.168.1.1")
 	require.NoError(t, err)
 
-	blockMetric.Write(pb)
+	_ = blockMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 }
 
@@ -128,19 +128,19 @@ func TestPrometheusMetrics_RecordSystemMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	memoryMetric.Write(pb)
+	_ = memoryMetric.Write(pb)
 	assert.Equal(t, float64(1024*1024), pb.GetGauge().GetValue())
 
 	cpuMetric, err := metrics.systemCPUUsage.GetMetricWithLabelValues("cpu0")
 	require.NoError(t, err)
 
-	cpuMetric.Write(pb)
+	_ = cpuMetric.Write(pb)
 	assert.Equal(t, 50.5, pb.GetGauge().GetValue())
 
 	goroutinesMetric, err := metrics.systemGoroutines.GetMetricWithLabelValues()
 	require.NoError(t, err)
 
-	goroutinesMetric.Write(pb)
+	_ = goroutinesMetric.Write(pb)
 	assert.Equal(t, float64(100), pb.GetGauge().GetValue())
 }
 
@@ -158,19 +158,19 @@ func TestPrometheusMetrics_RecordAlerts(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	alertMetric.Write(pb)
+	_ = alertMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 
 	activeMetric, err := metrics.alertsActive.GetMetricWithLabelValues("warning")
 	require.NoError(t, err)
 
-	activeMetric.Write(pb)
+	_ = activeMetric.Write(pb)
 	assert.Equal(t, float64(5), pb.GetGauge().GetValue())
 
 	resolvedMetric, err := metrics.alertsResolved.GetMetricWithLabelValues("warning")
 	require.NoError(t, err)
 
-	resolvedMetric.Write(pb)
+	_ = resolvedMetric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 }
 
@@ -182,7 +182,7 @@ func TestPrometheusMiddleware(t *testing.T) {
 	// Create test handler
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	})
 
 	// Create test request
@@ -201,7 +201,7 @@ func TestPrometheusMiddleware(t *testing.T) {
 	require.NoError(t, err)
 
 	pb := &dto.Metric{}
-	metric.Write(pb)
+	_ = metric.Write(pb)
 	assert.Equal(t, float64(1), pb.GetCounter().GetValue())
 }
 
@@ -221,7 +221,7 @@ func TestPrometheusMetrics_StartStop(t *testing.T) {
 	// Test metrics endpoint
 	resp, err := http.Get("http://localhost:9091/metrics")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
