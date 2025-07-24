@@ -11,6 +11,13 @@ import (
 const (
 	// ReconnectWaitTime is the time to wait for reconnection check to complete
 	ReconnectWaitTime = 2 * time.Second
+
+	// StatusHealthy represents a healthy system status
+	StatusHealthy = "healthy"
+	// StatusUnhealthy represents an unhealthy system status
+	StatusUnhealthy = "unhealthy"
+	// StatusOK represents a successful operation status
+	StatusOK = "ok"
 )
 
 // Handler handles monitoring-related HTTP requests
@@ -42,7 +49,7 @@ func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
+		"status":    StatusOK,
 		"timestamp": time.Now().UTC(),
 		"endpoints": status,
 		"healthy":   h.monitor.IsHealthy(),
@@ -65,7 +72,7 @@ func (h *Handler) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
+		"status":    StatusOK,
 		"timestamp": time.Now().UTC(),
 		"metrics":   metrics,
 	}); err != nil {
@@ -86,11 +93,11 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	unhealthy := h.monitor.GetUnhealthyEndpoints()
 
 	// Determine overall health status
-	overallStatus := "healthy"
+	overallStatus := StatusHealthy
 	statusCode := http.StatusOK
 
 	if len(unhealthy) > 0 {
-		overallStatus = "unhealthy"
+		overallStatus = StatusUnhealthy
 		statusCode = http.StatusServiceUnavailable
 	}
 
@@ -139,7 +146,7 @@ func (h *Handler) HandleDetailedStatus(w http.ResponseWriter, r *http.Request) {
 	endpointMetrics, exists := metrics[endpoint]
 
 	response := map[string]interface{}{
-		"status":          "ok",
+		"status":          StatusOK,
 		"timestamp":       time.Now().UTC(),
 		"endpoint":        endpoint,
 		"endpoint_status": endpointStatus,
@@ -188,7 +195,7 @@ func (h *Handler) HandleReconnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"status":          "ok",
+		"status":          StatusOK,
 		"timestamp":       time.Now().UTC(),
 		"endpoint":        endpoint,
 		"endpoint_status": endpointStatus,
@@ -210,7 +217,7 @@ func (h *Handler) handlePerformanceResponse(w http.ResponseWriter, data interfac
 	w.WriteHeader(http.StatusOK)
 
 	response := map[string]interface{}{
-		"status":    "ok",
+		"status":    StatusOK,
 		"timestamp": time.Now().UTC(),
 		dataKey:     data,
 	}
@@ -288,7 +295,7 @@ func (h *Handler) HandlePerformanceTargets(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
+		"status":    StatusOK,
 		"timestamp": time.Now().UTC(),
 		"message":   "Performance targets updated successfully",
 	}); err != nil {
@@ -315,7 +322,7 @@ func (h *Handler) HandlePerformanceReset(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
+		"status":    StatusOK,
 		"timestamp": time.Now().UTC(),
 		"message":   "Performance counters reset successfully",
 	}); err != nil {

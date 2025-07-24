@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -713,29 +714,27 @@ func compressData(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decompressData decompresses data using gzip
+// decompressData decompresses data using gzip with size limit protection.
 func decompressData(data []byte) ([]byte, error) {
+	// 100 MB limit
+	const maxDecompressedSize int64 = 100 * 1024 * 1024
+
 	gr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create gzip reader: %w", err)
 	}
-	defer func() {
-		//nolint:errcheck // Close errors are cleanup errors and can be safely ignored
-		_ = gr.Close()
-	}()
 
-	// Limit the size of decompressed data to prevent DoS attacks
-	const maxDecompressedSize = 100 * 1024 * 1024 // 100MB limit
+	// close gzip.Reader, ignoring the error (logging is optional)
+	defer func() { _ = gr.Close() }()
+
 	var buf bytes.Buffer
 
-	// Use io.CopyN to limit the amount of data we read
-	_, err = io.Copy(&buf, io.LimitReader(gr, maxDecompressedSize))
-	if err != nil {
-		return nil, err
+	// read 1 byte more than the limit to check if the limit is exceeded
+	n, err := io.CopyN(&buf, gr, maxDecompressedSize+1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("copy decompressed data: %w", err)
 	}
-
-	// Check if we hit the limit (which would indicate a potential decompression bomb)
-	if buf.Len() >= maxDecompressedSize {
+	if n > maxDecompressedSize {
 		return nil, fmt.Errorf("decompressed data exceeds maximum allowed size of %d bytes", maxDecompressedSize)
 	}
 

@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolved all errcheck warnings for unhandled errors in defer statements
   - Fixed staticcheck warnings for inefficient select statements (S1000)
   - Improved error handling in gzip reader close operations
+- **Integration Test Stability and Linker Issues**
+  - Fixed `TestDelayedQueue/delayed_job_statistics` test failure due to unstable assertions
+  - Made delayed queue statistics test more robust with flexible assertions
+  - Resolved Go toolchain linker warnings (malformed LC_DYSYMTAB) by clearing cache
+  - Improved test stability for asynchronous operations in delayed queue
+  - Fixed race conditions in test assertions for concurrent operations
 - **Data Race and Concurrency Issues**
   - Fixed data race in hot reload configuration tests with proper mutex synchronization
   - Resolved race condition in `handlerCalled` boolean variable access
