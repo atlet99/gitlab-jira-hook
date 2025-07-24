@@ -147,7 +147,7 @@ func TestAdvancedMonitorAlerts(t *testing.T) {
 		monitor.RecordGauge("test_gauge", 10.0, nil)
 
 		// Wait for alert processing - need more time for the alert processor
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		alerts := monitor.GetActiveAlerts()
 		assert.GreaterOrEqual(t, len(alerts), 1)
@@ -170,7 +170,7 @@ func TestAdvancedMonitorAlerts(t *testing.T) {
 		monitor.RecordGauge("test_gauge", 3.0, nil)
 
 		// Wait for alert processing - need more time for the alert processor
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		alerts := monitor.GetActiveAlerts()
 		// The alert should be resolved now
@@ -281,7 +281,7 @@ func TestAdvancedMonitorExport(t *testing.T) {
 
 		// Trigger alert
 		monitor.RecordGauge("export_test", 50.0, nil)
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		export, err := monitor.ExportAlerts()
 		assert.NoError(t, err)
@@ -320,7 +320,7 @@ func TestAdvancedMonitorHealthStatus(t *testing.T) {
 		monitor.AddAlertRule(rule)
 		monitor.RecordGauge("warning_metric", 5.0, nil)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		status := monitor.GetHealthStatus()
 		assert.Equal(t, "warning", status["status"])
@@ -341,7 +341,7 @@ func TestAdvancedMonitorHealthStatus(t *testing.T) {
 		monitor.AddAlertRule(rule)
 		monitor.RecordGauge("critical_metric", 5.0, nil)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
 		status := monitor.GetHealthStatus()
 		assert.Equal(t, "critical", status["status"])

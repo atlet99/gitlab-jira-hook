@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/atlet99/gitlab-jira-hook/internal/async"
 	"github.com/atlet99/gitlab-jira-hook/internal/cache"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
@@ -67,6 +69,91 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 
 	// Create performance monitor
 	performanceMonitor := monitoring.NewPerformanceMonitor(context.Background())
+
+	// Create monitoring handler
+	monitoringHandler := monitoring.NewHandler(webhookMonitor, performanceMonitor, logger)
+
+	// Create rate limiter
+	rateLimiter := NewHTTPRateLimiter(&RateLimiterConfig{
+		DefaultRate:  serverDefaultRate,
+		DefaultBurst: serverDefaultBurst,
+		PerIP:        true,
+		PerEndpoint:  true,
+	})
+
+	// Create cache (multi-level for better performance)
+	appCache := cache.NewMultiLevelCache(cacheL1Size, cacheL2Size)
+
+	// Create mux
+	mux := http.NewServeMux()
+
+	// Register routes with rate limiting and performance monitoring
+	mux.Handle("/gitlab-hook",
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(gitlabHandler.HandleWebhook))))
+	mux.Handle("/gitlab-project-hook",
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(projectHookHandler.HandleProjectHook))))
+	mux.HandleFunc("/health", handleHealth)
+
+	// Register monitoring routes (no rate limiting for internal monitoring)
+	mux.HandleFunc("/monitoring/status", monitoringHandler.HandleStatus)
+	mux.HandleFunc("/monitoring/metrics", monitoringHandler.HandleMetrics)
+	mux.HandleFunc("/monitoring/health", monitoringHandler.HandleHealth)
+	mux.HandleFunc("/monitoring/detailed", monitoringHandler.HandleDetailedStatus)
+	mux.HandleFunc("/monitoring/reconnect", monitoringHandler.HandleReconnect)
+
+	// Register performance monitoring routes
+	mux.HandleFunc("/performance", monitoringHandler.HandlePerformance)
+	mux.HandleFunc("/performance/history", monitoringHandler.HandlePerformanceHistory)
+	mux.HandleFunc("/performance/targets", monitoringHandler.HandlePerformanceTargets)
+	mux.HandleFunc("/performance/reset", monitoringHandler.HandlePerformanceReset)
+
+	// Create server
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	return &Server{
+		Server:             srv,
+		config:             cfg,
+		logger:             logger,
+		monitor:            webhookMonitor,
+		performanceMonitor: performanceMonitor,
+		workerPool:         workerPool,
+		adapter:            adapter,
+		rateLimiter:        rateLimiter,
+		cache:              appCache,
+	}
+}
+
+// NewWithRegistry creates a new server with a custom Prometheus registry for testing
+func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheus.Registerer) *Server {
+	// Create webhook monitor
+	webhookMonitor := monitoring.NewWebhookMonitor(cfg, logger)
+
+	// Create handlers
+	gitlabHandler := gitlab.NewHandler(cfg, logger)
+	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
+
+	// Create worker pool
+	workerPool := async.NewPriorityWorkerPool(cfg, logger, webhookMonitor, nil)
+
+	// Set monitor in handlers for metrics recording
+	gitlabHandler.SetMonitor(webhookMonitor)
+	projectHookHandler.SetMonitor(webhookMonitor)
+
+	// Create adapter for compatibility with webhook.WorkerPoolInterface
+	adapter := async.NewWorkerPoolAdapter(workerPool)
+
+	// Set worker pool in handlers using adapter
+	gitlabHandler.SetWorkerPool(adapter)
+	projectHookHandler.SetWorkerPool(adapter)
+
+	// Create performance monitor with custom registry
+	performanceMonitor := monitoring.NewPerformanceMonitorWithRegistry(context.Background(), registry)
 
 	// Create monitoring handler
 	monitoringHandler := monitoring.NewHandler(webhookMonitor, performanceMonitor, logger)

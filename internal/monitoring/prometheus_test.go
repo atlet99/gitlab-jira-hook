@@ -209,12 +209,22 @@ func TestPrometheusMetrics_StartStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	metrics := NewPrometheusMetrics(logger)
 
-	// Start metrics server
-	err := metrics.Start("9091")
-	require.NoError(t, err)
+	// Start metrics server in background
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- metrics.Start("9091")
+	}()
 
 	// Wait a bit for server to start
 	time.Sleep(100 * time.Millisecond)
+
+	// Check if server started without error
+	select {
+	case err := <-errChan:
+		assert.NoError(t, err)
+	default:
+		// Server is still running, which is good
+	}
 
 	// Test metrics endpoint
 	resp, err := http.Get("http://localhost:9091/metrics")

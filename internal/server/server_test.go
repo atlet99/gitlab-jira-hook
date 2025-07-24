@@ -9,6 +9,7 @@ import (
 
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,7 +63,9 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := New(tt.config, tt.logger)
+			// Create separate registry for each test to avoid conflicts
+			registry := prometheus.NewRegistry()
+			server := NewWithRegistry(tt.config, tt.logger, registry)
 
 			if tt.expectError {
 				assert.Nil(t, server)
@@ -85,7 +88,9 @@ func TestServerStart(t *testing.T) {
 	t.Run("start server successfully", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing (random port)
 
-		server := New(cfg, slog.Default())
+		// Create separate registry for each test to avoid conflicts
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start server in background
@@ -118,7 +123,9 @@ func TestServerStart(t *testing.T) {
 			return cfg
 		}()
 
-		server := New(cfg, slog.Default())
+		// Create separate registry for each test to avoid conflicts
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start server should fail
@@ -131,7 +138,8 @@ func TestServerShutdown(t *testing.T) {
 	t.Run("shutdown server gracefully", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start server in background
@@ -152,7 +160,8 @@ func TestServerShutdown(t *testing.T) {
 	t.Run("shutdown with timeout", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start server in background
@@ -174,7 +183,8 @@ func TestServerShutdown(t *testing.T) {
 	t.Run("shutdown without starting", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Shutdown without starting should not error
@@ -234,7 +244,8 @@ func TestServerComponents(t *testing.T) {
 	t.Run("verify server components", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Verify all components are properly initialized
@@ -248,7 +259,8 @@ func TestServerComponents(t *testing.T) {
 	t.Run("verify worker pool configuration", func(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start the worker pool to initialize workers
@@ -269,7 +281,8 @@ func TestServerComponents(t *testing.T) {
 		cfg := createTestConfig("0") // Use port 0 for testing
 		cfg.MetricsEnabled = true
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Verify monitor is properly initialized
@@ -289,7 +302,8 @@ func TestServerIntegration(t *testing.T) {
 		cfg.MetricsEnabled = true
 
 		// Create server
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Verify initial state
@@ -337,7 +351,8 @@ func TestServerErrorHandling(t *testing.T) {
 			return cfg
 		}()
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		require.NotNil(t, server)
 
 		// Start should fail
@@ -352,7 +367,8 @@ func TestServerErrorHandling(t *testing.T) {
 			// Missing GitLabSecret, JiraEmail, JiraToken, JiraBaseURL
 		}
 
-		server := New(cfg, slog.Default())
+		registry := prometheus.NewRegistry()
+		server := NewWithRegistry(cfg, slog.Default(), registry)
 		// Should still create server (validation happens later)
 		require.NotNil(t, server)
 	})
@@ -369,7 +385,8 @@ func TestServerPerformance(t *testing.T) {
 		// Measure server creation performance
 		start := time.Now()
 		for i := 0; i < 100; i++ {
-			server := New(cfg, slog.Default())
+			registry := prometheus.NewRegistry()
+			server := NewWithRegistry(cfg, slog.Default(), registry)
 			require.NotNil(t, server)
 		}
 		duration := time.Since(start)

@@ -589,9 +589,32 @@ make docker-run
 
 ### Docker Compose
 
+The project provides multiple Docker Compose configurations for different environments:
+
+#### Development
 ```bash
-docker-compose up -d
+# Uses docker-compose.yml + docker-compose.override.yml automatically
+docker-compose up
+
+# Resource limits: 1GB memory, 1 CPU core
 ```
+
+#### Production
+```bash
+# Uses docker-compose.yml + docker-compose.prod.yml
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Resource limits: 2GB memory, 2 CPU cores
+# Security: Read-only filesystem, no new privileges
+```
+
+#### Base Configuration Only
+```bash
+# Uses only docker-compose.yml (ignores override)
+docker-compose -f docker-compose.yml up -d
+```
+
+For detailed Docker Compose configuration options, see [docs/docker-compose.md](docs/docker-compose.md).
 
 ### Kubernetes
 

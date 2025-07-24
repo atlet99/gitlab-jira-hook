@@ -5,9 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.5] - 2025-07-22
+## [0.1.5] - 2025-07-24
 
 ### Added
+- **Docker Compose Resource Management**
+  - Added resource limits and reservations for all Docker Compose configurations
+  - Production configuration: 2GB memory, 2 CPU cores with security hardening
+  - Development configuration: 1GB memory, 1 CPU core with debug mode
+  - Security features: read-only filesystem, no-new-privileges, tmpfs mounts
+  - Logging configuration with rotation (10MB max, 3 files) for production
+  - Comprehensive Docker Compose documentation with usage examples
+  - Multiple environment configurations (dev, prod, base) with proper resource allocation
+- **Cache System Security and Performance Fixes**
+  - Fixed DoS vulnerability in decompression with size limits (100MB max)
+  - Corrected LFU eviction strategy logic in cache tests
+  - Added proper error handling for compression/decompression operations
+  - Fixed test failures in cache compression and encryption features
+  - Improved cache performance with optimized eviction algorithms
+- **Code Quality and Security Improvements**
+  - Fixed all linter warnings (gosec, errcheck, staticcheck, revive)
+  - Resolved potential DoS attacks through decompression bombs
+  - Fixed inefficient select statements in async worker pool tests
+  - Improved error handling in defer statements
+  - Enhanced code quality with proper resource management
 - **Phase 3: Error Handling & Monitoring Implementation**
   - Distributed tracing with OpenTelemetry integration
   - Advanced monitoring system with Prometheus metrics
@@ -67,6 +87,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced test utilities for configuration management
 
 ### Fixed
+- **Test Failures and Cache System Issues**
+  - Fixed LFU eviction strategy test logic (was expecting wrong element to be evicted)
+  - Resolved cache compression test failures due to JSON serialization handling
+  - Fixed cache encryption test failures with proper byte handling
+  - Corrected AccessCount initialization in cache items (0 instead of 1 for new items)
+  - Fixed all cache-related test failures in `internal/cache` package
+- **Security Vulnerabilities and Code Quality**
+  - Fixed DoS vulnerability in cache decompression (G110) with 100MB size limit
+  - Resolved all errcheck warnings for unhandled errors in defer statements
+  - Fixed staticcheck warnings for inefficient select statements (S1000)
+  - Improved error handling in gzip reader close operations
+  - Enhanced code quality with proper resource management and error handling
 - **Code Quality and Linter Compliance**
   - Fixed all critical linter errors (54 → 0 in main code)
   - Replaced deprecated MD5 with SHA-256 for security

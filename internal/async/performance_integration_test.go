@@ -76,7 +76,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 		assert.Less(t, submissionTime, 5*time.Second, "Job submission should be fast")
 
 		// Wait for processing
-		time.Sleep(10 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check stats
 		stats := pool.GetStats()
@@ -119,7 +119,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 		}
 
 		// Wait for processing
-		time.Sleep(2 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		// Get memory stats after processing
 		var m2 runtime.MemStats
@@ -176,14 +176,14 @@ func TestPerformanceUnderLoad(t *testing.T) {
 		assert.Equal(t, 20, delayedStats["total_delayed_jobs"])
 
 		// Wait for delayed jobs to be processed
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 
 		// Check that delayed jobs were moved to main queue
 		delayedStats = pool.GetDelayedQueueStats()
 		assert.Equal(t, 0, delayedStats["total_delayed_jobs"])
 
 		// Wait for all processing to complete
-		time.Sleep(2 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check final stats
 		stats := pool.GetStats()
@@ -232,7 +232,7 @@ func TestPerformanceUnderLoad(t *testing.T) {
 		}
 
 		// Wait for processing
-		time.Sleep(2 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check that jobs were processed
 		stats := pool.GetStats()
@@ -276,7 +276,7 @@ func TestResourceEfficiency(t *testing.T) {
 		}
 
 		// Wait for scaling to occur
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 
 		// Check that scaling occurred
 		stats := pool.GetStats()
@@ -284,7 +284,7 @@ func TestResourceEfficiency(t *testing.T) {
 		assert.LessOrEqual(t, stats.TotalWorkers, cfg.MaxWorkers, "Should not exceed max workers")
 
 		// Wait for all jobs to complete
-		time.Sleep(2 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check final stats
 		stats = pool.GetStats()
@@ -328,7 +328,7 @@ func TestResourceEfficiency(t *testing.T) {
 		assert.GreaterOrEqual(t, overflowCount, 0, "Jobs should be submitted")
 
 		// Wait for processing
-		time.Sleep(3 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 
 		// Check stats
 		stats := pool.GetStats()

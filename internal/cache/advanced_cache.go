@@ -3,16 +3,22 @@
 package cache
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io"
+	"log/slog"
+	"math"
 	"sync"
 	"time"
-
-	"log/slog"
 )
 
 const (
@@ -36,6 +42,10 @@ const (
 
 	// Integer overflow protection
 	maxUint32Value = 1 << 31
+
+	// Compression and encryption constants
+	compressionThreshold = 1024 // 1KB
+	encryptionKeySize    = 32   // 256 bits
 )
 
 // CacheStrategy defines the caching strategy.
@@ -169,8 +179,43 @@ func (ac *AdvancedCache) Get(key string) (interface{}, bool) {
 	item.AccessCount++
 	ac.mu.Unlock()
 
+	// Process the value (decrypt and decompress if needed)
+	processedValue := item.Value.([]byte)
+
+	// Decrypt if needed
+	if item.Encrypted {
+		decryptedBytes, err := decryptData(processedValue)
+		if err != nil {
+			ac.logger.Error("Failed to decrypt value", "error", err, "key", key)
+			ac.stats.Misses++
+			return nil, false
+		}
+		processedValue = decryptedBytes
+		ac.stats.Decryptions++
+	}
+
+	// Decompress if needed
+	if item.Compressed {
+		decompressedBytes, err := decompressData(processedValue)
+		if err != nil {
+			ac.logger.Error("Failed to decompress value", "error", err, "key", key)
+			ac.stats.Misses++
+			return nil, false
+		}
+		processedValue = decompressedBytes
+		ac.stats.Decompressions++
+	}
+
+	// Deserialize the value
+	var result interface{}
+	if err := json.Unmarshal(processedValue, &result); err != nil {
+		ac.logger.Error("Failed to unmarshal value", "error", err, "key", key)
+		ac.stats.Misses++
+		return nil, false
+	}
+
 	ac.stats.Hits++
-	return item.Value, true
+	return result, true
 }
 
 // Set stores a value in the cache
@@ -178,8 +223,43 @@ func (ac *AdvancedCache) Set(key string, value interface{}, ttl time.Duration) {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
 
+	// Serialize value to bytes for compression/encryption
+	valueBytes, err := json.Marshal(value)
+	if err != nil {
+		ac.logger.Error("Failed to marshal value", "error", err, "key", key)
+		return
+	}
+
+	processedValue := valueBytes
+	compressed := false
+	encrypted := false
+
+	// Apply compression if enabled and value is large enough
+	if ac.policy.CompressionEnabled && len(valueBytes) > compressionThreshold {
+		compressedBytes, err := compressData(valueBytes)
+		if err != nil {
+			ac.logger.Error("Failed to compress value", "error", err, "key", key)
+		} else {
+			processedValue = compressedBytes
+			compressed = true
+			ac.stats.Compressions++
+		}
+	}
+
+	// Apply encryption if enabled
+	if ac.policy.EncryptionEnabled {
+		encryptedBytes, err := encryptData(processedValue)
+		if err != nil {
+			ac.logger.Error("Failed to encrypt value", "error", err, "key", key)
+		} else {
+			processedValue = encryptedBytes
+			encrypted = true
+			ac.stats.Encryptions++
+		}
+	}
+
 	// Calculate item size
-	size := ac.calculateSize(value)
+	size := ac.calculateSize(processedValue)
 
 	// Check memory limits
 	currentMemoryMB := ac.stats.MemoryUsage / memoryMBDivisor
@@ -195,16 +275,18 @@ func (ac *AdvancedCache) Set(key string, value interface{}, ttl time.Duration) {
 	}
 
 	// Calculate hash for integrity checking
-	hash := ac.calculateHash(key, value)
+	hash := ac.calculateHash(key, processedValue)
 
 	item := &AdvancedCacheItem{
 		Key:         key,
-		Value:       value,
+		Value:       processedValue,
 		CreatedAt:   time.Now(),
 		AccessedAt:  time.Now(),
 		ExpiresAt:   expiresAt,
-		AccessCount: 1,
+		AccessCount: 0,
 		Size:        size,
+		Compressed:  compressed,
+		Encrypted:   encrypted,
 		Hash:        hash,
 	}
 
@@ -227,6 +309,11 @@ func (ac *AdvancedCache) Delete(key string) {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
 
+	ac.deleteInternal(key)
+}
+
+// deleteInternal removes an item from the cache without acquiring locks
+func (ac *AdvancedCache) deleteInternal(key string) {
 	if item, exists := ac.data[key]; exists {
 		ac.stats.MemoryUsage -= item.Size
 		delete(ac.data, key)
@@ -286,7 +373,7 @@ func (ac *AdvancedCache) evictLRU() {
 	}
 
 	if oldestKey != "" {
-		ac.Delete(oldestKey)
+		ac.deleteInternal(oldestKey)
 		ac.stats.Evictions++
 	}
 }
@@ -294,17 +381,17 @@ func (ac *AdvancedCache) evictLRU() {
 // evictLFU removes the least frequently used items
 func (ac *AdvancedCache) evictLFU() {
 	var leastUsedKey string
-	var minAccessCount int64
+	var minAccessCount int64 = math.MaxInt64
 
 	for key, item := range ac.data {
-		if leastUsedKey == "" || item.AccessCount < minAccessCount {
+		if item.AccessCount < minAccessCount {
 			leastUsedKey = key
 			minAccessCount = item.AccessCount
 		}
 	}
 
 	if leastUsedKey != "" {
-		ac.Delete(leastUsedKey)
+		ac.deleteInternal(leastUsedKey)
 		ac.stats.Evictions++
 	}
 }
@@ -322,7 +409,7 @@ func (ac *AdvancedCache) evictFIFO() {
 	}
 
 	if oldestKey != "" {
-		ac.Delete(oldestKey)
+		ac.deleteInternal(oldestKey)
 		ac.stats.Evictions++
 	}
 }
@@ -332,7 +419,7 @@ func (ac *AdvancedCache) evictExpired() {
 	now := time.Now()
 	for key, item := range ac.data {
 		if item.ExpiresAt != nil && now.After(*item.ExpiresAt) {
-			ac.Delete(key)
+			ac.deleteInternal(key)
 			ac.stats.Evictions++
 		}
 	}
@@ -608,4 +695,102 @@ func (chr *ConsistentHashRing) sortKeys() {
 			}
 		}
 	}
+}
+
+// compressData compresses data using gzip
+func compressData(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+
+	if _, err := gw.Write(data); err != nil {
+		return nil, err
+	}
+
+	if err := gw.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// decompressData decompresses data using gzip
+func decompressData(data []byte) ([]byte, error) {
+	gr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = gr.Close() // Ignore close errors as they're cleanup errors
+	}()
+
+	// Limit the size of decompressed data to prevent DoS attacks
+	const maxDecompressedSize = 100 * 1024 * 1024 // 100MB limit
+	var buf bytes.Buffer
+
+	// Use io.CopyN to limit the amount of data we read
+	_, err = io.Copy(&buf, io.LimitReader(gr, maxDecompressedSize))
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if we hit the limit (which would indicate a potential decompression bomb)
+	if buf.Len() >= maxDecompressedSize {
+		return nil, fmt.Errorf("decompressed data exceeds maximum allowed size of %d bytes", maxDecompressedSize)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// encryptData encrypts data using AES-256-GCM
+func encryptData(data []byte) ([]byte, error) {
+	key := make([]byte, encryptionKeySize)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return append(key, ciphertext...), nil
+}
+
+// decryptData decrypts data using AES-256-GCM
+func decryptData(data []byte) ([]byte, error) {
+	if len(data) < encryptionKeySize {
+		return nil, fmt.Errorf("data too short")
+	}
+
+	key := data[:encryptionKeySize]
+	ciphertext := data[encryptionKeySize:]
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }

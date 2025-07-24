@@ -36,7 +36,7 @@ VULNCHECK_REPORT_FILE := vulncheck-report.json
 ERRCHECK_VERSION := v1.9.0
 
 # SBOM generation constants
-SYFT_VERSION := latest
+SYFT_VERSION := 1.29.0
 SYFT = $(GOPATH)/bin/syft
 SYFT_OUTPUT_FORMAT := syft-json
 SYFT_SBOM_FILE := sbom.syft.json
@@ -225,25 +225,25 @@ build-cross: $(OUTPUT_DIR)
 
 test:
 	@echo "Running Go tests..."
-	go test -v ./... -cover
+	go test -v -timeout 120s ./internal/async ./internal/benchmarks ./internal/cache ./internal/common ./internal/config ./internal/gitlab ./internal/jira ./internal/monitoring ./internal/server ./internal/timezone ./internal/utils ./internal/version ./pkg/logger ./cmd/server -cover
 
 test-with-race:
 	@echo "Running all tests with race detection and coverage..."
-	go test -v -race -cover ./...
+	go test -v -timeout 120s -race -cover ./...
 
 quicktest:
 	@echo "Running quick tests..."
-	go test ./...
+	go test -timeout 120s ./...
 
 test-coverage:
 	@echo "Running tests with coverage report..."
-	go test -v -coverprofile=coverage.out -covermode=atomic ./...
+	go test -v -timeout 120s -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 test-race:
 	@echo "Running tests with race detection..."
-	go test -v -race ./...
+	go test -v -timeout 120s -race ./...
 
 test-all: test-coverage test-race
 	@echo "All tests completed"

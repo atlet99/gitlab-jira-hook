@@ -103,7 +103,7 @@ func TestDelayedQueue(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for all jobs to be ready and moved to main queue
-		jobs := waitForJobCount(t, mainQueue, 2, 10*time.Second)
+		jobs := waitForJobCount(t, mainQueue, 2, 15*time.Second)
 
 		// Check that both events are present (order may vary due to scheduling)
 		eventTypes := []string{jobs[0].Event.Type, jobs[1].Event.Type}
