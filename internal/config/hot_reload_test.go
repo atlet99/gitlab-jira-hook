@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,11 +163,14 @@ func TestConfigReloader(t *testing.T) {
 	}
 	reloader := NewConfigReloader(hotReloadCfg, logger)
 
-	// Create a test handler
+	// Create a test handler with thread-safe flag
+	var handlerCalledMu sync.Mutex
 	handlerCalled := false
 	testHandler := &testConfigHandler{
 		onReload: func(config *Config) error {
+			handlerCalledMu.Lock()
 			handlerCalled = true
+			handlerCalledMu.Unlock()
 			return nil
 		},
 	}
@@ -192,7 +196,10 @@ func TestConfigReloader(t *testing.T) {
 		// Wait for handler to be called
 		time.Sleep(200 * time.Millisecond)
 
-		assert.True(t, handlerCalled)
+		handlerCalledMu.Lock()
+		called := handlerCalled
+		handlerCalledMu.Unlock()
+		assert.True(t, called)
 	})
 
 	reloader.Stop()

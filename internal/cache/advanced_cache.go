@@ -720,7 +720,8 @@ func decompressData(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer func() {
-		_ = gr.Close() // Ignore close errors as they're cleanup errors
+		//nolint:errcheck // Close errors are cleanup errors and can be safely ignored
+		_ = gr.Close()
 	}()
 
 	// Limit the size of decompressed data to prevent DoS attacks
