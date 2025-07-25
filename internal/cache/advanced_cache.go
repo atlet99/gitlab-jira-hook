@@ -714,31 +714,35 @@ func compressData(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decompressData decompresses data using gzip with size limit protection.
-func decompressData(data []byte) ([]byte, error) {
-	// 100 MB limit
-	const maxDecompressedSize int64 = 100 * 1024 * 1024
+// decompressData decompresses data using gzip with size-limit protection.
+func decompressData(data []byte) (out []byte, err error) {
+	const maxDecompressedSize int64 = 100 * 1024 * 1024 // 100 MB
 
 	gr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create gzip reader: %w", err)
 	}
 
-	// close gzip.Reader, ignoring the error (logging is optional)
-	defer func() { _ = gr.Close() }()
+	// Properly handle Close() error: attach it to the returned err.
+	defer func() {
+		if cerr := gr.Close(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close gzip reader: %w", cerr))
+		}
+	}()
 
 	var buf bytes.Buffer
 
-	// read 1 byte more than the limit to check if the limit is exceeded
-	n, err := io.CopyN(&buf, gr, maxDecompressedSize+1)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("copy decompressed data: %w", err)
+	// Read one byte over the limit to detect overflow.
+	n, copyErr := io.CopyN(&buf, gr, maxDecompressedSize+1)
+	if copyErr != nil && !errors.Is(copyErr, io.EOF) {
+		return nil, fmt.Errorf("copy decompressed data: %w", copyErr)
 	}
 	if n > maxDecompressedSize {
 		return nil, fmt.Errorf("decompressed data exceeds maximum allowed size of %d bytes", maxDecompressedSize)
 	}
 
-	return buf.Bytes(), nil
+	out = buf.Bytes()
+	return out, err
 }
 
 // encryptData encrypts data using AES-256-GCM

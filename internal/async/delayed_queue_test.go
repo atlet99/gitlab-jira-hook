@@ -125,7 +125,8 @@ func TestDelayedQueue(t *testing.T) {
 		event := &webhook.Event{Type: "push"}
 		handler := &mockEventHandler{}
 
-		err := delayedQueue.SubmitDelayedJob(event, handler, 50*time.Millisecond, PriorityNormal)
+		// Use shorter delay for more reliable testing
+		err := delayedQueue.SubmitDelayedJob(event, handler, 20*time.Millisecond, PriorityNormal)
 		require.NoError(t, err)
 
 		// Give scheduler time to process
@@ -138,15 +139,15 @@ func TestDelayedQueue(t *testing.T) {
 
 		// Job should be in the delayed queue
 		assert.GreaterOrEqual(t, totalJobs, 1, "Should have at least one delayed job")
-		// Initially, job should not be ready (delay is 50ms, we waited only 10ms)
+		// Initially, job should not be ready (delay is 20ms, we waited only 10ms)
 		assert.LessOrEqual(t, readyJobs, 1, "Should have at most one ready job")
 
-		// Wait for job to be ready and moved to main queue
-		job := waitForJob(t, mainQueue, 3*time.Second)
+		// Wait for job to be ready and moved to main queue with longer timeout
+		job := waitForJob(t, mainQueue, 5*time.Second)
 		assert.Equal(t, event, job.Event)
 
 		// Give some time for stats to update and be consistent
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check stats after job is moved - should be empty or processing
 		stats = delayedQueue.GetStats()

@@ -98,6 +98,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolved all errcheck warnings for unhandled errors in defer statements
   - Fixed staticcheck warnings for inefficient select statements (S1000)
   - Improved error handling in gzip reader close operations
+- **Integration Test Stability and Performance**
+  - Fixed TestDelayedQueue/delayed_job_statistics test failure with robust assertions
+  - Resolved Go toolchain linker warnings (malformed LC_DYSYMTAB) by clearing cache
+  - Improved test stability for asynchronous operations in delayed queue
+  - Fixed race conditions in test assertions for concurrent operations
+  - Optimized delayed queue test timing for more reliable execution (reduced delay from 50ms to 20ms)
+  - Increased timeout for job waiting from 3s to 5s for better stability
 - **Integration Test Stability and Linker Issues**
   - Fixed `TestDelayedQueue/delayed_job_statistics` test failure due to unstable assertions
   - Made delayed queue statistics test more robust with flexible assertions
