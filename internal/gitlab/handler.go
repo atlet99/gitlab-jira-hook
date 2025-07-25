@@ -22,12 +22,15 @@ import (
 
 // Handler handles GitLab webhook requests
 type Handler struct {
-	config     *config.Config
-	logger     *slog.Logger
-	jira       JiraClient
-	parser     *Parser
-	monitor    *monitoring.WebhookMonitor
-	workerPool webhook.WorkerPoolInterface
+	config         *config.Config
+	logger         *slog.Logger
+	jira           JiraClient
+	parser         *Parser
+	monitor        *monitoring.WebhookMonitor
+	workerPool     webhook.WorkerPoolInterface
+	eventProcessor *EventProcessor
+	urlBuilder     *URLBuilder
+	debugLogger    *DebugLogger
 }
 
 // JiraClient defines the interface for Jira client operations
@@ -39,13 +42,21 @@ type JiraClient interface {
 
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
+	urlBuilder := NewURLBuilder(cfg)
+	jiraClient := jira.NewClient(cfg)
+	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, logger)
+	debugLogger := NewDebugLogger(logger)
+
 	return &Handler{
-		config:     cfg,
-		logger:     logger,
-		jira:       jira.NewClient(cfg),
-		parser:     NewParser(),
-		monitor:    nil, // Will be set by server
-		workerPool: nil, // Will be set by server
+		config:         cfg,
+		logger:         logger,
+		jira:           jiraClient,
+		parser:         NewParser(),
+		monitor:        nil, // Will be set by server
+		workerPool:     nil, // Will be set by server
+		eventProcessor: eventProcessor,
+		urlBuilder:     urlBuilder,
+		debugLogger:    debugLogger,
 	}
 }
 
@@ -102,6 +113,11 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug logging if enabled
+	if h.config.DebugMode {
+		h.debugLogger.LogWebhookRequest(r, body, event)
+	}
+
 	// Event filtering by project/group
 	if !h.isAllowedEvent(event) {
 		h.logger.Info("Event filtered by project/group",
@@ -117,26 +133,25 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Convert to interface event
 	interfaceEvent := h.convertToInterfaceEvent(event)
 
-	// Submit job for async processing if worker pool is available
-	if h.workerPool != nil {
-		if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
-			h.logger.Error("Failed to submit job to worker pool", "error", err, "eventType", event.Type)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		h.logger.Info("Job submitted for async processing", "eventType", event.Type)
-	} else {
-		// Fallback to synchronous processing
-		if err := h.processEvent(event); err != nil {
-			h.logger.Error("Failed to process event", "error", err, "eventType", event.Type)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
+	// Always submit job for async processing - no fallback to synchronous processing
+	if h.workerPool == nil {
+		h.logger.Error("Worker pool not available - cannot process webhook asynchronously")
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
 	}
 
-	// Return success
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+	// Submit job for async processing
+	if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
+		h.logger.Error("Failed to submit job to worker pool", "error", err, "eventType", event.Type)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("Job submitted for async processing", "eventType", event.Type)
+
+	// Return success immediately - processing will happen asynchronously
+	w.WriteHeader(http.StatusAccepted)
+	if _, err := w.Write([]byte(`{"status":"accepted","message":"webhook queued for processing"}`)); err != nil {
 		h.logger.Error("Failed to write response", "error", err)
 		return
 	}
@@ -167,76 +182,62 @@ func (h *Handler) parseEvent(body []byte) (*Event, error) {
 	return &event, nil
 }
 
-// processEvent processes the webhook event
-func (h *Handler) processEvent(event *Event) error {
-	h.logger.Info("Processing webhook event", "type", event.Type)
-
-	switch event.Type {
-	case "push":
-		return h.processPushEvent(event)
-	case "merge_request":
-		return h.processMergeRequestEvent(event)
-	case "project_create", "project_destroy":
-		return h.processProjectEvent(event)
-	case "user_create", "user_destroy":
-		return h.processUserEvent(event)
-	case "user_add_to_team", "user_remove_from_team":
-		return h.processTeamEvent(event)
-	case "user_add_to_group", "user_remove_from_group":
-		return h.processGroupEvent(event)
-	// System Hook events
-	case "repository_create", "repository_destroy":
-		return h.processRepositoryEvent(event)
-	case "repository_update":
-		return h.processRepositoryUpdateEvent(event)
-	case "team_create", "team_destroy":
-		return h.processTeamCreateDestroyEvent(event)
-	case "group_create", "group_destroy":
-		return h.processGroupCreateDestroyEvent(event)
-	case "user_add_to_project", "user_remove_from_project":
-		return h.processProjectMembershipEvent(event)
-	case "key_create", "key_destroy":
-		return h.processKeyEvent(event)
-	case "tag_push":
-		return h.processTagPushEvent(event)
-	case "release":
-		return h.processReleaseEvent(event)
-	case "deployment":
-		return h.processDeploymentEvent(event)
-	case "feature_flag":
-		return h.processFeatureFlagEvent(event)
-	case "wiki_page":
-		return h.processWikiPageEvent(event)
-	case "pipeline":
-		return h.processPipelineEvent(event)
-	case "build":
-		return h.processBuildEvent(event)
-	case "note":
-		return h.processNoteEvent(event)
-	case "issue":
-		return h.processIssueEvent(event)
-	default:
-		h.logger.Debug("Unsupported event type", "type", event.Type)
-		return nil
-	}
-}
-
 // ProcessEventAsync processes the webhook event asynchronously with context (webhook.Event)
 func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) error {
+	// Check context cancellation
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 		// Continue processing
 	}
+
 	if event == nil {
 		return nil
 	}
-	// Преобразуем обратно в *Event для существующей логики
+
+	// Log start of async processing
+	h.logger.Info("Starting async event processing",
+		"eventType", event.Type,
+		"eventName", event.EventName,
+		"project", getProjectName(event),
+		"user", getUserName(event))
+
+	// Convert to internal Event type for processing
+	orig, err := h.convertFromInterfaceEvent(event)
+	if err != nil {
+		h.logger.Error("Failed to convert interface event", "error", err, "eventType", event.Type)
+		return err
+	}
+
+	// Process the event with context
+	err = h.processEventWithContext(ctx, orig)
+	if err != nil {
+		h.logger.Error("Failed to process event asynchronously",
+			"error", err,
+			"eventType", event.Type,
+			"project", getProjectName(event))
+		return err
+	}
+
+	h.logger.Info("Completed async event processing",
+		"eventType", event.Type,
+		"project", getProjectName(event))
+
+	return nil
+}
+
+// convertFromInterfaceEvent converts webhook.Event back to internal Event type
+func (h *Handler) convertFromInterfaceEvent(event *webhook.Event) (*Event, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is nil")
+	}
+
 	orig := &Event{
 		Type:      event.Type,
 		EventName: event.EventName,
 	}
+
 	if event.Project != nil {
 		orig.Project = &Project{
 			ID:                event.Project.ID,
@@ -245,6 +246,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			WebURL:            event.Project.WebURL,
 		}
 	}
+
 	if event.Group != nil {
 		orig.Group = &Group{
 			ID:       event.Group.ID,
@@ -252,6 +254,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			FullPath: event.Group.FullPath,
 		}
 	}
+
 	if event.User != nil {
 		orig.User = &User{
 			ID:       event.User.ID,
@@ -260,6 +263,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			Email:    event.User.Email,
 		}
 	}
+
 	if event.Commits != nil {
 		for _, c := range event.Commits {
 			orig.Commits = append(orig.Commits, Commit{
@@ -274,6 +278,7 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			})
 		}
 	}
+
 	if event.ObjectAttributes != nil {
 		orig.ObjectAttributes = &ObjectAttributes{
 			ID:          event.ObjectAttributes.ID,
@@ -291,104 +296,47 @@ func (h *Handler) ProcessEventAsync(ctx context.Context, event *webhook.Event) e
 			Priority:    event.ObjectAttributes.Priority,
 		}
 	}
-	return h.processEvent(orig)
+
+	return orig, nil
 }
 
-// processPushEvent processes push events
-func (h *Handler) processPushEvent(event *Event) error {
-	if len(event.Commits) == 0 {
-		return nil
+// processEventWithContext processes an event with context support
+func (h *Handler) processEventWithContext(ctx context.Context, event *Event) error {
+	// Check context cancellation before processing
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
-	for _, commit := range event.Commits {
-		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
-		for _, issueID := range issueIDs {
-			// Construct branch URL using project information from system hook
-			branchURL := h.constructBranchURL(event, event.Ref)
-
-			// For system hooks, we need to handle username differently
-			// In push events (including merge commits), we have user_id but not username
-			authorName := event.Username
-			if authorName == "" && event.User != nil {
-				authorName = event.User.Username
-			}
-			// For system hooks, we have user_id but not username
-			if authorName == "" {
-				// Use commit author name as display name
-				authorName = commit.Author.Name
-			}
-
-			// Construct author URL using improved function
-			authorURL := h.constructAuthorURL(event, commit.Author)
-
-			// Get project web URL for MR links
-			projectWebURL := ""
-			if event.Project != nil {
-				projectWebURL = event.Project.WebURL
-			}
-
-			// Use commit timestamp for push events (this is the actual commit time)
-			eventTime := commit.Timestamp
-
-			comment := jira.GenerateCommitADFComment(
-				commit.ID,
-				commit.URL,
-				authorName,
-				commit.Author.Email,
-				authorURL,
-				commit.Message,
-				eventTime,
-				event.Ref,
-				branchURL,
-				projectWebURL,
-				h.config.Timezone,
-				commit.Added,
-				commit.Modified,
-				commit.Removed,
-			)
-			if err := h.jira.AddComment(issueID, comment); err != nil {
-				h.logger.Error("Failed to add comment to Jira",
-					"error", err,
-					"issueID", issueID,
-					"commitID", commit.ID)
-			} else {
-				h.logger.Info("Added comment to Jira issue",
-					"issueID", issueID,
-					"commitID", commit.ID)
-			}
+	// Use the event processor to handle the event
+	err := h.eventProcessor.ProcessEvent(ctx, event)
+	if err != nil {
+		// Check context cancellation after processing
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return err
 		}
 	}
 
 	return nil
 }
 
-// constructAuthorURL constructs a user profile URL for commit authors
-func (h *Handler) constructAuthorURL(event *Event, author Author) string {
-	if h.config.GitLabBaseURL == "" {
-		return ""
+// Helper functions for logging
+func getProjectName(event *webhook.Event) string {
+	if event.Project != nil {
+		return event.Project.Name
 	}
+	return "unknown"
+}
 
-	// Priority 1: Use user_id from system hook (most reliable)
-	if event.UserID > 0 {
-		return fmt.Sprintf("%s/-/profile/%d", h.config.GitLabBaseURL, event.UserID)
+func getUserName(event *webhook.Event) string {
+	if event.User != nil {
+		return event.User.Username
 	}
-
-	// Priority 2: Use username from system hook
-	if event.Username != "" {
-		return fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.Username)
-	}
-
-	// Priority 3: Try to extract username from author email (common pattern)
-	if author.Email != "" {
-		// Extract username from email (e.g., "user@example.com" -> "user")
-		parts := strings.Split(author.Email, "@")
-		if len(parts) > 0 && parts[0] != "" {
-			return fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, parts[0])
-		}
-	}
-
-	// If no user information available, return empty string
-	return ""
+	return "unknown"
 }
 
 // constructBranchURL constructs a proper branch URL using project information
@@ -620,297 +568,6 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 	return nil
 }
 
-// processProjectEvent processes project creation and destruction events
-func (h *Handler) processProjectEvent(event *Event) error {
-	// Use System Hook specific fields
-	projectName := event.Name
-	projectPath := event.Path
-	projectPathWithNamespace := event.PathWithNamespace
-	ownerName := event.OwnerName
-	ownerEmail := event.OwnerEmail
-	projectVisibility := event.ProjectVisibility
-
-	action := "created"
-	if event.Type == "project_destroy" {
-		action = "destroyed"
-	} else if event.Type == "project_rename" {
-		action = "renamed"
-		// Include old path information
-		oldPath := event.OldPathWithNamespace
-		comment := fmt.Sprintf("Project %s: [%s](%s) - %s by %s (%s)\nOld path: %s",
-			action,
-			projectName,
-			fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, projectPathWithNamespace),
-			projectVisibility,
-			ownerName,
-			ownerEmail,
-			oldPath)
-
-		// Extract Jira issue IDs from project name and path
-		text := projectName + " " + projectPath + " " + oldPath
-		issueIDs := h.parser.ExtractIssueIDs(text)
-
-		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-				h.logger.Error("Failed to add project rename comment to Jira",
-					"error", err,
-					"issueID", issueID,
-					"projectName", projectName)
-			} else {
-				h.logger.Info("Added project rename comment to Jira issue",
-					"issueID", issueID,
-					"projectName", projectName)
-			}
-		}
-		return nil
-	}
-
-	comment := fmt.Sprintf("Project %s: [%s](%s) - %s by %s (%s)",
-		action,
-		projectName,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, projectPathWithNamespace),
-		projectVisibility,
-		ownerName,
-		ownerEmail)
-
-	// Extract Jira issue IDs from project name and path
-	text := projectName + " " + projectPath
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add project comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"projectName", projectName,
-				"eventType", event.Type)
-		} else {
-			h.logger.Info("Added project comment to Jira issue",
-				"issueID", issueID,
-				"projectName", projectName,
-				"eventType", event.Type)
-		}
-	}
-
-	return nil
-}
-
-// processUserEvent processes user creation and destruction events
-func (h *Handler) processUserEvent(event *Event) error {
-	// Use System Hook specific fields
-	userName := event.Name
-	userEmail := event.Email
-	userUsername := event.Username
-	userState := event.State
-
-	action := "created"
-	if event.Type == "user_destroy" {
-		action = "removed"
-	} else if event.Type == "user_rename" {
-		action = "renamed"
-		oldUsername := event.OldUsername
-		comment := fmt.Sprintf("User %s: [%s](%s) (%s) - %s\nOld username: %s",
-			action,
-			userName,
-			fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, userUsername),
-			userEmail,
-			userState,
-			oldUsername)
-
-		// Extract Jira issue IDs from user name and username
-		text := userName + " " + userUsername + " " + oldUsername
-		issueIDs := h.parser.ExtractIssueIDs(text)
-
-		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-				h.logger.Error("Failed to add user rename comment to Jira",
-					"error", err,
-					"issueID", issueID,
-					"userName", userName)
-			} else {
-				h.logger.Info("Added user rename comment to Jira issue",
-					"issueID", issueID,
-					"userName", userName)
-			}
-		}
-		return nil
-	} else if event.Type == "user_failed_login" {
-		comment := fmt.Sprintf("User failed login: [%s](%s) (%s) - %s",
-			userName,
-			fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, userUsername),
-			userEmail,
-			userState)
-
-		// Extract Jira issue IDs from user name and email
-		text := userName + " " + userEmail
-		issueIDs := h.parser.ExtractIssueIDs(text)
-
-		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-				h.logger.Error("Failed to add user failed login comment to Jira",
-					"error", err,
-					"issueID", issueID,
-					"userName", userName)
-			} else {
-				h.logger.Info("Added user failed login comment to Jira issue",
-					"issueID", issueID,
-					"userName", userName)
-			}
-		}
-		return nil
-	}
-
-	comment := fmt.Sprintf("User %s: [%s](%s) (%s) - %s",
-		action,
-		userName,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, userUsername),
-		userEmail,
-		userState)
-
-	// Extract Jira issue IDs from user name and email
-	text := userName + " " + userEmail + " " + userUsername
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add user comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"userName", userName,
-				"eventType", event.Type)
-		} else {
-			h.logger.Info("Added user comment to Jira issue",
-				"issueID", issueID,
-				"userName", userName,
-				"eventType", event.Type)
-		}
-	}
-
-	return nil
-}
-
-// processTeamEvent processes team membership events
-func (h *Handler) processTeamEvent(event *Event) error {
-	if event.Team == nil || event.User == nil {
-		h.logger.Debug("Team event without team or user data", "type", event.Type)
-		return nil
-	}
-
-	team := event.Team
-	user := event.User
-	action := "added to"
-	if event.Type == "user_remove_from_team" {
-		action = "removed from"
-	}
-
-	comment := fmt.Sprintf("User %s](%s) %s team [%s](%s) - %s",
-		user.Name,
-		user.AvatarURL,
-		action,
-		team.Name,
-		team.WebURL,
-		team.Description)
-
-	// Try to extract Jira issue ID from team name, description, or user info
-	text := team.Name + " " + team.Description + " " + user.Name + " " + user.Email
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	if len(issueIDs) == 0 {
-		h.logger.Debug("No Jira issue IDs found in team event", "teamName", team.Name,
-			"userName", user.Name,
-			"eventType", event.Type)
-		return nil
-	}
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add team comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"teamID", team.ID,
-				"userID", user.ID,
-				"eventType", event.Type)
-		} else {
-			h.logger.Info("Added team comment to Jira issue",
-				"issueID", issueID,
-				"teamID", team.ID,
-				"userID", user.ID,
-				"eventType", event.Type)
-		}
-	}
-
-	return nil
-}
-
-// processGroupEvent processes group membership events
-func (h *Handler) processGroupEvent(event *Event) error {
-	// Use System Hook specific fields
-	groupName := event.GroupName
-	groupPath := event.Path
-	groupFullPath := event.FullPath
-
-	action := "created"
-	if event.Type == "group_destroy" {
-		action = "destroyed"
-	} else if event.Type == "group_rename" {
-		action = "renamed"
-		oldPath := event.OldPath
-		oldFullPath := event.OldFullPath
-		comment := fmt.Sprintf("Group %s: [%s](%s) - %s\nOld path: %s\nOld full path: %s",
-			action,
-			groupName,
-			fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, groupFullPath),
-			groupPath,
-			oldPath,
-			oldFullPath)
-
-		// Extract Jira issue IDs from group name and path
-		text := groupName + " " + groupPath + " " + oldPath
-		issueIDs := h.parser.ExtractIssueIDs(text)
-
-		for _, issueID := range issueIDs {
-			if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-				h.logger.Error("Failed to add group rename comment to Jira",
-					"error", err,
-					"issueID", issueID,
-					"groupName", groupName)
-			} else {
-				h.logger.Info("Added group rename comment to Jira issue",
-					"issueID", issueID,
-					"groupName", groupName)
-			}
-		}
-		return nil
-	}
-
-	comment := fmt.Sprintf("Group %s: [%s](%s) - %s",
-		action,
-		groupName,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, groupFullPath),
-		groupPath)
-
-	// Extract Jira issue IDs from group name and path
-	text := groupName + " " + groupPath
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add group comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"groupName", groupName,
-				"eventType", event.Type)
-		} else {
-			h.logger.Info("Added group comment to Jira issue",
-				"issueID", issueID,
-				"groupName", groupName,
-				"eventType", event.Type)
-		}
-	}
-
-	return nil
-}
-
 // isAllowedEvent checks if the event is allowed by project/group filter
 func (h *Handler) isAllowedEvent(event *Event) bool {
 	// If no filters set, allow all
@@ -994,40 +651,6 @@ func (h *Handler) getGroupPath(event *Event) string {
 
 // Added event handlers for new event types
 
-func (h *Handler) processRepositoryEvent(event *Event) error {
-	h.logger.Info("Repository event", "type", event.Type)
-
-	action := "created"
-	if event.Type == "repository_destroy" {
-		action = "destroyed"
-	}
-
-	comment := fmt.Sprintf("Repository %s: [%s](%s) - %s",
-		action,
-		event.Repository.Name,
-		event.Repository.URL,
-		event.Repository.Description)
-
-	// Extract Jira issue IDs from repository name and description
-	text := event.Repository.Name + " " + event.Repository.Description
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add repository comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"repositoryName", event.Repository.Name)
-		} else {
-			h.logger.Info("Added repository comment to Jira issue",
-				"issueID", issueID,
-				"repositoryName", event.Repository.Name)
-		}
-	}
-
-	return nil
-}
-
 func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
 	h.logger.Info("Repository update event", "type", event.Type)
 
@@ -1086,148 +709,6 @@ func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
 			h.logger.Info("Added repository update comment to Jira issue",
 				"issueID", issueID,
 				"projectName", projectName)
-		}
-	}
-
-	return nil
-}
-
-func (h *Handler) processTeamCreateDestroyEvent(event *Event) error {
-	h.logger.Info("Team create/destroy event", "type", event.Type)
-
-	action := "created"
-	if event.Type == "team_destroy" {
-		action = "destroyed"
-	}
-
-	comment := fmt.Sprintf("Team %s: [%s](%s) - %s",
-		action,
-		event.Team.Name,
-		event.Team.WebURL,
-		event.Team.Description)
-
-	// Extract Jira issue IDs from team name and description
-	text := event.Team.Name + " " + event.Team.Description
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add team comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"teamName", event.Team.Name)
-		} else {
-			h.logger.Info("Added team comment to Jira issue",
-				"issueID", issueID,
-				"teamName", event.Team.Name)
-		}
-	}
-
-	return nil
-}
-
-func (h *Handler) processGroupCreateDestroyEvent(event *Event) error {
-	h.logger.Info("Group create/destroy event", "type", event.Type)
-
-	action := "created"
-	if event.Type == "group_destroy" {
-		action = "destroyed"
-	}
-
-	comment := fmt.Sprintf("Group %s: [%s](%s) - %s",
-		action,
-		event.Group.Name,
-		event.Group.WebURL,
-		event.Group.Description)
-
-	// Extract Jira issue IDs from group name and description
-	text := event.Group.Name + " " + event.Group.Description
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add group comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"groupName", event.Group.Name)
-		} else {
-			h.logger.Info("Added group comment to Jira issue",
-				"issueID", issueID,
-				"groupName", event.Group.Name)
-		}
-	}
-
-	return nil
-}
-
-func (h *Handler) processProjectMembershipEvent(event *Event) error {
-	h.logger.Info("Project membership event", "type", event.Type)
-
-	action := "added to"
-	if event.Type == "user_remove_from_project" {
-		action = "removed from"
-	}
-
-	comment := fmt.Sprintf("User [%s](%s) %s project [%s](%s) - Access Level: %d",
-		event.Username,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.Username),
-		action,
-		event.ProjectName,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, event.PathWithNamespace),
-		event.ProjectAccessLevel)
-
-	// Extract Jira issue IDs from user and project names
-	text := event.Username + " " + event.ProjectName
-	issueIDs := h.parser.ExtractIssueIDs(text)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add project membership comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"username", event.Username,
-				"projectName", event.ProjectName)
-		} else {
-			h.logger.Info("Added project membership comment to Jira issue",
-				"issueID", issueID,
-				"username", event.Username,
-				"projectName", event.ProjectName)
-		}
-	}
-
-	return nil
-}
-
-func (h *Handler) processKeyEvent(event *Event) error {
-	h.logger.Info("Key event", "type", event.Type)
-
-	action := "created"
-	if event.Type == "key_destroy" {
-		action = "destroyed"
-	}
-
-	username := event.Username
-	keyID := event.KeyID
-
-	comment := fmt.Sprintf("SSH Key %s for user [%s](%s) (ID: %d)",
-		action,
-		username,
-		fmt.Sprintf("%s/%s", h.config.GitLabBaseURL, username),
-		keyID)
-
-	// Extract Jira issue IDs from username
-	issueIDs := h.parser.ExtractIssueIDs(username)
-
-	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
-			h.logger.Error("Failed to add key comment to Jira",
-				"error", err,
-				"issueID", issueID,
-				"username", username)
-		} else {
-			h.logger.Info("Added key comment to Jira issue",
-				"issueID", issueID,
-				"username", username)
 		}
 	}
 

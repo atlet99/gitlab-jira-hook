@@ -1,0 +1,33 @@
+# Production compose file
+# Use: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+
+services:
+  gitlab-jira-hook:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    environment:
+      # Production-specific environment variables
+      - LOG_LEVEL=info
+      - DEBUG=false
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp 

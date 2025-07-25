@@ -69,6 +69,9 @@ const (
 	// Monitoring defaults
 	DefaultMetricsEnabled      = true
 	DefaultHealthCheckInterval = 30
+
+	// Debug defaults
+	DefaultDebugMode = false
 )
 
 // Config holds all configuration for the application
@@ -116,6 +119,9 @@ type Config struct {
 	// Monitoring and Health
 	MetricsEnabled      bool // enable metrics collection
 	HealthCheckInterval int  // health check interval in seconds
+
+	// Debug Configuration
+	DebugMode bool // enable debug mode for detailed logging
 }
 
 // Load loads configuration from environment variables
@@ -172,6 +178,9 @@ func Load() (*Config, error) {
 		// Monitoring and Health
 		MetricsEnabled:      parseBoolEnv("METRICS_ENABLED", DefaultMetricsEnabled),
 		HealthCheckInterval: parseIntEnv("HEALTH_CHECK_INTERVAL", DefaultHealthCheckInterval),
+
+		// Debug Configuration
+		DebugMode: parseBoolEnv("DEBUG_MODE", DefaultDebugMode),
 	}
 
 	// Validate required fields

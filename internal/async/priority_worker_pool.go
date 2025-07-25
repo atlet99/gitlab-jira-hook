@@ -249,10 +249,17 @@ func (pwp *PriorityWorkerPool) createWorker() *PriorityWorker {
 
 // scalingMonitor monitors queue and scales workers accordingly
 func (pwp *PriorityWorkerPool) scalingMonitor() {
-	ticker := time.NewTicker(time.Duration(pwp.config.HealthCheckInterval) * time.Second)
+	// Ensure ScaleInterval is at least 1 second to avoid panic
+	scaleInterval := pwp.config.ScaleInterval
+	if scaleInterval <= 0 {
+		scaleInterval = 10 // Default to 10 seconds if not set
+		pwp.logger.Warn("ScaleInterval was 0 or negative, using default value", "default_interval", scaleInterval)
+	}
+
+	ticker := time.NewTicker(time.Duration(scaleInterval) * time.Second)
 	defer ticker.Stop()
 
-	pwp.logger.Debug("Started scaling monitor", "check_interval_seconds", pwp.config.HealthCheckInterval)
+	pwp.logger.Debug("Started scaling monitor", "check_interval_seconds", scaleInterval)
 
 	for {
 		select {

@@ -62,11 +62,12 @@ func TestWorkerPoolScaling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				MinWorkers:         tt.minWorkers,
-				MaxWorkers:         tt.maxWorkers,
-				ScaleUpThreshold:   tt.scaleUpThresh,
-				ScaleDownThreshold: tt.scaleDownThresh,
-				ScaleInterval:      1,
+				MinWorkers:          tt.minWorkers,
+				MaxWorkers:          tt.maxWorkers,
+				ScaleUpThreshold:    tt.scaleUpThresh,
+				ScaleDownThreshold:  tt.scaleDownThresh,
+				ScaleInterval:       1,
+				HealthCheckInterval: 5,
 			}
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -118,11 +119,12 @@ func TestWorkerPoolScaling(t *testing.T) {
 
 func TestWorkerPoolMetrics(t *testing.T) {
 	cfg := &config.Config{
-		MinWorkers:         2,
-		MaxWorkers:         10,
-		ScaleUpThreshold:   5,
-		ScaleDownThreshold: 2,
-		ScaleInterval:      1,
+		MinWorkers:          2,
+		MaxWorkers:          10,
+		ScaleUpThreshold:    5,
+		ScaleDownThreshold:  2,
+		ScaleInterval:       1,
+		HealthCheckInterval: 5,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -144,10 +146,7 @@ func TestWorkerPoolMetrics(t *testing.T) {
 
 	// Fill queue to trigger scale up
 	for i := 0; i < 10; i++ {
-		select {
-		case pool.jobQueue <- &WebhookJob{}:
-		default:
-		}
+		pool.jobQueue <- &WebhookJob{}
 	}
 
 	// Trigger scale up
@@ -164,11 +163,12 @@ func TestWorkerPoolMetrics(t *testing.T) {
 
 func TestWorkerPoolScalingMonitor(t *testing.T) {
 	cfg := &config.Config{
-		MinWorkers:         2,
-		MaxWorkers:         5,
-		ScaleUpThreshold:   3,
-		ScaleDownThreshold: 1,
-		ScaleInterval:      1,
+		MinWorkers:          2,
+		MaxWorkers:          5,
+		ScaleUpThreshold:    3,
+		ScaleDownThreshold:  1,
+		ScaleInterval:       1,
+		HealthCheckInterval: 5,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -181,18 +181,34 @@ func TestWorkerPoolScalingMonitor(t *testing.T) {
 	// Wait for initial setup
 	time.Sleep(100 * time.Millisecond)
 
-	// Start scaling monitor
-	go pool.scalingMonitor()
+	// Start scaling monitor in a controlled way
+	done := make(chan bool)
+	go func() {
+		defer close(done)
+		// Run scaling monitor for a limited time
+		ticker := time.NewTicker(time.Duration(cfg.ScaleInterval) * time.Second)
+		defer ticker.Stop()
+
+		// Run for 3 ticks maximum
+		for i := 0; i < 3; i++ {
+			<-ticker.C
+			// Manually trigger scaling check
+			queueLen := len(pool.jobQueue)
+			if queueLen > cfg.ScaleUpThreshold {
+				pool.scaleUp()
+			} else if queueLen < cfg.ScaleDownThreshold {
+				pool.scaleDown()
+			}
+		}
+	}()
 
 	// Test scale up
 	for i := 0; i < 5; i++ {
-		select {
-		case pool.jobQueue <- &WebhookJob{}:
-		default:
-		}
+		pool.jobQueue <- &WebhookJob{}
 	}
 
-	time.Sleep(1500 * time.Millisecond) // Wait for monitor tick
+	// Wait for scaling monitor to process
+	time.Sleep(1200 * time.Millisecond) // Wait for at least one tick
 
 	stats := pool.GetStats()
 	assert.Greater(t, stats.ScaleUpEvents, 0)
@@ -202,10 +218,13 @@ func TestWorkerPoolScalingMonitor(t *testing.T) {
 		<-pool.jobQueue
 	}
 
-	time.Sleep(1500 * time.Millisecond) // Wait for monitor tick
+	time.Sleep(1200 * time.Millisecond) // Wait for at least one tick
 
 	stats = pool.GetStats()
 	// Scale down won't happen because we're already at min workers
 	// So we just check that we're still at min workers
 	assert.Equal(t, cfg.MinWorkers, stats.CurrentWorkers)
+
+	// Wait for scaling monitor to finish
+	<-done
 }

@@ -13,3 +13,10 @@ fmt.Sprintf
 # Standard output operations
 io.Copy(os.Stdout)
 io.Copy(os.Stderr)
+
+# Environment variable operations in tests - intentionally ignored
+os.Setenv
+os.Unsetenv
+
+# Error context methods in tests - intentionally ignored
+# Note: These are now handled by explicit error ignoring in test code

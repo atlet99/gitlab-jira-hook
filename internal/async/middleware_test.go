@@ -295,6 +295,7 @@ func TestPriorityWorkerPoolWithMiddleware(t *testing.T) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        200,
 		MetricsEnabled:      false,
+		ScaleInterval:       1,
 		HealthCheckInterval: 5,
 	}
 

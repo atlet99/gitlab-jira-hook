@@ -4,7 +4,15 @@ info:
   description: |
     A lightweight Go webhook server that connects GitLab System Hooks and Project Webhooks with Jira Cloud.
     Automatically posts commit, merge request, and other GitLab activity to corresponding Jira issues.
-  version: 0.1.0
+    
+    ## Features
+    - **GitLab Integration**: System Hooks and Project Webhooks support
+    - **Jira Cloud API v3.0**: Rich comments with ADF (Atlassian Document Format)
+    - **Advanced Monitoring**: Prometheus metrics, distributed tracing, health checks
+    - **Error Recovery**: Multiple recovery strategies with automatic failover
+    - **Performance**: Advanced caching, rate limiting, and async processing
+    - **Security**: SHA-256 hashing, input validation, Slowloris protection
+  version: 0.1.5
   contact:
     name: GitLab Jira Hook Support
     url: https://github.com/atlet99/gitlab-jira-hook
@@ -25,6 +33,12 @@ paths:
       description: |
         Handles GitLab System Hook events. Validates the webhook signature and processes
         various GitLab events to create comments in Jira issues.
+        
+        **Features:**
+        - Rate limiting with adaptive algorithms
+        - Request tracing with OpenTelemetry
+        - Error recovery with multiple strategies
+        - Comprehensive metrics collection
       tags:
         - System Hooks
       security:
@@ -89,17 +103,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Event processed successfully"
-                  jira_comments_created:
-                    type: integer
-                    example: 2
+                $ref: '#/components/schemas/SuccessResponse'
         '400':
           description: Bad request - invalid event data
           content:
@@ -112,6 +116,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many requests - rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitResponse'
         '500':
           description: Internal server error
           content:
@@ -125,6 +135,12 @@ paths:
       description: |
         Handles GitLab Project Webhook events. Validates the webhook signature and processes
         various project events to create comments in Jira issues.
+        
+        **Features:**
+        - Rate limiting with adaptive algorithms
+        - Request tracing with OpenTelemetry
+        - Error recovery with multiple strategies
+        - Comprehensive metrics collection
       tags:
         - Project Webhooks
       security:
@@ -185,17 +201,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Event processed successfully"
-                  jira_comments_created:
-                    type: integer
-                    example: 1
+                $ref: '#/components/schemas/SuccessResponse'
         '400':
           description: Bad request - invalid event data
           content:
@@ -208,6 +214,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many requests - rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitResponse'
         '500':
           description: Internal server error
           content:
@@ -218,12 +230,144 @@ paths:
   /health:
     get:
       summary: Health check endpoint
-      description: Returns the health status of the webhook server
+      description: |
+        Returns comprehensive health status of the webhook server with detailed component information.
+        
+        **Health Levels:**
+        - `healthy` - All components are functioning normally
+        - `degraded` - Some components have issues but service is operational
+        - `unhealthy` - Critical components are failing
+        - `critical` - Service is not operational
+        
+        **Components Monitored:**
+        - HTTP server status
+        - Database connectivity (if applicable)
+        - External service dependencies
+        - Cache system status
+        - Worker pool health
+        - Error recovery system
       tags:
-        - Health
+        - Health & Monitoring
       responses:
         '200':
-          description: Service is healthy
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      summary: Readiness check endpoint
+      description: |
+        Returns service readiness status for Kubernetes health checks.
+        Indicates whether the service is ready to receive traffic.
+        
+        **Readiness Criteria:**
+        - All required components initialized
+        - Database connections established
+        - External service dependencies available
+        - Configuration loaded successfully
+      tags:
+        - Health & Monitoring
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      description: |
+        Returns Prometheus metrics for monitoring and alerting.
+        
+        **Available Metrics:**
+        - HTTP request counts and durations
+        - Job processing metrics (queue length, processing time)
+        - Cache performance (hit rate, eviction count)
+        - Rate limiting statistics
+        - System metrics (memory, goroutines, GC)
+        - Error rates and recovery attempts
+        - Custom business metrics
+      tags:
+        - Health & Monitoring
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP webhook_requests_total Total number of webhook requests
+                  # TYPE webhook_requests_total counter
+                  webhook_requests_total{endpoint="/gitlab-hook",status="200"} 150
+                  webhook_requests_total{endpoint="/gitlab-hook",status="400"} 2
+                  
+                  # HELP job_processing_duration_seconds Time spent processing jobs
+                  # TYPE job_processing_duration_seconds histogram
+                  job_processing_duration_seconds_bucket{priority="high",le="0.1"} 45
+                  job_processing_duration_seconds_bucket{priority="high",le="0.5"} 89
+                  
+                  # HELP cache_hit_rate Cache hit rate percentage
+                  # TYPE cache_hit_rate gauge
+                  cache_hit_rate 85.5
+                  
+                  # HELP rate_limit_requests_total Total rate limited requests
+                  # TYPE rate_limit_requests_total counter
+                  rate_limit_requests_total{endpoint="/gitlab-hook"} 5
+
+  /cache/status:
+    get:
+      summary: Cache status endpoint
+      description: |
+        Returns detailed cache system status and statistics.
+        
+        **Cache Information:**
+        - Cache hit/miss rates
+        - Memory usage and eviction statistics
+        - Cache strategy performance
+        - Compression and encryption status
+        - Distributed cache node information
+      tags:
+        - Cache Management
+      responses:
+        '200':
+          description: Cache status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStatusResponse'
+
+  /cache/clear:
+    post:
+      summary: Clear cache endpoint
+      description: |
+        Clears all cache entries. Useful for troubleshooting and performance testing.
+        
+        **Security:** Requires authentication in production environments.
+      tags:
+        - Cache Management
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Cache cleared successfully
           content:
             application/json:
               schema:
@@ -231,17 +375,62 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: "healthy"
-                  timestamp:
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Cache cleared successfully"
+                  cleared_entries:
+                    type: integer
+                    example: 1250
+        '401':
+          description: Unauthorized - requires admin token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /config/reload:
+    post:
+      summary: Reload configuration endpoint
+      description: |
+        Triggers configuration reload from files and environment variables.
+        Useful for applying configuration changes without service restart.
+        
+        **Security:** Requires authentication in production environments.
+      tags:
+        - Configuration Management
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Configuration reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Configuration reloaded successfully"
+                  reloaded_at:
                     type: string
                     format: date-time
                     example: "2024-01-01T12:00:00Z"
-                  version:
-                    type: string
-                    example: "0.1.0"
-                  uptime:
-                    type: string
-                    example: "1h23m45s"
+        '401':
+          description: Unauthorized - requires admin token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Configuration reload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   securitySchemes:
@@ -250,24 +439,282 @@ components:
       name: X-Gitlab-Token
       in: header
       description: GitLab webhook secret token
+    AdminToken:
+      type: apiKey
+      name: X-Admin-Token
+      in: header
+      description: Admin token for privileged operations
 
   schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+          example: "success"
+        message:
+          type: string
+          example: "Event processed successfully"
+        jira_comments_created:
+          type: integer
+          description: Number of Jira comments created
+          example: 2
+        processing_time_ms:
+          type: integer
+          description: Processing time in milliseconds
+          example: 150
+        trace_id:
+          type: string
+          description: OpenTelemetry trace ID for correlation
+          example: "1-5759e988-bd862e3fe1be46a994272793"
+      required:
+        - status
+        - message
+
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
           description: Error message
+          example: "Invalid event data"
         code:
           type: string
           description: Error code
+          example: "INVALID_EVENT"
         timestamp:
           type: string
           format: date-time
           description: Error timestamp
+          example: "2024-01-01T12:00:00Z"
+        trace_id:
+          type: string
+          description: OpenTelemetry trace ID for correlation
+          example: "1-5759e988-bd862e3fe1be46a994272793"
+        details:
+          type: object
+          description: Additional error details
+          example:
+            field: "event_name"
+            value: "invalid_event"
       required:
         - error
         - timestamp
+
+    RateLimitResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Rate limit exceeded"
+        code:
+          type: string
+          example: "RATE_LIMIT_EXCEEDED"
+        retry_after:
+          type: integer
+          description: Seconds to wait before retrying
+          example: 60
+        limit:
+          type: integer
+          description: Request limit per time window
+          example: 100
+        window:
+          type: string
+          description: Time window for rate limiting
+          example: "1m"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+      required:
+        - error
+        - retry_after
+        - timestamp
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, critical]
+          description: Overall health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-01-01T12:00:00Z"
+        version:
+          type: string
+          description: Service version
+          example: "0.1.5"
+        uptime:
+          type: string
+          description: Service uptime
+          example: "1h23m45s"
+        components:
+          type: object
+          description: Individual component health status
+          properties:
+            http_server:
+              $ref: '#/components/schemas/ComponentHealth'
+            cache:
+              $ref: '#/components/schemas/ComponentHealth'
+            worker_pool:
+              $ref: '#/components/schemas/ComponentHealth'
+            error_recovery:
+              $ref: '#/components/schemas/ComponentHealth'
+            rate_limiter:
+              $ref: '#/components/schemas/ComponentHealth'
+        metrics:
+          type: object
+          description: Key performance metrics
+          properties:
+            request_rate:
+              type: number
+              description: Requests per second
+              example: 15.5
+            error_rate:
+              type: number
+              description: Error rate percentage
+              example: 0.1
+            cache_hit_rate:
+              type: number
+              description: Cache hit rate percentage
+              example: 85.5
+            avg_response_time:
+              type: number
+              description: Average response time in milliseconds
+              example: 125.3
+      required:
+        - status
+        - timestamp
+        - version
+
+    ComponentHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, critical]
+          description: Component health status
+        message:
+          type: string
+          description: Health status message
+        last_check:
+          type: string
+          format: date-time
+          description: Last health check timestamp
+        details:
+          type: object
+          description: Component-specific health details
+      required:
+        - status
+        - message
+
+    ReadinessResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+          description: Whether the service is ready to receive traffic
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Readiness check timestamp
+          example: "2024-01-01T12:00:00Z"
+        checks:
+          type: object
+          description: Individual readiness checks
+          properties:
+            configuration:
+              type: boolean
+              description: Configuration loaded successfully
+            database:
+              type: boolean
+              description: Database connections established
+            external_services:
+              type: boolean
+              description: External service dependencies available
+            cache:
+              type: boolean
+              description: Cache system initialized
+        message:
+          type: string
+          description: Readiness status message
+          example: "Service is ready to receive traffic"
+      required:
+        - ready
+        - timestamp
+
+    CacheStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [enabled, disabled, degraded]
+          description: Cache system status
+        strategy:
+          type: string
+          enum: [LRU, LFU, FIFO, TTL, Adaptive]
+          description: Current cache eviction strategy
+        statistics:
+          type: object
+          properties:
+            total_entries:
+              type: integer
+              description: Total number of cache entries
+            hit_count:
+              type: integer
+              description: Total cache hits
+            miss_count:
+              type: integer
+              description: Total cache misses
+            hit_rate:
+              type: number
+              description: Cache hit rate percentage
+            eviction_count:
+              type: integer
+              description: Total evictions
+            memory_usage_bytes:
+              type: integer
+              description: Memory usage in bytes
+        compression:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: Whether compression is enabled
+            compression_ratio:
+              type: number
+              description: Average compression ratio
+        encryption:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: Whether encryption is enabled
+            algorithm:
+              type: string
+              description: Encryption algorithm used
+        distributed:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: Whether distributed caching is enabled
+            nodes:
+              type: integer
+              description: Number of cache nodes
+            consistent_hashing:
+              type: boolean
+              description: Whether consistent hashing is used
+      required:
+        - status
+        - strategy
+        - statistics
 
     # System Hook Event Schemas
     PushEvent:
@@ -1037,5 +1484,9 @@ tags:
     description: GitLab System Hook endpoints
   - name: Project Webhooks
     description: GitLab Project Webhook endpoints
-  - name: Health
-    description: Health check endpoints 
+  - name: Health & Monitoring
+    description: Health check and monitoring endpoints
+  - name: Cache Management
+    description: Cache system management endpoints
+  - name: Configuration Management
+    description: Configuration management endpoints 

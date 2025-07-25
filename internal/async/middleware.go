@@ -365,7 +365,7 @@ type RateLimiter interface {
 }
 
 // ErrCircuitBreakerOpen is returned when the circuit breaker is open
-var ErrCircuitBreakerOpen = &CircuitBreakerError{}
+var ErrCircuitBreakerOpen = NewError(ErrCodeCircuitBreakerOpen, "circuit breaker is open", nil)
 
 // CircuitBreakerError represents a circuit breaker error
 type CircuitBreakerError struct{}

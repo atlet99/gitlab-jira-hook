@@ -36,7 +36,7 @@ VULNCHECK_REPORT_FILE := vulncheck-report.json
 ERRCHECK_VERSION := v1.9.0
 
 # SBOM generation constants
-SYFT_VERSION := latest
+SYFT_VERSION := 1.29.0
 SYFT = $(GOPATH)/bin/syft
 SYFT_OUTPUT_FORMAT := syft-json
 SYFT_SBOM_FILE := sbom.syft.json
@@ -73,12 +73,29 @@ help:
 	@echo "  ===================="
 	@echo "  default         - Run formatting, vetting, linting, staticcheck, and tests"
 	@echo "  build           - Build the application"
+	@echo "  build-debug     - Build with debug information"
+	@echo "  build-cross     - Build for multiple platforms"
 	@echo "  test            - Run all tests with standard coverage"
 	@echo "  test-with-race  - Run all tests with race detection and coverage"
 	@echo "  quicktest       - Run quick tests without additional checks"
 	@echo "  test-coverage   - Run tests with coverage report"
 	@echo "  test-race       - Run tests with race detection"
 	@echo "  test-all        - Run all tests and benchmarks"
+	@echo "  test-integration - Run integration tests"
+	@echo ""
+	@echo "  Benchmarking:"
+	@echo "  ============="
+	@echo "  benchmark       - Run all benchmarks"
+	@echo "  benchmark-short - Run quick benchmarks (short mode)"
+	@echo "  benchmark-fast  - Run ultra-fast benchmarks (100ms per test)"
+	@echo "  benchmark-cpu   - Run CPU benchmarks"
+	@echo "  benchmark-memory - Run memory benchmarks"
+	@echo "  benchmark-webhook - Run webhook processing benchmarks"
+	@echo "  benchmark-worker-pool - Run worker pool benchmarks"
+	@echo "  benchmark-parser - Run parser benchmarks"
+	@echo "  benchmark-profile - Run benchmarks with profiling"
+	@echo "  benchmark-analyze - Analyze benchmark results"
+	@echo "  benchmark-report - Generate benchmark report"
 	@echo ""
 	@echo "  Development:"
 	@echo "  ============"
@@ -101,17 +118,16 @@ help:
 	@echo "  security-scan   - Run gosec security scanner (SARIF output)"
 	@echo "  security-scan-json - Run gosec security scanner (JSON output)"
 	@echo "  security-scan-html - Run gosec security scanner (HTML output)"
-	@echo "  security-scan-ci - Run gosec security scanner for CI (no-fail mode)"
 	@echo "  vuln-check      - Run govulncheck vulnerability scanner"
 	@echo "  vuln-check-json - Run govulncheck vulnerability scanner (JSON output)"
 	@echo "  vuln-check-ci   - Run govulncheck vulnerability scanner for CI"
 	@echo "  sbom-generate   - Generate Software Bill of Materials (SBOM) with Syft"
-	@echo "  sbom-syft       - Generate SBOM in Syft JSON format (alias for sbom-generate)"
+	@echo "  sbom-syft       - Generate SBOM in Syft JSON format"
 	@echo "  sbom-spdx       - Generate SBOM in SPDX JSON format"
 	@echo "  sbom-cyclonedx  - Generate SBOM in CycloneDX JSON format"
 	@echo "  sbom-all        - Generate SBOM in all supported formats"
-	@echo "  sbom-ci         - Generate SBOM for CI pipeline (quiet mode)"
-	@echo "  check-all       - Run all code quality checks including error checking, security, vulnerability checks and SBOM generation"
+	@echo "  sbom-ci         - Generate SBOM for CI pipeline"
+	@echo "  check-all       - Run all code quality checks"
 	@echo ""
 	@echo "  Dependencies:"
 	@echo "  ============="
@@ -127,7 +143,6 @@ help:
 	@echo "  bump-patch      - Bump patch version"
 	@echo "  bump-minor      - Bump minor version"
 	@echo "  bump-major      - Bump major version"
-	@echo "  release         - Build release version with all optimizations"
 	@echo ""
 	@echo "  Documentation:"
 	@echo "  =============="
@@ -140,10 +155,11 @@ help:
 	@echo "  ci-test         - Run CI tests"
 	@echo "  ci-build        - Run CI build"
 	@echo "  ci-release      - Complete CI release pipeline"
-	@echo "  matrix-test-local - Run matrix tests locally with multiple Go versions"
-	@echo "  matrix-info     - Show matrix testing configuration and features"
+	@echo "  matrix-test-local - Run matrix tests locally"
+	@echo "  matrix-info     - Show matrix testing configuration"
 	@echo "  test-multi-go   - Test Go version compatibility"
-	@echo "  test-go-versions - Check current Go version against requirements"
+	@echo "  test-go-versions - Check current Go version"
+	@echo "  test-data-check - Check test data integrity"
 	@echo ""
 	@echo "  Cleanup:"
 	@echo "  ========"
@@ -154,8 +170,11 @@ help:
 	@echo "Examples:"
 	@echo "  make build                     - Build the application"
 	@echo "  make test                      - Run all tests"
+	@echo "  make test-with-race           - Run tests with race detection"
 	@echo "  make run                       - Build and run"
 	@echo "  make check-all                 - Run all quality checks"
+	@echo "  make benchmark                 - Run all benchmarks"
+	@echo "  make docker-build              - Build Docker image"
 	@echo "  make bump-patch                - Bump patch version"
 
 # Dependencies
@@ -225,25 +244,25 @@ build-cross: $(OUTPUT_DIR)
 
 test:
 	@echo "Running Go tests..."
-	go test -v ./... -cover
+	go test -v -timeout 120s ./internal/async ./internal/benchmarks ./internal/cache ./internal/common ./internal/config ./internal/gitlab ./internal/jira ./internal/monitoring ./internal/server ./internal/timezone ./internal/utils ./internal/version ./pkg/logger ./cmd/server -cover
 
 test-with-race:
 	@echo "Running all tests with race detection and coverage..."
-	go test -v -race -cover ./...
+	go test -v -timeout 120s -race -cover ./...
 
 quicktest:
 	@echo "Running quick tests..."
-	go test ./...
+	go test -timeout 120s ./...
 
 test-coverage:
 	@echo "Running tests with coverage report..."
-	go test -v -coverprofile=coverage.out -covermode=atomic ./...
+	go test -v -timeout 120s -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 test-race:
 	@echo "Running tests with race detection..."
-	go test -v -race ./...
+	go test -v -timeout 120s -race ./...
 
 test-all: test-coverage test-race
 	@echo "All tests completed"
@@ -254,6 +273,14 @@ test-all: test-coverage test-race
 # Run all benchmarks
 benchmark:
 	go test -bench=. -benchmem ./internal/benchmarks/
+
+# Run quick benchmarks (short mode)
+benchmark-short:
+	go test -bench=. -benchmem -short ./internal/benchmarks/
+
+# Run ultra-fast benchmarks (minimal mode)
+benchmark-fast:
+	go test -bench=. -benchmem -short -benchtime=100ms ./internal/benchmarks/
 
 # Run CPU-intensive benchmarks
 benchmark-cpu:

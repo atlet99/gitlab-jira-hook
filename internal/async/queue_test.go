@@ -196,7 +196,7 @@ func TestPriorityWorkerPool(t *testing.T) {
 		BackoffMultiplier:   2.0,
 		MaxBackoffMs:        1000,
 		MetricsEnabled:      false,
-		HealthCheckInterval: 30,
+		HealthCheckInterval: 5,
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -227,7 +227,7 @@ func TestPriorityWorkerPool(t *testing.T) {
 
 	t.Run("pool statistics", func(t *testing.T) {
 		// Give workers time to start
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 
 		stats := pool.GetStats()
 		// Just check that stats are reasonable, don't assert exact values
@@ -247,7 +247,7 @@ func TestPriorityWorkerPool(t *testing.T) {
 
 	t.Run("scaling", func(t *testing.T) {
 		// Give workers time to start
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 
 		// Just check that scaling methods don't panic
 		// The actual scaling logic is tested in scalingMonitor
@@ -261,7 +261,7 @@ func TestPriorityWorkerPool(t *testing.T) {
 		}
 
 		// Wait a bit for processing
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		// Check that pool is still working
 		stats := pool.GetStats()
@@ -274,7 +274,7 @@ type mockEventHandler struct{}
 
 func (m *mockEventHandler) ProcessEventAsync(ctx context.Context, event *webhook.Event) error {
 	// Simulate some processing time
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	return nil
 }
 

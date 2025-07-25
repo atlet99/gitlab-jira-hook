@@ -24,6 +24,10 @@ build/
 .env
 config.env
 
+# Docker compose override files (local development)
+docker-compose.override.yml
+docker-compose.local.yml
+
 # IDE files
 .vscode/
 .idea/
@@ -38,7 +42,8 @@ Thumbs.db
 *.log
 
 # Coverage reports
-coverage.html
+coverage.*
+*.html
 
 # Temporary files
 *.tmp
