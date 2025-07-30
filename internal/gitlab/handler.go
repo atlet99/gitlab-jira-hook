@@ -1033,7 +1033,7 @@ func min(a, b int) int {
 	return b
 }
 
-// convertToInterfaceEvent преобразует *gitlab.Event в *webhook.Event
+// convertToInterfaceEvent converts *gitlab.Event to *webhook.Event
 func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	if e == nil {
 		return nil
@@ -1113,12 +1113,12 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	return result
 }
 
-// parseTime пытается распарсить строку времени в time.Time
+// parseTime attempts to parse a time string into time.Time
 func parseTime(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
-	// Попробуем RFC3339, иначе вернем zero time
+	// Try RFC3339, otherwise return zero time
 	ts, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		return time.Time{}, err

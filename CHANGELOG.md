@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced merge request, issue, and note event processing with fallback logic
   - Added better error handling and logging for missing event data
   - Improved Jira issue ID extraction and validation in all event types
+  - Translated all Russian comments to English for better code maintainability
 
 ## [0.1.5] - 2025-07-24
 
