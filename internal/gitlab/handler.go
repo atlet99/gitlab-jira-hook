@@ -234,8 +234,9 @@ func (h *Handler) convertFromInterfaceEvent(event *webhook.Event) (*Event, error
 	}
 
 	orig := &Event{
-		Type:      event.Type,
-		EventName: event.EventName,
+		Type:       event.Type,
+		EventName:  event.EventName,
+		ObjectKind: event.Type, // Set ObjectKind from Type (which comes from ObjectKind)
 	}
 
 	if event.Project != nil {
@@ -1041,7 +1042,7 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	}
 
 	result := &webhook.Event{
-		Type:      e.Type,
+		Type:      e.ObjectKind, // Use ObjectKind as Type for webhook.Event
 		EventName: e.EventName,
 		Commits:   commits,
 	}

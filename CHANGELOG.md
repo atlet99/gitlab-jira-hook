@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-07-31
+
+### Fixed
+- **Webhook Event Processing Fixes**
+  - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
+  - Added fallback logic to use event.Type when ObjectKind is empty
+  - Added support for repository_update events (skipped as not relevant for Jira integration)
+  - Fixed event type conversion between internal Event and webhook.Event structures
+  - Improved error logging with both object_kind and event_type for better debugging
+
 ## [0.1.5] - 2025-07-24
 
 ### Added

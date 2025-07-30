@@ -36,11 +36,18 @@ func NewEventProcessor(jiraClient interface {
 func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error {
 	ep.logger.Info("Processing GitLab event",
 		"object_kind", event.ObjectKind,
+		"event_type", event.Type,
 		"project_id", event.Project.ID,
 		"project_name", event.Project.Name,
 	)
 
-	switch event.ObjectKind {
+	// Use Type if ObjectKind is empty
+	eventType := event.ObjectKind
+	if eventType == "" {
+		eventType = event.Type
+	}
+
+	switch eventType {
 	case "push":
 		return ep.processPushEvent(ctx, event)
 	case "merge_request":
@@ -61,9 +68,13 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 		return ep.processWikiPageEvent(ctx, event)
 	case "feature_flag":
 		return ep.processFeatureFlagEvent(ctx, event)
+	case "repository_update":
+		// Repository update events are usually not relevant for Jira integration
+		ep.logger.Info("Skipping repository update event", "object_kind", event.ObjectKind)
+		return nil
 	default:
-		ep.logger.Warn("Unsupported event type", "object_kind", event.ObjectKind)
-		return fmt.Errorf("unsupported event type: %s", event.ObjectKind)
+		ep.logger.Warn("Unsupported event type", "object_kind", event.ObjectKind, "event_type", event.Type)
+		return fmt.Errorf("unsupported event type: %s", eventType)
 	}
 }
 
