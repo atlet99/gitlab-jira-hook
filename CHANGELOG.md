@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added support for repository_update events (skipped as not relevant for Jira integration)
   - Fixed event type conversion between internal Event and webhook.Event structures
   - Improved error logging with both object_kind and event_type for better debugging
+- **Docker Compose and Worker Pool Improvements**
+  - Fixed Docker Compose resource reservations by removing unsupported `cpus` field
+  - Increased job timeout from 30 to 120 seconds to prevent premature context cancellation
+  - Improved context cancellation handling in worker pool with better error logging
+  - Enhanced retry logic to skip retries for context cancellation errors
+  - Added logger to PriorityQueue for better error tracking and debugging
 
 ## [0.1.5] - 2025-07-24
 

@@ -27,7 +27,7 @@ func TestPriorityQueue(t *testing.T) {
 	}
 
 	t.Run("submit and get job", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		event := &webhook.Event{Type: "push"}
@@ -44,7 +44,7 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("priority ordering", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		event1 := &webhook.Event{Type: "push"}
@@ -78,7 +78,7 @@ func TestPriorityQueue(t *testing.T) {
 	t.Run("queue timeout", func(t *testing.T) {
 		// Create a queue with very small timeout
 		cfg.QueueTimeoutMs = 1
-		smallQueue := NewPriorityQueue(cfg, nil)
+		smallQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer smallQueue.Shutdown()
 
 		// Fill the queue
@@ -97,7 +97,7 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("job completion", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		event := &webhook.Event{Type: "push"}
@@ -117,7 +117,7 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("job retry", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		event := &webhook.Event{Type: "push"}
@@ -141,7 +141,7 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("max retries exceeded", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		event := &webhook.Event{Type: "push"}
@@ -171,7 +171,7 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("queue statistics", func(t *testing.T) {
-		queue := NewPriorityQueue(cfg, nil)
+		queue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer queue.Shutdown()
 
 		stats := queue.GetStats()

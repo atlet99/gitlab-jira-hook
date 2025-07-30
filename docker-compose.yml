@@ -36,4 +36,3 @@ services:
           cpus: "2.0"
         reservations:
           memory: 512M
-          cpus: "0.5"

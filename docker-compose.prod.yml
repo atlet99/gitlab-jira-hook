@@ -10,7 +10,6 @@ services:
           cpus: "2.0"
         reservations:
           memory: 1G
-          cpus: "1.0"
       restart_policy:
         condition: on-failure
         delay: 5s

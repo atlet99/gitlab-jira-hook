@@ -57,7 +57,7 @@ const (
 
 	// Rate limiting defaults
 	DefaultMaxConcurrentJobs = 50
-	DefaultJobTimeoutSeconds = 30
+	DefaultJobTimeoutSeconds = 120 // Increased from 30 to 120 seconds
 	DefaultQueueTimeoutMs    = 5000
 
 	// Retry and backoff defaults

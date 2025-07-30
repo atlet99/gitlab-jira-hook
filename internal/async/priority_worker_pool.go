@@ -79,7 +79,7 @@ func NewPriorityWorkerPool(
 	middleware := NewMiddlewareChain(defaultHandler)
 
 	// Create priority queue with decider
-	queue := NewPriorityQueue(cfg, decider)
+	queue := NewPriorityQueue(cfg, decider, logger)
 
 	// Create delayed queue
 	delayedQueue := NewDelayedQueue(cfg, logger, queue, decider)
@@ -429,6 +429,16 @@ func (w *PriorityWorker) processJob(job *Job) {
 	// Process the event using middleware chain
 	handler := w.pool.middleware.Build()
 	err := handler(job.ctx, job)
+
+	// Check if the error is due to context cancellation
+	if err != nil && job.ctx.Err() == context.Canceled {
+		w.pool.logger.Warn("Job cancelled due to timeout or context cancellation",
+			"worker_id", w.id,
+			"job_id", job.ID,
+			"event_type", job.Event.Type,
+			"duration", time.Since(start),
+			"retry_count", job.RetryCount)
+	}
 
 	// Complete the job
 	w.pool.queue.CompleteJob(job, err)

@@ -62,7 +62,7 @@ func TestDelayedQueue(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("submit delayed job", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil)
+		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer mainQueue.Shutdown()
 
 		delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
@@ -86,7 +86,7 @@ func TestDelayedQueue(t *testing.T) {
 	})
 
 	t.Run("multiple delayed jobs with different delays", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil)
+		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer mainQueue.Shutdown()
 
 		delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
@@ -116,7 +116,7 @@ func TestDelayedQueue(t *testing.T) {
 	})
 
 	t.Run("delayed job statistics", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil)
+		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer mainQueue.Shutdown()
 
 		delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
@@ -160,7 +160,7 @@ func TestDelayedQueue(t *testing.T) {
 	})
 
 	t.Run("delayed job with priority decider", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil)
+		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer mainQueue.Shutdown()
 
 		decider := &DefaultPriorityDecider{}
@@ -180,7 +180,7 @@ func TestDelayedQueue(t *testing.T) {
 	})
 
 	t.Run("graceful shutdown", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil)
+		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
 		defer mainQueue.Shutdown()
 
 		delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
