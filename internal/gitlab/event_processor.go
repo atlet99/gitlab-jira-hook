@@ -47,6 +47,38 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 		eventType = event.Type
 	}
 
+	// If both are empty, try to determine from event structure
+	if eventType == "" {
+		if len(event.Commits) > 0 {
+			eventType = "push"
+		} else if event.MergeRequest != nil {
+			eventType = "merge_request"
+		} else if event.Issue != nil {
+			eventType = "issue"
+		} else if event.Note != nil {
+			eventType = "note"
+		} else if event.Pipeline != nil {
+			eventType = "pipeline"
+		} else if event.Build != nil {
+			eventType = "job"
+		} else if event.Deployment != nil {
+			eventType = "deployment"
+		} else if event.Release != nil {
+			eventType = "release"
+		} else if event.WikiPage != nil {
+			eventType = "wiki_page"
+		} else if event.FeatureFlag != nil {
+			eventType = "feature_flag"
+		} else if event.ObjectAttributes != nil {
+			// Try to determine from object attributes
+			if event.ObjectAttributes.TargetBranch != "" || event.ObjectAttributes.SourceBranch != "" {
+				eventType = "merge_request"
+			} else if event.ObjectAttributes.Description != "" {
+				eventType = "issue"
+			}
+		}
+	}
+
 	switch eventType {
 	case "push":
 		return ep.processPushEvent(ctx, event)
@@ -73,7 +105,21 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 		ep.logger.Info("Skipping repository update event", "object_kind", event.ObjectKind)
 		return nil
 	default:
-		ep.logger.Warn("Unsupported event type", "object_kind", event.ObjectKind, "event_type", event.Type)
+		ep.logger.Warn("Unsupported event type",
+			"object_kind", event.ObjectKind,
+			"event_type", event.Type,
+			"determined_type", eventType,
+			"has_commits", len(event.Commits) > 0,
+			"has_merge_request", event.MergeRequest != nil,
+			"has_issue", event.Issue != nil,
+			"has_note", event.Note != nil,
+			"has_pipeline", event.Pipeline != nil,
+			"has_build", event.Build != nil,
+			"has_deployment", event.Deployment != nil,
+			"has_release", event.Release != nil,
+			"has_wiki_page", event.WikiPage != nil,
+			"has_feature_flag", event.FeatureFlag != nil,
+			"has_object_attributes", event.ObjectAttributes != nil)
 		return fmt.Errorf("unsupported event type: %s", eventType)
 	}
 }
@@ -128,22 +174,47 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 
 // processMergeRequestEvent processes merge request events
 func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *Event) error {
-	if event.ObjectAttributes == nil {
-		return fmt.Errorf("missing object attributes in merge request event")
+	var title, description, action string
+	var mrID int
+
+	// Try to get data from ObjectAttributes first
+	if event.ObjectAttributes != nil {
+		title = event.ObjectAttributes.Title
+		description = event.ObjectAttributes.Description
+		action = event.ObjectAttributes.Action
+		mrID = event.ObjectAttributes.ID
+	} else if event.MergeRequest != nil {
+		// Fallback to MergeRequest structure
+		title = event.MergeRequest.Title
+		description = event.MergeRequest.Description
+		action = "updated" // Default action for merge request
+		mrID = event.MergeRequest.ID
+	} else {
+		return fmt.Errorf("missing merge request data in event")
 	}
 
 	// Extract issue IDs from MR title and description
-	issueIDs := ep.parser.ExtractIssueIDs(event.ObjectAttributes.Title)
-	issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Description)...)
+	issueIDs := ep.parser.ExtractIssueIDs(title)
+	issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(description)...)
+
+	if len(issueIDs) == 0 {
+		ep.logger.Info("No Jira issue IDs found in merge request",
+			"mr_id", mrID,
+			"title", title,
+			"project_id", event.Project.ID,
+		)
+		return nil
+	}
 
 	// Create a simple comment
-	comment := ep.buildSimpleComment("Merge Request", event.ObjectAttributes.Title, event.ObjectAttributes.Action)
+	comment := ep.buildSimpleComment("Merge Request", title, action)
 
 	for _, issueID := range issueIDs {
 		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
 			ep.logger.Error("Failed to add merge request comment to Jira",
 				"error", err,
-				"mr_id", event.ObjectAttributes.ID,
+				"mr_id", mrID,
+				"issue_id", issueID,
 				"project_id", event.Project.ID,
 			)
 			return fmt.Errorf("failed to add merge request comment: %w", err)
@@ -151,8 +222,9 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 	}
 
 	ep.logger.Info("Successfully processed merge request event",
-		"mr_id", event.ObjectAttributes.ID,
-		"action", event.ObjectAttributes.Action,
+		"mr_id", mrID,
+		"action", action,
+		"issue_ids", issueIDs,
 		"project_id", event.Project.ID,
 	)
 	return nil
@@ -160,22 +232,47 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 
 // processIssueEvent processes issue events
 func (ep *EventProcessor) processIssueEvent(ctx context.Context, event *Event) error {
-	if event.ObjectAttributes == nil {
-		return fmt.Errorf("missing object attributes in issue event")
+	var title, description, action string
+	var issueID int
+
+	// Try to get data from ObjectAttributes first
+	if event.ObjectAttributes != nil {
+		title = event.ObjectAttributes.Title
+		description = event.ObjectAttributes.Description
+		action = event.ObjectAttributes.Action
+		issueID = event.ObjectAttributes.ID
+	} else if event.Issue != nil {
+		// Fallback to Issue structure
+		title = event.Issue.Title
+		description = event.Issue.Description
+		action = "updated" // Default action for issue
+		issueID = event.Issue.ID
+	} else {
+		return fmt.Errorf("missing issue data in event")
 	}
 
 	// Extract issue IDs from issue title and description
-	issueIDs := ep.parser.ExtractIssueIDs(event.ObjectAttributes.Title)
-	issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Description)...)
+	jiraIssueIDs := ep.parser.ExtractIssueIDs(title)
+	jiraIssueIDs = append(jiraIssueIDs, ep.parser.ExtractIssueIDs(description)...)
+
+	if len(jiraIssueIDs) == 0 {
+		ep.logger.Info("No Jira issue IDs found in GitLab issue",
+			"issue_id", issueID,
+			"title", title,
+			"project_id", event.Project.ID,
+		)
+		return nil
+	}
 
 	// Create a simple comment
-	comment := ep.buildSimpleComment("Issue", event.ObjectAttributes.Title, event.ObjectAttributes.Action)
+	comment := ep.buildSimpleComment("Issue", title, action)
 
-	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+	for _, jiraID := range jiraIssueIDs {
+		if err := ep.jiraClient.AddComment(jiraID, comment); err != nil {
 			ep.logger.Error("Failed to add issue comment to Jira",
 				"error", err,
-				"issue_id", event.ObjectAttributes.ID,
+				"gitlab_issue_id", issueID,
+				"jira_issue_id", jiraID,
 				"project_id", event.Project.ID,
 			)
 			return fmt.Errorf("failed to add issue comment: %w", err)
@@ -183,8 +280,9 @@ func (ep *EventProcessor) processIssueEvent(ctx context.Context, event *Event) e
 	}
 
 	ep.logger.Info("Successfully processed issue event",
-		"issue_id", event.ObjectAttributes.ID,
-		"action", event.ObjectAttributes.Action,
+		"issue_id", issueID,
+		"action", action,
+		"jira_issue_ids", jiraIssueIDs,
 		"project_id", event.Project.ID,
 	)
 	return nil
@@ -192,21 +290,41 @@ func (ep *EventProcessor) processIssueEvent(ctx context.Context, event *Event) e
 
 // processNoteEvent processes note (comment) events
 func (ep *EventProcessor) processNoteEvent(ctx context.Context, event *Event) error {
-	if event.ObjectAttributes == nil {
-		return fmt.Errorf("missing object attributes in note event")
+	var noteContent string
+	var noteID int
+
+	// Try to get data from ObjectAttributes first
+	if event.ObjectAttributes != nil {
+		noteContent = event.ObjectAttributes.Note
+		noteID = event.ObjectAttributes.ID
+	} else if event.Note != nil {
+		// Fallback to Note structure
+		noteContent = event.Note.Note
+		noteID = event.Note.ID
+	} else {
+		return fmt.Errorf("missing note data in event")
 	}
 
 	// Extract issue IDs from note content
-	issueIDs := ep.parser.ExtractIssueIDs(event.ObjectAttributes.Note)
+	issueIDs := ep.parser.ExtractIssueIDs(noteContent)
+
+	if len(issueIDs) == 0 {
+		ep.logger.Info("No Jira issue IDs found in note",
+			"note_id", noteID,
+			"project_id", event.Project.ID,
+		)
+		return nil
+	}
 
 	// Create a simple comment
-	comment := ep.buildSimpleComment("Comment", event.ObjectAttributes.Note, "added")
+	comment := ep.buildSimpleComment("Comment", noteContent, "added")
 
 	for _, issueID := range issueIDs {
 		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
 			ep.logger.Error("Failed to add note comment to Jira",
 				"error", err,
-				"note_id", event.ObjectAttributes.ID,
+				"note_id", noteID,
+				"issue_id", issueID,
 				"project_id", event.Project.ID,
 			)
 			return fmt.Errorf("failed to add note comment: %w", err)
@@ -214,7 +332,8 @@ func (ep *EventProcessor) processNoteEvent(ctx context.Context, event *Event) er
 	}
 
 	ep.logger.Info("Successfully processed note event",
-		"note_id", event.ObjectAttributes.ID,
+		"note_id", noteID,
+		"issue_ids", issueIDs,
 		"project_id", event.Project.ID,
 	)
 	return nil

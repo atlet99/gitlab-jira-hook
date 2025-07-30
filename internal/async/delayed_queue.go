@@ -114,7 +114,7 @@ func (dq *DelayedQueue) scheduler() {
 	ticker := time.NewTicker(SchedulerInterval)
 	defer ticker.Stop()
 
-	dq.logger.Info("Delayed queue scheduler started", "interval", SchedulerInterval)
+	dq.logger.Info("Delayed queue scheduler started", "interval_ms", SchedulerInterval.Milliseconds())
 
 	// Process jobs immediately on startup
 	dq.processReadyJobs()

@@ -108,6 +108,9 @@ func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
 
+	// Log attempt
+	fmt.Printf("Adding comment to Jira issue %s (attempts: %d, base delay: %v)\n", issueID, maxAttempts, baseDelay)
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Wait for rate limiter
 		c.rateLimiter.Wait()
@@ -163,6 +166,7 @@ func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 		// Check response status
 		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
 			lastErr = fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+			fmt.Printf("Jira API 5xx error (attempt %d/%d): %s\n", attempt, maxAttempts, lastErr)
 			if attempt < maxAttempts {
 				time.Sleep(baseDelay * (1 << (attempt - 1)))
 				continue
@@ -170,8 +174,12 @@ func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 			return lastErr
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+			err := fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+			fmt.Printf("Jira API error (attempt %d/%d): %s\n", attempt, maxAttempts, err)
+			return err
 		}
+
+		fmt.Printf("Successfully added comment to Jira issue %s\n", issueID)
 
 		return nil
 	}

@@ -2,6 +2,7 @@ package async
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
@@ -282,7 +283,10 @@ func (pwp *PriorityWorkerPool) checkScaling() {
 		"pending_jobs", stats.QueueStats.PendingJobs,
 		"processing_jobs", stats.QueueStats.ProcessingJobs,
 		"queue_utilization", stats.QueueStats.QueueUtilization,
-		"error_rate", stats.QueueStats.ErrorRate)
+		"error_rate", stats.QueueStats.ErrorRate,
+		"total_jobs", stats.QueueStats.TotalJobs,
+		"failed_jobs", stats.QueueStats.FailedJobs,
+		"successful_jobs", stats.QueueStats.CompletedJobs)
 
 	// Scale up if queue is getting full
 	if stats.QueueStats.PendingJobs > int64(pwp.config.JobQueueSize/workerScaleUpDivisor) &&
@@ -432,12 +436,21 @@ func (w *PriorityWorker) processJob(job *Job) {
 
 	// Check if the error is due to context cancellation
 	if err != nil && job.ctx.Err() == context.Canceled {
-		w.pool.logger.Warn("Job cancelled due to timeout or context cancellation",
+		w.pool.logger.Warn("Job canceled due to timeout or context cancellation",
 			"worker_id", w.id,
 			"job_id", job.ID,
 			"event_type", job.Event.Type,
-			"duration", time.Since(start),
-			"retry_count", job.RetryCount)
+			"duration_ms", time.Since(start).Milliseconds(),
+			"retry_count", job.RetryCount,
+			"timeout_seconds", w.pool.config.JobTimeoutSeconds)
+	} else if err != nil {
+		w.pool.logger.Warn("Job failed with non-cancellation error",
+			"worker_id", w.id,
+			"job_id", job.ID,
+			"event_type", job.Event.Type,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"retry_count", job.RetryCount,
+			"error_type", fmt.Sprintf("%T", err))
 	}
 
 	// Complete the job
@@ -466,7 +479,7 @@ func (w *PriorityWorker) processJob(job *Job) {
 			"worker_id", w.id,
 			"job_id", job.ID,
 			"event_type", job.Event.Type,
-			"duration", duration,
+			"duration_ms", duration.Milliseconds(),
 			"error", err,
 			"retry_count", job.RetryCount)
 	} else {
@@ -474,7 +487,7 @@ func (w *PriorityWorker) processJob(job *Job) {
 			"worker_id", w.id,
 			"job_id", job.ID,
 			"event_type", job.Event.Type,
-			"duration", duration,
+			"duration_ms", duration.Milliseconds(),
 			"priority", job.Priority)
 	}
 }

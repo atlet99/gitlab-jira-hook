@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved context cancellation handling in worker pool with better error logging
   - Enhanced retry logic to skip retries for context cancellation errors
   - Added logger to PriorityQueue for better error tracking and debugging
+  - Fixed delayed queue scheduler interval logging to show milliseconds instead of nanoseconds
+  - Improved user name extraction from webhook events with fallback to commit authors
+  - Updated config.env.example with correct timeout values
+  - Fixed staticcheck warning about redundant nil check for slices
+  - Enhanced logging in worker pool scaling with detailed error rate information
+  - Improved duration logging to show milliseconds instead of nanoseconds for better readability
+  - Added detailed retry logging with delay information and success/failure tracking
+  - Fixed event type detection when object_kind and event_type are empty by analyzing event structure
+  - Updated config.env with test values for easier debugging
+  - Enhanced Jira client logging with detailed error information and retry attempts
+  - Improved event processing to handle both ObjectAttributes and direct event structures
+  - Enhanced merge request, issue, and note event processing with fallback logic
+  - Added better error handling and logging for missing event data
+  - Improved Jira issue ID extraction and validation in all event types
 
 ## [0.1.5] - 2025-07-24
 

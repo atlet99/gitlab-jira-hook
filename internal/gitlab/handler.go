@@ -335,8 +335,23 @@ func getProjectName(event *webhook.Event) string {
 
 func getUserName(event *webhook.Event) string {
 	if event.User != nil {
-		return event.User.Username
+		if event.User.Username != "" {
+			return event.User.Username
+		}
+		if event.User.Name != "" {
+			return event.User.Name
+		}
 	}
+
+	// Try to extract user from commits
+	if len(event.Commits) > 0 {
+		for _, commit := range event.Commits {
+			if commit.Author.Name != "" {
+				return commit.Author.Name
+			}
+		}
+	}
+
 	return "unknown"
 }
 
