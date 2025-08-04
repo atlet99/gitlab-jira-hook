@@ -316,6 +316,10 @@ func NewConfigFromEnv(logger *slog.Logger) *Config {
 
 	// Jira OAuth 2.0 Configuration
 	cfg.JiraAuthMethod = getEnv("JIRA_AUTH_METHOD", JiraAuthMethodBasic)
+	// Ensure auth method is not empty (fallback to basic if it is)
+	if cfg.JiraAuthMethod == "" {
+		cfg.JiraAuthMethod = JiraAuthMethodBasic
+	}
 	cfg.JiraOAuth2ClientID = getEnv("JIRA_OAUTH2_CLIENT_ID", "")
 	cfg.JiraOAuth2ClientSecret = getEnv("JIRA_OAUTH2_CLIENT_SECRET", "")
 	cfg.JiraOAuth2Scope = getEnv("JIRA_OAUTH2_SCOPE", "read:jira-work write:jira-work")

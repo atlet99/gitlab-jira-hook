@@ -327,8 +327,14 @@ func (h *WebhookHandler) ProcessEventAsync(ctx context.Context, event *webhook.E
 		return err
 	}
 
-	// Perform bidirectional sync
-	h.performBidirectionalSync(ctx, jiraEvent)
+	// Perform bidirectional sync only if enabled
+	if h.config.BidirectionalEnabled {
+		h.performBidirectionalSync(ctx, jiraEvent)
+	} else {
+		h.logger.Debug("Bidirectional sync disabled, skipping Jira → GitLab synchronization",
+			"eventType", jiraEvent.WebhookEvent,
+			"issueKey", getIssueKey(jiraEvent))
+	}
 
 	return nil
 }

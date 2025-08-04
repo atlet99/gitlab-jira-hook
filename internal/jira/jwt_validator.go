@@ -467,14 +467,16 @@ func (v *JWTValidator) buildCanonicalQueryString(request *http.Request) string {
 	// Build canonical query string
 	var parts []string
 	for _, key := range keys {
-		encodedKey := url.QueryEscape(key)
+		// Use PathEscape to ensure spaces are encoded as %20, not +
+		encodedKey := url.PathEscape(key)
 		paramValues := values[key]
 		sort.Strings(paramValues)
 
 		// URL encode values and join with comma
 		var encodedValues []string
 		for _, value := range paramValues {
-			encodedValues = append(encodedValues, url.QueryEscape(value))
+			// Use PathEscape to ensure spaces are encoded as %20, not +
+			encodedValues = append(encodedValues, url.PathEscape(value))
 		}
 
 		part := fmt.Sprintf("%s=%s", encodedKey, strings.Join(encodedValues, "%2C"))
