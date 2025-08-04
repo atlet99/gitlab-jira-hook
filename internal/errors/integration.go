@@ -301,7 +301,13 @@ func CreateHTTPErrorResponse(w http.ResponseWriter, err error) {
 	handler := NewHandler(slog.Default(), nil, false)
 
 	// Create a dummy request for context
-	req, _ := http.NewRequest("GET", "/", http.NoBody)
+	req, reqErr := http.NewRequest("GET", "/", http.NoBody)
+	if reqErr != nil {
+		// Log error but continue with nil request - the handler can work without it
+		slog.Default().Warn("Failed to create dummy request for error handling",
+			"error", reqErr)
+		req = nil
+	}
 
 	handler.HandleError(w, req, err)
 }
