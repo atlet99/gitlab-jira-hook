@@ -134,7 +134,14 @@ func generateSecureSeed() uint64 {
 	err := binary.Read(cryptoRand.Reader, binary.BigEndian, &seed)
 	if err != nil {
 		// Fallback to time-based seed if crypto/rand fails
-		return uint64(time.Now().UnixNano())
+		nanoTime := time.Now().UnixNano()
+		// Safe conversion from int64 to uint64 to avoid gosec G115
+		// UnixNano() is always positive since Unix epoch, but we check for safety
+		if nanoTime >= 0 {
+			return uint64(nanoTime) // #nosec G115 -- checked nanoTime >= 0
+		}
+		// This should never happen with UnixNano(), but handle gracefully
+		return uint64(-nanoTime) // #nosec G115 -- negated to make positive
 	}
 	return seed
 }
@@ -148,7 +155,8 @@ func NewRetryer(config *RetryConfig, logger *slog.Logger) *Retryer {
 	return &Retryer{
 		config: config,
 		logger: logger,
-		rng:    rand.New(rand.NewPCG(generateSecureSeed(), generateSecureSeed())), //nolint:gosec // Using crypto/rand for seeding
+		// Using crypto/rand for seeding to satisfy security requirements
+		rng: rand.New(rand.NewPCG(generateSecureSeed(), generateSecureSeed())), //nolint:gosec // crypto/rand used for seeding
 	}
 }
 
