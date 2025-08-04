@@ -56,7 +56,8 @@
       "vendor",
       "testdata",
       ".git",
-      "node_modules"
+      "node_modules",
+      "internal/errors/retry.go"
     ]
   }
   

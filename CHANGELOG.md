@@ -5,15 +5,119 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-07-31
+## [1.0.0] - 2025-08-04
+
+### Added
+- **OAuth 2.0 Authentication Support**
+  - Implemented Jira OAuth 2.0 (3LO) authentication as alternative to Basic Auth
+  - Added OAuth 2.0 client with authorization code flow support
+  - Implemented token refresh mechanism with automatic renewal
+  - Added OAuth 2.0 HTTP handlers for authorization and callback endpoints
+  - Added secure state management for CSRF protection
+  - Added OAuth 2.0 configuration options in config.env.example
+  - Integration with existing Jira client for seamless authentication method switching
+
+- **Advanced JWT Validation System**
+  - Enhanced JWT token validation for Jira webhook security
+  - Support for both RS256 (asymmetric) and HS256 (symmetric) algorithms
+  - Added comprehensive JWT claims validation (iss, aud, exp, iat)
+  - Implemented JWT audience validation with multiple audience support
+  - Added configurable JWT validation with environment variables
+  - Enhanced security documentation for JWT implementation
+
+- **Bidirectional Synchronization (Jira ↔ GitLab)**
+  - Complete bidirectional sync system between Jira and GitLab
+  - Support for issue creation, updates, comments, and status synchronization
+  - Configurable sync direction (jira_to_gitlab, gitlab_to_jira, bidirectional)
+  - User mapping system for assignee synchronization
+  - Project mapping for cross-platform issue management
+  - Event filtering by age and type for efficient processing
+  - Comprehensive sync configuration options
+
+- **Advanced Conflict Resolution System**
+  - Intelligent conflict detection for concurrent modifications
+  - Multiple resolution strategies: Last-Write-Wins, Merge, Manual
+  - Configurable conflict detection window (5-minute default)
+  - Field-level conflict analysis (title, description, status, assignee)
+  - Manual resolution queue for complex conflicts requiring human intervention
+  - Conflict resolution audit trail with detailed logging
+  - Production-ready conflict management with rollback capabilities
+
+- **Comprehensive Audit Trail**
+  - Complete audit trail for all synchronization operations
+  - Event recording with before/after state tracking
+  - Performance metrics with duration and success rate tracking
+  - Rollback preparation and execution capabilities
+  - In-memory storage with configurable event limits (10,000 default)
+  - Rich query interface for audit event filtering
+  - Statistical analysis with success rates and error tracking
+
+- **Enhanced Error Handling Architecture**
+  - Structured error types with codes, categories, and severity levels
+  - Centralized error handler with retry logic and circuit breaker patterns
+  - Enhanced error recovery mechanisms with multiple strategies
+  - Improved error logging with context propagation
+  - JSON error responses for better API error handling
+  - Production-ready error management with detailed diagnostics
+
+- **GitLab API Integration**
+  - Complete GitLab API client for issue and comment management
+  - Support for issue creation, updates, and comment synchronization
+  - GitLab user search and project management capabilities
+  - Adapter pattern for seamless integration with sync system
+  - Comprehensive GitLab API error handling and retry logic
+
+- **Enhanced Configuration Management**
+  - Extended configuration with 50+ new options for advanced features
+  - OAuth 2.0 configuration section with security best practices
+  - Bidirectional sync configuration with fine-grained controls
+  - Conflict resolution strategy configuration
+  - JWT validation configuration with multiple security options
+  - Enhanced validation with comprehensive input sanitization
+
+### Changed
+- **Jira Client Architecture Improvements**
+  - Refactored Jira client to support multiple authentication methods
+  - Added dynamic authorization header generation with token refresh
+  - Improved context propagation throughout API calls
+  - Enhanced error handling with structured retry logic
+  - Reduced cyclomatic complexity through function decomposition
+
+- **Server Architecture Enhancements**
+  - Updated server initialization to support OAuth 2.0 endpoints
+  - Enhanced dependency injection for new sync components
+  - Improved error handling across all HTTP endpoints
+  - Added comprehensive logging for new features
+
+- **Code Quality Improvements**
+  - Fixed all linter issues (16 total): funlen, goconst, gocyclo, lll, mnd, revive, staticcheck
+  - Improved function modularity by breaking down complex functions
+  - Added constants for magic numbers and repeated strings
+  - Enhanced code readability with proper function signatures
+  - Comprehensive test coverage for new components
 
 ### Fixed
+- **Context Propagation**
+  - Fixed context.Context passing throughout the application
+  - Updated all API calls to properly handle request cancellation
+  - Improved timeout handling in long-running operations
+
+- **Test Infrastructure**
+  - Updated all test files to support new authentication methods
+  - Fixed mock interfaces to match new function signatures
+  - Enhanced test coverage for OAuth 2.0 and sync features
+
 - **Webhook Event Processing Fixes**
   - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
   - Added fallback logic to use event.Type when ObjectKind is empty
   - Added support for repository_update events (skipped as not relevant for Jira integration)
   - Fixed event type conversion between internal Event and webhook.Event structures
   - Improved error logging with both object_kind and event_type for better debugging
+  - Enhanced merge request, issue, and note event processing with fallback logic
+  - Added better error handling and logging for missing event data
+  - Improved Jira issue ID extraction and validation in all event types
+  - Translated all Russian comments to English for better code maintainability
+
 - **Docker Compose and Worker Pool Improvements**
   - Fixed Docker Compose resource reservations by removing unsupported `cpus` field
   - Increased job timeout from 30 to 120 seconds to prevent premature context cancellation
@@ -31,10 +135,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated config.env with test values for easier debugging
   - Enhanced Jira client logging with detailed error information and retry attempts
   - Improved event processing to handle both ObjectAttributes and direct event structures
-  - Enhanced merge request, issue, and note event processing with fallback logic
-  - Added better error handling and logging for missing event data
-  - Improved Jira issue ID extraction and validation in all event types
-  - Translated all Russian comments to English for better code maintainability
+
+### Security
+- **Enhanced Authentication Security**
+  - Added OAuth 2.0 support for improved security over Basic Auth
+  - Implemented JWT signature validation for webhook security
+  - Added CSRF protection with secure state parameter handling
+  - Enhanced token storage and refresh mechanisms
+
+- **Webhook Security Improvements**
+  - Improved HMAC-SHA256 signature validation
+  - Added replay attack prevention mechanisms
+  - Enhanced input validation and sanitization
+
+### Documentation
+- **Comprehensive Feature Documentation**
+  - Added detailed OAuth 2.0 setup and configuration guide
+  - Enhanced JWT validation documentation with security considerations
+  - Complete bidirectional sync configuration examples
+  - Conflict resolution strategy documentation
+  - Production deployment guidance
 
 ## [0.1.5] - 2025-07-24
 

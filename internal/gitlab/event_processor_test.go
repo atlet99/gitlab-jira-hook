@@ -18,7 +18,7 @@ type EventProcessorMockJiraClient struct {
 	connectionOk  bool
 }
 
-func (m *EventProcessorMockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
+func (m *EventProcessorMockJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
 	if m.commentsAdded == nil {
 		m.commentsAdded = make(map[string]int)
 	}
@@ -26,7 +26,7 @@ func (m *EventProcessorMockJiraClient) AddComment(issueID string, payload jira.C
 	return nil
 }
 
-func (m *EventProcessorMockJiraClient) TestConnection() error {
+func (m *EventProcessorMockJiraClient) TestConnection(ctx context.Context) error {
 	if m.connectionOk {
 		return nil
 	}

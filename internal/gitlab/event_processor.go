@@ -11,8 +11,8 @@ import (
 // EventProcessor handles GitLab webhook event processing
 type EventProcessor struct {
 	jiraClient interface {
-		AddComment(issueID string, payload jira.CommentPayload) error
-		TestConnection() error
+		AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
+		TestConnection(ctx context.Context) error
 	}
 	urlBuilder *URLBuilder
 	logger     *slog.Logger
@@ -21,8 +21,8 @@ type EventProcessor struct {
 
 // NewEventProcessor creates a new event processor
 func NewEventProcessor(jiraClient interface {
-	AddComment(issueID string, payload jira.CommentPayload) error
-	TestConnection() error
+	AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
+	TestConnection(ctx context.Context) error
 }, urlBuilder *URLBuilder, logger *slog.Logger) *EventProcessor {
 	return &EventProcessor{
 		jiraClient: jiraClient,
@@ -154,7 +154,7 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 				commit.Removed,
 			)
 
-			if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+			if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 				ep.logger.Error("Failed to add push comment to Jira",
 					"error", err,
 					"commit_id", commit.ID,
@@ -210,7 +210,7 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 	comment := ep.buildSimpleComment("Merge Request", title, action)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add merge request comment to Jira",
 				"error", err,
 				"mr_id", mrID,
@@ -268,7 +268,7 @@ func (ep *EventProcessor) processIssueEvent(ctx context.Context, event *Event) e
 	comment := ep.buildSimpleComment("Issue", title, action)
 
 	for _, jiraID := range jiraIssueIDs {
-		if err := ep.jiraClient.AddComment(jiraID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, jiraID, comment); err != nil {
 			ep.logger.Error("Failed to add issue comment to Jira",
 				"error", err,
 				"gitlab_issue_id", issueID,
@@ -320,7 +320,7 @@ func (ep *EventProcessor) processNoteEvent(ctx context.Context, event *Event) er
 	comment := ep.buildSimpleComment("Comment", noteContent, "added")
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add note comment to Jira",
 				"error", err,
 				"note_id", noteID,
@@ -352,7 +352,7 @@ func (ep *EventProcessor) processPipelineEvent(ctx context.Context, event *Event
 	comment := ep.buildSimpleComment("Pipeline", event.ObjectAttributes.Status, event.ObjectAttributes.Ref)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add pipeline comment to Jira",
 				"error", err,
 				"pipeline_id", event.ObjectAttributes.ID,
@@ -383,7 +383,7 @@ func (ep *EventProcessor) processJobEvent(ctx context.Context, event *Event) err
 	comment := ep.buildSimpleComment("Job", event.Build.Name, event.Build.Status)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add job comment to Jira",
 				"error", err,
 				"job_id", event.Build.ID,
@@ -414,7 +414,7 @@ func (ep *EventProcessor) processDeploymentEvent(ctx context.Context, event *Eve
 	comment := ep.buildSimpleComment("Deployment", event.ObjectAttributes.Environment, event.ObjectAttributes.Status)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add deployment comment to Jira",
 				"error", err,
 				"deployment_id", event.ObjectAttributes.ID,
@@ -446,7 +446,7 @@ func (ep *EventProcessor) processReleaseEvent(ctx context.Context, event *Event)
 	comment := ep.buildSimpleComment("Release", event.Release.Name, event.Release.TagName)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add release comment to Jira",
 				"error", err,
 				"release_id", event.Release.ID,
@@ -478,7 +478,7 @@ func (ep *EventProcessor) processWikiPageEvent(ctx context.Context, event *Event
 	comment := ep.buildSimpleComment("Wiki Page", event.WikiPage.Title, event.WikiPage.Action)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add wiki page comment to Jira",
 				"error", err,
 				"wiki_title", event.WikiPage.Title,
@@ -514,7 +514,7 @@ func (ep *EventProcessor) processFeatureFlagEvent(ctx context.Context, event *Ev
 	comment := ep.buildSimpleComment("Feature Flag", event.FeatureFlag.Name, status)
 
 	for _, issueID := range issueIDs {
-		if err := ep.jiraClient.AddComment(issueID, comment); err != nil {
+		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
 			ep.logger.Error("Failed to add feature flag comment to Jira",
 				"error", err,
 				"flag_name", event.FeatureFlag.Name,

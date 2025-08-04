@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"context"
 	"testing"
 
 	"log/slog"
@@ -14,11 +15,11 @@ import (
 // testJiraClient is a mock implementation of Jira client for testing
 type testJiraClient struct{}
 
-func (m *testJiraClient) AddComment(issueID string, comment jira.CommentPayload) error {
+func (m *testJiraClient) AddComment(ctx context.Context, issueID string, comment jira.CommentPayload) error {
 	return nil
 }
 
-func (m *testJiraClient) TestConnection() error {
+func (m *testJiraClient) TestConnection(ctx context.Context) error {
 	return nil
 }
 
@@ -49,6 +50,6 @@ func TestProcessRepositoryUpdateEvent(t *testing.T) {
 		},
 	}
 
-	err := handler.processRepositoryUpdateEvent(event)
+	err := handler.processRepositoryUpdateEvent(context.Background(), event)
 	assert.NoError(t, err)
 }

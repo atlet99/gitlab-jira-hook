@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -21,8 +22,8 @@ type MockJiraClient struct {
 	mock.Mock
 }
 
-func (m *MockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
-	args := m.Called(issueID, payload)
+func (m *MockJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
+	args := m.Called(ctx, issueID, payload)
 	return args.Error(0)
 }
 
@@ -46,8 +47,8 @@ func (m *MockJiraClient) AddAttachment(issueID, filename string, data []byte) er
 	return args.Error(0)
 }
 
-func (m *MockJiraClient) TestConnection() error {
-	args := m.Called()
+func (m *MockJiraClient) TestConnection(ctx context.Context) error {
+	args := m.Called(ctx)
 	return args.Error(0)
 }
 
@@ -167,7 +168,7 @@ func TestProjectHookHandler_ProcessPushEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processPushEvent(event)
+	err := handler.processPushEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -202,7 +203,7 @@ func TestProjectHookHandler_ProcessMergeRequestEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -237,7 +238,7 @@ func TestProjectHookHandler_ProcessIssueEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processIssueEvent(event)
+	err := handler.processIssueEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -269,7 +270,7 @@ func TestProjectHookHandler_ProcessNoteEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processNoteEvent(event)
+	err := handler.processNoteEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -303,7 +304,7 @@ func TestProjectHookHandler_ProcessPipelineEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processPipelineEvent(event)
+	err := handler.processPipelineEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -338,7 +339,7 @@ func TestProjectHookHandler_ProcessBuildEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processBuildEvent(event)
+	err := handler.processBuildEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -369,7 +370,7 @@ func TestProjectHookHandler_ProcessTagPushEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processTagPushEvent(event)
+	err := handler.processTagPushEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -401,7 +402,7 @@ func TestProjectHookHandler_ProcessReleaseEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processReleaseEvent(event)
+	err := handler.processReleaseEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -435,7 +436,7 @@ func TestProjectHookHandler_ProcessDeploymentEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processDeploymentEvent(event)
+	err := handler.processDeploymentEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -466,7 +467,7 @@ func TestProjectHookHandler_ProcessFeatureFlagEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processFeatureFlagEvent(event)
+	err := handler.processFeatureFlagEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -498,7 +499,7 @@ func TestProjectHookHandler_ProcessWikiPageEvent(t *testing.T) {
 
 	mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 
-	err := handler.processWikiPageEvent(event)
+	err := handler.processWikiPageEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -613,7 +614,7 @@ func TestProjectHookHandler_ProcessPushEvent_BranchFilter(t *testing.T) {
 				mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 			}
 
-			err := handler.processPushEvent(event)
+			err := handler.processPushEvent(context.Background(), event)
 			assert.NoError(t, err)
 
 			if tt.shouldProcess {
@@ -698,7 +699,7 @@ func TestProjectHookHandler_ProcessPushEvent_BranchFilter_Integration(t *testing
 				mockJira.On("AddComment", "PROJ-123", mock.Anything).Return(nil)
 			}
 
-			err := handler.processPushEvent(event)
+			err := handler.processPushEvent(context.Background(), event)
 			assert.NoError(t, err)
 
 			if tc.shouldProcess {

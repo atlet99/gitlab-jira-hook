@@ -6,7 +6,7 @@ import (
 	"time"
 
 	userlink "github.com/atlet99/gitlab-jira-hook/internal/common"
-	"github.com/atlet99/gitlab-jira-hook/internal/utils"
+	"github.com/atlet99/gitlab-jira-hook/internal/timeutil"
 )
 
 // DateFormatGOST is the date format according to GOST 7.64-90 standard (DD.MM.YYYY HH:MM)
@@ -229,7 +229,7 @@ func extractMRID(mrRef string) string {
 
 func createCommitDate(date, timezone string) Content {
 	// Format the date to GOST 7.64-90 (DD.MM.YYYY HH:MM)
-	formattedDate := utils.FormatDateGOST(date, timezone)
+	formattedDate := timeutil.FormatDateGOST(date, timezone)
 
 	return Content{
 		Type: "paragraph",
@@ -524,7 +524,7 @@ func createMergeRequestDescription(description string) Content {
 
 func createCurrentDateField(timezone string) Content {
 	// Format current time to GOST 7.64-90 format with timezone
-	formattedDate := utils.FormatCurrentTimeGOST(timezone)
+	formattedDate := timeutil.FormatCurrentTimeGOST(timezone)
 
 	return Content{
 		Type: "paragraph",

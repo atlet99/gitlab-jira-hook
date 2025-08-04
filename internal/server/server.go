@@ -14,7 +14,9 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/cache"
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/gitlab"
+	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
+	"github.com/atlet99/gitlab-jira-hook/internal/sync"
 )
 
 const (
@@ -49,6 +51,21 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	gitlabHandler := gitlab.NewHandler(cfg, logger)
 	// Create Project Hook handler
 	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
+	// Create Jira API client for conflict resolution
+	jiraAPIClient := jira.NewClient(cfg)
+
+	// Create Jira webhook handler
+	jiraWebhookHandler := jira.NewWebhookHandler(cfg, logger)
+	// Create and set GitLab API client via adapter
+	gitlabAPIClient := gitlab.NewAPIClient(cfg)
+	gitlabAdapter := gitlab.NewJiraAPIAdapter(gitlabAPIClient)
+	jiraWebhookHandler.SetGitLabClient(gitlabAdapter)
+
+	// Create sync manager for bidirectional sync with conflict resolution
+	syncAdapter := sync.NewGitLabSyncAdapter(gitlabAPIClient)
+	jiraAdapter := sync.NewJiraSyncAdapter(jiraAPIClient)
+	syncManager := sync.NewManager(cfg, syncAdapter, jiraAdapter, logger)
+	jiraWebhookHandler.SetManager(syncManager)
 
 	// Create webhook monitor
 	webhookMonitor := monitoring.NewWebhookMonitor(cfg, logger)
@@ -56,6 +73,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Set monitor in handlers for metrics recording
 	gitlabHandler.SetMonitor(webhookMonitor)
 	projectHookHandler.SetMonitor(webhookMonitor)
+	jiraWebhookHandler.SetMonitor(webhookMonitor)
 
 	// Create priority worker pool for async processing
 	workerPool := async.NewPriorityWorkerPool(cfg, logger, webhookMonitor, nil)
@@ -66,6 +84,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Set worker pool in handlers using adapter
 	gitlabHandler.SetWorkerPool(adapter)
 	projectHookHandler.SetWorkerPool(adapter)
+	jiraWebhookHandler.SetWorkerPool(adapter)
 
 	// Create performance monitor
 	performanceMonitor := monitoring.NewPerformanceMonitor(context.Background())
@@ -94,6 +113,9 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	mux.Handle("/gitlab-project-hook",
 		performanceMonitor.PerformanceMiddleware(
 			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(projectHookHandler.HandleProjectHook))))
+	mux.Handle("/jira-webhook",
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(jiraWebhookHandler.HandleWebhook))))
 	mux.HandleFunc("/health", handleHealth)
 
 	// Register monitoring routes (no rate limiting for internal monitoring)
@@ -108,6 +130,18 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("/performance/history", monitoringHandler.HandlePerformanceHistory)
 	mux.HandleFunc("/performance/targets", monitoringHandler.HandlePerformanceTargets)
 	mux.HandleFunc("/performance/reset", monitoringHandler.HandlePerformanceReset)
+
+	// Register OAuth 2.0 routes (only if OAuth 2.0 is configured)
+	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
+		oauth2Handlers := jira.NewOAuth2Handlers(cfg, logger)
+		mux.HandleFunc("/auth/jira/authorize", oauth2Handlers.HandleAuthorize)
+		mux.HandleFunc("/auth/jira/callback", oauth2Handlers.HandleCallback)
+		mux.HandleFunc("/auth/jira/status", oauth2Handlers.HandleStatus)
+		logger.Info("OAuth 2.0 endpoints registered",
+			"authorize_url", "/auth/jira/authorize",
+			"callback_url", "/auth/jira/callback",
+			"status_url", "/auth/jira/status")
+	}
 
 	// Create server
 	srv := &http.Server{
@@ -137,6 +171,20 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	// Create handlers
 	gitlabHandler := gitlab.NewHandler(cfg, logger)
 	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
+	jiraWebhookHandler := jira.NewWebhookHandler(cfg, logger)
+	// Create and set GitLab API client via adapter
+	gitlabAPIClient := gitlab.NewAPIClient(cfg)
+	gitlabAdapter := gitlab.NewJiraAPIAdapter(gitlabAPIClient)
+	jiraWebhookHandler.SetGitLabClient(gitlabAdapter)
+
+	// Create Jira API client for conflict resolution
+	jiraAPIClient := jira.NewClient(cfg)
+
+	// Create sync manager for bidirectional sync
+	syncAdapter := sync.NewGitLabSyncAdapter(gitlabAPIClient)
+	jiraAdapter := sync.NewJiraSyncAdapter(jiraAPIClient)
+	syncManager := sync.NewManager(cfg, syncAdapter, jiraAdapter, logger)
+	jiraWebhookHandler.SetManager(syncManager)
 
 	// Create worker pool
 	workerPool := async.NewPriorityWorkerPool(cfg, logger, webhookMonitor, nil)
@@ -144,6 +192,7 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	// Set monitor in handlers for metrics recording
 	gitlabHandler.SetMonitor(webhookMonitor)
 	projectHookHandler.SetMonitor(webhookMonitor)
+	jiraWebhookHandler.SetMonitor(webhookMonitor)
 
 	// Create adapter for compatibility with webhook.WorkerPoolInterface
 	adapter := async.NewWorkerPoolAdapter(workerPool)
@@ -151,6 +200,7 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	// Set worker pool in handlers using adapter
 	gitlabHandler.SetWorkerPool(adapter)
 	projectHookHandler.SetWorkerPool(adapter)
+	jiraWebhookHandler.SetWorkerPool(adapter)
 
 	// Create performance monitor with custom registry
 	performanceMonitor := monitoring.NewPerformanceMonitorWithRegistry(context.Background(), registry)
@@ -179,6 +229,9 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	mux.Handle("/gitlab-project-hook",
 		performanceMonitor.PerformanceMiddleware(
 			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(projectHookHandler.HandleProjectHook))))
+	mux.Handle("/jira-webhook",
+		performanceMonitor.PerformanceMiddleware(
+			RateLimitMiddleware(rateLimiter)(http.HandlerFunc(jiraWebhookHandler.HandleWebhook))))
 	mux.HandleFunc("/health", handleHealth)
 
 	// Register monitoring routes (no rate limiting for internal monitoring)
@@ -193,6 +246,18 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	mux.HandleFunc("/performance/history", monitoringHandler.HandlePerformanceHistory)
 	mux.HandleFunc("/performance/targets", monitoringHandler.HandlePerformanceTargets)
 	mux.HandleFunc("/performance/reset", monitoringHandler.HandlePerformanceReset)
+
+	// Register OAuth 2.0 routes (only if OAuth 2.0 is configured)
+	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
+		oauth2Handlers := jira.NewOAuth2Handlers(cfg, logger)
+		mux.HandleFunc("/auth/jira/authorize", oauth2Handlers.HandleAuthorize)
+		mux.HandleFunc("/auth/jira/callback", oauth2Handlers.HandleCallback)
+		mux.HandleFunc("/auth/jira/status", oauth2Handlers.HandleStatus)
+		logger.Info("OAuth 2.0 endpoints registered",
+			"authorize_url", "/auth/jira/authorize",
+			"callback_url", "/auth/jira/callback",
+			"status_url", "/auth/jira/status")
+	}
 
 	// Create server
 	srv := &http.Server{

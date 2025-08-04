@@ -4,6 +4,7 @@ package jira
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,11 +18,12 @@ import (
 
 // Client represents a Jira API client
 type Client struct {
-	config      *config.Config
-	httpClient  *http.Client
-	baseURL     string
-	authHeader  string
-	rateLimiter *RateLimiter
+	config       *config.Config
+	httpClient   *http.Client
+	baseURL      string
+	authHeader   string        // Used for Basic Auth
+	oauth2Client *OAuth2Client // Used for OAuth 2.0
+	rateLimiter  *RateLimiter
 }
 
 // RateLimiter implements token bucket rate limiting
@@ -83,27 +85,48 @@ func NewClient(cfg *config.Config) *Client {
 		Timeout: clientTimeout,
 	}
 
-	// Create Basic Auth header
-	auth := cfg.JiraEmail + ":" + cfg.JiraToken
-	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-
 	// Create rate limiter (default 10 requests per second)
 	rateLimit := 10
 	if cfg.JiraRateLimit > 0 {
 		rateLimit = cfg.JiraRateLimit
 	}
 
-	return &Client{
+	client := &Client{
 		config:      cfg,
 		httpClient:  httpClient,
 		baseURL:     cfg.JiraBaseURL,
-		authHeader:  authHeader,
 		rateLimiter: NewRateLimiter(rateLimit),
 	}
+
+	// Initialize authentication based on method
+	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
+		client.oauth2Client = NewOAuth2Client(cfg)
+	} else {
+		// Default to Basic Auth for backward compatibility
+		auth := cfg.JiraEmail + ":" + cfg.JiraToken
+		client.authHeader = "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+	}
+
+	return client
+}
+
+// getAuthorizationHeader returns the appropriate Authorization header based on auth method
+func (c *Client) getAuthorizationHeader(ctx context.Context) (string, error) {
+	if c.config.JiraAuthMethod == config.JiraAuthMethodOAuth2 && c.oauth2Client != nil {
+		return c.oauth2Client.CreateAuthorizationHeader(ctx)
+	}
+
+	// Default to Basic Auth
+	if c.authHeader == "" {
+		return "", fmt.Errorf("no authentication configured")
+	}
+	return c.authHeader, nil
 }
 
 // AddComment adds a comment to a Jira issue
-func (c *Client) AddComment(issueID string, payload CommentPayload) error {
+//
+//nolint:gocyclo // Complex retry logic is necessary for reliability
+func (c *Client) AddComment(ctx context.Context, issueID string, payload CommentPayload) error {
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
@@ -115,80 +138,110 @@ func (c *Client) AddComment(issueID string, payload CommentPayload) error {
 		// Wait for rate limiter
 		c.rateLimiter.Wait()
 
-		// Marshal payload to JSON
-		jsonData, err := json.Marshal(payload)
+		// Build and send request
+		req, err := c.buildCommentRequest(ctx, issueID, payload)
 		if err != nil {
-			return fmt.Errorf("failed to marshal comment payload: %w", err)
-		}
-
-		// Create request
-		url := fmt.Sprintf("%s/rest/api/3/issue/%s/comment", c.baseURL, issueID)
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
-		}
-
-		// Set headers
-		req.Header.Set("Authorization", c.authHeader)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		// Send request
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			lastErr = err
-			if attempt < maxAttempts {
-				time.Sleep(baseDelay * (1 << (attempt - 1)))
-				continue
-			}
-			return fmt.Errorf("failed to send request: %w", err)
-		}
-
-		// Read response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				_ = closeErr // explicitly ignore the error
-			}
-			lastErr = err
-			if attempt < maxAttempts {
-				time.Sleep(baseDelay * (1 << (attempt - 1)))
-				continue
-			}
-			return fmt.Errorf("failed to read response body: %w", err)
-		}
-
-		// Close response body
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			_ = closeErr // explicitly ignore the error
-		}
-
-		// Check response status
-		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-			lastErr = fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
-			fmt.Printf("Jira API 5xx error (attempt %d/%d): %s\n", attempt, maxAttempts, lastErr)
-			if attempt < maxAttempts {
-				time.Sleep(baseDelay * (1 << (attempt - 1)))
-				continue
-			}
-			return lastErr
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			err := fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
-			fmt.Printf("Jira API error (attempt %d/%d): %s\n", attempt, maxAttempts, err)
 			return err
 		}
 
-		fmt.Printf("Successfully added comment to Jira issue %s\n", issueID)
+		// Send request and handle response
+		success, retryable, respErr := c.executeCommentRequest(req, attempt, maxAttempts)
+		if success {
+			fmt.Printf("Successfully added comment to Jira issue %s\n", issueID)
+			return nil
+		}
 
-		return nil
+		lastErr = respErr
+		if !retryable || attempt >= maxAttempts {
+			return lastErr
+		}
+
+		// Wait before retry with exponential backoff
+		time.Sleep(baseDelay * (1 << (attempt - 1)))
 	}
 
 	return lastErr
 }
 
+// buildCommentRequest builds HTTP request for adding comment to Jira issue
+func (c *Client) buildCommentRequest(
+	ctx context.Context, issueID string, payload CommentPayload,
+) (*http.Request, error) {
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal comment payload: %w", err)
+	}
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/comment", c.baseURL, issueID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	return req, nil
+}
+
+// executeCommentRequest executes the comment request and handles the response
+// Returns (success, retryable, error)
+func (c *Client) executeCommentRequest(
+	req *http.Request, attempt, maxAttempts int,
+) (success, retryable bool, err error) {
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		fmt.Printf("Request failed (attempt %d/%d): %s\n", attempt, maxAttempts, err)
+		return false, true, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			_ = closeErr // explicitly ignore the error
+		}
+		fmt.Printf("Failed to read response (attempt %d/%d): %s\n", attempt, maxAttempts, err)
+		return false, true, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Close response body
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		_ = closeErr // explicitly ignore the error
+	}
+
+	// Check response status
+	const serverErrorMin = 500
+	const serverErrorMax = 600
+	const successMin = 200
+	const successMax = 300
+
+	if resp.StatusCode >= serverErrorMin && resp.StatusCode < serverErrorMax {
+		err := fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+		fmt.Printf("Jira API 5xx error (attempt %d/%d): %s\n", attempt, maxAttempts, err)
+		return false, true, err
+	}
+
+	if resp.StatusCode < successMin || resp.StatusCode >= successMax {
+		err := fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+		fmt.Printf("Jira API error (attempt %d/%d): %s\n", attempt, maxAttempts, err)
+		return false, false, err
+	}
+
+	return true, false, nil
+}
+
 // TestConnection tests the connection to Jira API
-func (c *Client) TestConnection() error {
+func (c *Client) TestConnection(ctx context.Context) error {
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
@@ -205,7 +258,11 @@ func (c *Client) TestConnection() error {
 		}
 
 		// Set headers
-		req.Header.Set("Authorization", c.authHeader)
+		authHeader, err := c.getAuthorizationHeader(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get authorization header: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
 		req.Header.Set("Accept", "application/json")
 
 		// Send request
