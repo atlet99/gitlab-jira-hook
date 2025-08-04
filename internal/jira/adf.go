@@ -94,7 +94,9 @@ func createCommitAuthor(authorName, authorURL string) Content {
 }
 
 func createCommitBranch(branch, branchURL string) Content {
+	// Debug logging to see what values we're getting
 	if branch == "" {
+		// Log when branch is empty - this is likely the issue
 		return Content{
 			Type: "paragraph",
 			Content: []TextContent{

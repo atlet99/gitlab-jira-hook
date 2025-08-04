@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
@@ -136,12 +137,36 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 
 	// Process each commit
 	for _, commit := range event.Commits {
+		// Debug: log event.Ref to understand what data we're getting
+		ep.logger.Debug("Processing commit - debugging ref data",
+			"commit_id", commit.ID,
+			"event_ref", event.Ref,
+			"author_name", commit.Author.Name,
+			"author_email", commit.Author.Email,
+			"commit_message", commit.Message)
+
 		// Extract issue IDs from commit message
 		issueIDs := ep.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
+			// Extract branch name from refs/heads/branch format
+			branchName := event.Ref
+			if strings.HasPrefix(event.Ref, "refs/heads/") {
+				branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+			} else if strings.HasPrefix(event.Ref, "refs/tags/") {
+				branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+			}
+
 			// Build proper URLs using existing urlBuilder
 			authorURL := ep.urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
 			branchURL := ep.urlBuilder.ConstructBranchURL(event, event.Ref)
+
+			// Debug: log URL construction results
+			ep.logger.Debug("URL construction results",
+				"issue_id", issueID,
+				"author_url", authorURL,
+				"branch_url", branchURL,
+				"event_ref", event.Ref,
+				"extracted_branch_name", branchName)
 
 			// Use existing jira.GenerateCommitADFComment function
 			comment := jira.GenerateCommitADFComment(
@@ -152,7 +177,7 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 				authorURL,
 				commit.Message,
 				commit.Timestamp,
-				event.Ref,
+				branchName, // Use extracted branch name instead of event.Ref
 				branchURL,
 				event.Project.WebURL,
 				ep.config.Timezone, // Use configured timezone

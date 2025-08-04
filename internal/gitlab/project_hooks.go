@@ -212,6 +212,14 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
+			// Extract branch name from refs/heads/branch format
+			branchName := event.Ref
+			if strings.HasPrefix(event.Ref, "refs/heads/") {
+				branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+			} else if strings.HasPrefix(event.Ref, "refs/tags/") {
+				branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+			}
+
 			// Use URLBuilder for proper URL construction
 			branchURL := urlBuilder.ConstructBranchURL(event, event.Ref)
 			authorURL := urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
@@ -230,7 +238,7 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 				authorURL,
 				commit.Message,
 				commit.Timestamp,
-				event.Ref,
+				branchName, // Use extracted branch name instead of event.Ref
 				branchURL,
 				projectWebURL,
 				h.config.Timezone,

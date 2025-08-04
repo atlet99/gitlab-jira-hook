@@ -152,17 +152,6 @@ func (b *URLBuilder) ConstructFeatureFlagURL(event *Event, flagName string) stri
 	return ""
 }
 
-// extractBaseURL extracts the base URL from a project web URL
-func (b *URLBuilder) extractBaseURL(projectURL string) string {
-	// Remove the project path from the URL
-	// Example: https://gitlab.com/group/project -> https://gitlab.com
-	parts := strings.Split(projectURL, "/")
-	if len(parts) >= 3 {
-		return strings.Join(parts[:3], "/")
-	}
-	return projectURL
-}
-
 // GetGitLabBaseURL returns the base GitLab URL
 func (b *URLBuilder) GetGitLabBaseURL() string {
 	if b.config.GitLabBaseURL != "" {
