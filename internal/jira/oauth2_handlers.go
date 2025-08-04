@@ -32,7 +32,7 @@ type OAuth2Handlers struct {
 func NewOAuth2Handlers(cfg *config.Config, logger *slog.Logger) *OAuth2Handlers {
 	return &OAuth2Handlers{
 		config:       cfg,
-		oauth2Client: NewOAuth2Client(cfg),
+		oauth2Client: NewOAuth2Client(cfg, logger),
 		logger:       logger,
 	}
 }

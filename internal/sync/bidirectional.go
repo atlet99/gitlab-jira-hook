@@ -422,8 +422,13 @@ func (sm *Manager) finalizeIssueUpdateAudit(
 	startTime time.Time,
 ) {
 	// Record after state
-	updatedIssue, _ := sm.gitlabAPI.GetIssue(ctx, project, gitlabIssue.ID)
-	if updatedIssue != nil {
+	updatedIssue, err := sm.gitlabAPI.GetIssue(ctx, project, gitlabIssue.ID)
+	if err != nil {
+		sm.logger.Warn("Failed to get updated GitLab issue for audit trail",
+			"project", project,
+			"issue_id", gitlabIssue.ID,
+			"error", err)
+	} else if updatedIssue != nil {
 		auditEvent.AfterState = map[string]interface{}{
 			"gitlab_title":       updatedIssue.Title,
 			"gitlab_description": updatedIssue.Description,

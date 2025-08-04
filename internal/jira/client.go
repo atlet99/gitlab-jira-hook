@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -100,7 +101,7 @@ func NewClient(cfg *config.Config) *Client {
 
 	// Initialize authentication based on method
 	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
-		client.oauth2Client = NewOAuth2Client(cfg)
+		client.oauth2Client = NewOAuth2Client(cfg, slog.Default())
 	} else {
 		// Default to Basic Auth for backward compatibility
 		auth := cfg.JiraEmail + ":" + cfg.JiraToken

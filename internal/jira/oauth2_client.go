@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +19,7 @@ import (
 type OAuth2Client struct {
 	config     *config.Config
 	httpClient *http.Client
+	logger     *slog.Logger
 }
 
 // OAuth2TokenResponse represents the response from OAuth 2.0 token endpoint
@@ -37,7 +39,7 @@ type OAuth2ErrorResponse struct {
 }
 
 // NewOAuth2Client creates a new OAuth 2.0 client for Jira
-func NewOAuth2Client(cfg *config.Config) *OAuth2Client {
+func NewOAuth2Client(cfg *config.Config, logger *slog.Logger) *OAuth2Client {
 	if cfg == nil {
 		return nil
 	}
@@ -50,6 +52,7 @@ func NewOAuth2Client(cfg *config.Config) *OAuth2Client {
 	return &OAuth2Client{
 		config:     cfg,
 		httpClient: httpClient,
+		logger:     logger,
 	}
 }
 
@@ -145,7 +148,10 @@ func (c *OAuth2Client) makeTokenRequest(ctx context.Context, data url.Values) (*
 		return nil, fmt.Errorf("token request failed: %w", err)
 	}
 	defer func() {
-		_ = resp.Body.Close() // Ignore close error
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body",
+				"error", closeErr)
+		}
 	}()
 
 	body, err := io.ReadAll(resp.Body)
