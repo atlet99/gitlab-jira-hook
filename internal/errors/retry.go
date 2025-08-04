@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	mathRand "math/rand"
 	"time"
 )
 
@@ -41,6 +40,10 @@ const (
 	jitterPercentage = 0.25 // 25% jitter range
 	jitterMultiplier = 2    // For symmetric jitter calculation
 	jitterOffset     = 0.5  // Center offset for symmetric distribution
+
+	// Secure random generation constants
+	fallbackModulo = 1000000 // Modulo for fallback random generation
+	mantissaBits   = 53      // IEEE 754 double precision mantissa bits
 )
 
 // RetryConfig configures retry behavior
@@ -125,18 +128,6 @@ type RetryableOperation func(ctx context.Context, attempt int) error
 type Retryer struct {
 	config *RetryConfig
 	logger *slog.Logger
-	rand   *mathRand.Rand
-}
-
-// generateSecureSeed generates a cryptographically secure seed for math/rand
-func generateSecureSeed() int64 {
-	var seed int64
-	err := binary.Read(rand.Reader, binary.BigEndian, &seed)
-	if err != nil {
-		// Fallback to time-based seed if crypto/rand fails
-		return time.Now().UnixNano()
-	}
-	return seed
 }
 
 // NewRetryer creates a new retryer with the given configuration
@@ -148,9 +139,23 @@ func NewRetryer(config *RetryConfig, logger *slog.Logger) *Retryer {
 	return &Retryer{
 		config: config,
 		logger: logger,
-		// Use crypto/rand for seeding to satisfy security requirements
-		rand: mathRand.New(mathRand.NewSource(generateSecureSeed())), //nolint:gosec // Using crypto/rand for seed
 	}
+}
+
+// generateSecureFloat64 generates a cryptographically secure float64 in range [0, 1)
+func generateSecureFloat64() float64 {
+	var buf [8]byte
+	_, err := rand.Read(buf[:])
+	if err != nil {
+		// Fallback to time-based pseudo-random if crypto/rand fails
+		return float64(time.Now().UnixNano()%fallbackModulo) / fallbackModulo
+	}
+
+	// Convert random bytes to uint64, then to float64 in [0, 1)
+	randUint64 := binary.BigEndian.Uint64(buf[:])
+	// Use only mantissa bits for precision (IEEE 754 double precision)
+	const mask = (1 << mantissaBits) - 1
+	return float64(randUint64&mask) / float64(mask+1)
 }
 
 // Execute runs the operation with retry logic
@@ -252,7 +257,7 @@ func (r *Retryer) calculateDelay(attempt int) time.Duration {
 	// Add jitter if enabled (±25% random variation)
 	if r.config.Jitter {
 		jitterRange := delay * jitterPercentage
-		jitter := (r.rand.Float64() - jitterOffset) * jitterMultiplier * jitterRange // -25% to +25%
+		jitter := (generateSecureFloat64() - jitterOffset) * jitterMultiplier * jitterRange // -25% to +25%
 		delay += jitter
 	}
 
