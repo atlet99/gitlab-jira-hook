@@ -19,28 +19,43 @@ func NewURLBuilder(cfg *config.Config) *URLBuilder {
 	}
 }
 
-// ConstructAuthorURL constructs the URL for an author
+// ConstructAuthorURL constructs the URL for an author (requires GitLab API lookup for accurate username)
 func (b *URLBuilder) ConstructAuthorURL(event *Event, author Author) string {
-	if event.Project != nil && event.Project.WebURL != "" {
-		// Extract base URL from project web URL
-		baseURL := b.extractBaseURL(event.Project.WebURL)
-		return fmt.Sprintf("%s/%s", baseURL, author.Name)
-	}
+	// Note: This method returns empty until we implement GitLab API user lookup
+	// to get username from email. Using author.Name (full name) in URL is not reliable.
+	return ""
+}
 
-	// Fallback to configured GitLab URL
-	if b.config.GitLabBaseURL != "" {
-		return fmt.Sprintf("%s/%s", strings.TrimSuffix(b.config.GitLabBaseURL, "/"), author.Name)
-	}
-
+// ConstructAuthorURLFromEmail constructs the URL for an author from email (placeholder)
+func (b *URLBuilder) ConstructAuthorURLFromEmail(email string) string {
+	// This is a placeholder - in practice we would need to:
+	// 1. Use GitLab API to find user by email
+	// 2. Get their username
+	// 3. Construct profile URL
+	// For now, return empty to avoid broken links
 	return ""
 }
 
 // ConstructBranchURL constructs the URL for a branch
 func (b *URLBuilder) ConstructBranchURL(event *Event, ref string) string {
-	if event.Project != nil && event.Project.WebURL != "" {
-		return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, ref)
+	if event.Project == nil || event.Project.WebURL == "" || ref == "" {
+		return ""
 	}
-	return ""
+
+	// Extract branch name from refs/heads/branch format
+	branchName := ref
+	if strings.HasPrefix(ref, "refs/heads/") {
+		branchName = strings.TrimPrefix(ref, "refs/heads/")
+	} else if strings.HasPrefix(ref, "refs/tags/") {
+		branchName = strings.TrimPrefix(ref, "refs/tags/")
+	}
+
+	// Only create URL if we have a valid branch name
+	if branchName == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
 }
 
 // ConstructProjectURL constructs the project URL and returns both URL and path

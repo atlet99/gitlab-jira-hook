@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
@@ -36,9 +37,10 @@ func (m *EventProcessorMockJiraClient) TestConnection(ctx context.Context) error
 func TestNewEventProcessor(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
 	urlBuilder := &URLBuilder{}
+	mockConfig := &config.Config{Timezone: "Etc/GMT-5"}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, mockConfig, logger)
 
 	assert.NotNil(t, processor)
 	assert.Equal(t, mockJira, processor.jiraClient)
@@ -52,7 +54,7 @@ func TestEventProcessor_ProcessEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	tests := []struct {
 		name        string
@@ -129,7 +131,7 @@ func TestEventProcessor_ProcessPushEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "push",
@@ -163,7 +165,7 @@ func TestEventProcessor_ProcessMergeRequestEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "merge_request",
@@ -194,7 +196,7 @@ func TestEventProcessor_ProcessIssueEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "issue",
@@ -225,7 +227,7 @@ func TestEventProcessor_ProcessNoteEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "note",
@@ -253,7 +255,7 @@ func TestEventProcessor_ProcessPipelineEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "pipeline",
@@ -280,7 +282,7 @@ func TestEventProcessor_ProcessJobEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "job",
@@ -308,7 +310,7 @@ func TestEventProcessor_ProcessDeploymentEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "deployment",
@@ -335,7 +337,7 @@ func TestEventProcessor_ProcessReleaseEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "release",
@@ -364,7 +366,7 @@ func TestEventProcessor_ProcessWikiPageEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "wiki_page",
@@ -392,7 +394,7 @@ func TestEventProcessor_ProcessFeatureFlagEvent(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "feature_flag",
@@ -420,7 +422,7 @@ func TestEventProcessor_BuildSimpleComment(t *testing.T) {
 	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	comment := processor.buildSimpleComment("Test Event", "Test Title", "create")
 

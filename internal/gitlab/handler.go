@@ -44,7 +44,7 @@ type JiraClient interface {
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
 	urlBuilder := NewURLBuilder(cfg)
 	jiraClient := jira.NewClient(cfg)
-	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, logger)
+	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, cfg, logger)
 	debugLogger := NewDebugLogger(logger)
 
 	return &Handler{

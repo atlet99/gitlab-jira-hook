@@ -206,25 +206,15 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 		projectName = event.Project.Name
 	}
 
+	// Create URL builder for generating proper URLs
+	urlBuilder := NewURLBuilder(h.config)
+
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
-			// Construct branch URL if we have project information
-			branchURL := ""
-			if event.Project != nil {
-				// Extract branch name from refs/heads/branch format
-				branchName := event.Ref
-				if strings.HasPrefix(event.Ref, "refs/heads/") {
-					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
-				}
-				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
-			}
-
-			// Construct author URL if we have project information
-			authorURL := ""
-			if event.Project != nil {
-				authorURL = fmt.Sprintf("%s/%s", event.Project.WebURL, commit.Author.Name)
-			}
+			// Use URLBuilder for proper URL construction
+			branchURL := urlBuilder.ConstructBranchURL(event, event.Ref)
+			authorURL := urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
 
 			// Get project web URL for MR links
 			projectWebURL := ""

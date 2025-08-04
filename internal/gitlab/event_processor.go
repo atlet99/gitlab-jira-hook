@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
@@ -15,6 +16,7 @@ type EventProcessor struct {
 		TestConnection(ctx context.Context) error
 	}
 	urlBuilder *URLBuilder
+	config     *config.Config
 	logger     *slog.Logger
 	parser     *Parser
 }
@@ -23,10 +25,11 @@ type EventProcessor struct {
 func NewEventProcessor(jiraClient interface {
 	AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
 	TestConnection(ctx context.Context) error
-}, urlBuilder *URLBuilder, logger *slog.Logger) *EventProcessor {
+}, urlBuilder *URLBuilder, cfg *config.Config, logger *slog.Logger) *EventProcessor {
 	return &EventProcessor{
 		jiraClient: jiraClient,
 		urlBuilder: urlBuilder,
+		config:     cfg,
 		logger:     logger,
 		parser:     NewParser(),
 	}
@@ -136,19 +139,23 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 		// Extract issue IDs from commit message
 		issueIDs := ep.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
+			// Build proper URLs using existing urlBuilder
+			authorURL := ep.urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
+			branchURL := ep.urlBuilder.ConstructBranchURL(event, event.Ref)
+
 			// Use existing jira.GenerateCommitADFComment function
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
 				commit.Author.Name,
 				commit.Author.Email,
-				"", // authorURL - will be empty for now
+				authorURL,
 				commit.Message,
 				commit.Timestamp,
 				event.Ref,
-				"", // branchURL - will be empty for now
+				branchURL,
 				event.Project.WebURL,
-				"Etc/GMT-5", // Default timezone
+				ep.config.Timezone, // Use configured timezone
 				commit.Added,
 				commit.Modified,
 				commit.Removed,
