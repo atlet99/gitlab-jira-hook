@@ -501,10 +501,12 @@ func (c *Config) validate() error {
 
 // getEnv gets an environment variable with a fallback value
 func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+	value := os.Getenv(key)
+	// Handle empty strings and whitespace-only values
+	if strings.TrimSpace(value) == "" {
+		return fallback
 	}
-	return fallback
+	return strings.TrimSpace(value)
 }
 
 // parseIntEnv parses an integer environment variable with a fallback value
@@ -749,6 +751,11 @@ func validateJiraToken(token string) error {
 
 // validateJiraAuth validates Jira authentication configuration
 func (c *Config) validateJiraAuth() error {
+	// Final fallback: if somehow auth method is still empty, set to basic
+	if strings.TrimSpace(c.JiraAuthMethod) == "" {
+		c.JiraAuthMethod = JiraAuthMethodBasic
+	}
+
 	// Validate authentication method
 	if c.JiraAuthMethod != JiraAuthMethodBasic && c.JiraAuthMethod != JiraAuthMethodOAuth2 {
 		return fmt.Errorf("JIRA_AUTH_METHOD must be either '%s' or '%s', got: %s",
