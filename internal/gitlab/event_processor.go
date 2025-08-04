@@ -137,10 +137,19 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 
 	// Process each commit
 	for _, commit := range event.Commits {
-		// Debug: log event.Ref to understand what data we're getting
-		ep.logger.Debug("Processing commit - debugging ref data",
+		// Debug: log ALL event data to understand webhook structure
+		ep.logger.Debug("Processing commit - full event debug",
 			"commit_id", commit.ID,
 			"event_ref", event.Ref,
+			"event_before", event.Before,
+			"event_after", event.After,
+			"event_checkout_sha", event.CheckoutSha,
+			"event_project_default_branch", func() string {
+				if event.Project != nil {
+					return event.Project.DefaultBranch
+				}
+				return "nil"
+			}(),
 			"author_name", commit.Author.Name,
 			"author_email", commit.Author.Email,
 			"commit_message", commit.Message)
@@ -150,15 +159,31 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 		for _, issueID := range issueIDs {
 			// Extract branch name from refs/heads/branch format
 			branchName := event.Ref
-			if strings.HasPrefix(event.Ref, "refs/heads/") {
-				branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
-			} else if strings.HasPrefix(event.Ref, "refs/tags/") {
-				branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+			if branchName != "" {
+				if strings.HasPrefix(event.Ref, "refs/heads/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				} else if strings.HasPrefix(event.Ref, "refs/tags/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+				}
+			} else {
+				// Fallback: if Ref is empty, try to use default branch
+				if event.Project != nil && event.Project.DefaultBranch != "" {
+					branchName = event.Project.DefaultBranch
+					ep.logger.Debug("Using default branch as fallback",
+						"default_branch", branchName)
+				} else {
+					branchName = "main" // Last resort fallback
+					ep.logger.Debug("Using 'main' as final fallback for branch name")
+				}
 			}
 
 			// Build proper URLs using existing urlBuilder
 			authorURL := ep.urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
-			branchURL := ep.urlBuilder.ConstructBranchURL(event, event.Ref)
+			// Construct branch URL using the determined branch name
+			branchURL := ""
+			if event.Project != nil && event.Project.WebURL != "" && branchName != "" {
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+			}
 
 			// Debug: log URL construction results
 			ep.logger.Debug("URL construction results",

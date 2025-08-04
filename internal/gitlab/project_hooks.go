@@ -214,15 +214,28 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 		for _, issueID := range issueIDs {
 			// Extract branch name from refs/heads/branch format
 			branchName := event.Ref
-			if strings.HasPrefix(event.Ref, "refs/heads/") {
-				branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
-			} else if strings.HasPrefix(event.Ref, "refs/tags/") {
-				branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+			if branchName != "" {
+				if strings.HasPrefix(event.Ref, "refs/heads/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				} else if strings.HasPrefix(event.Ref, "refs/tags/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
+				}
+			} else {
+				// Fallback: if Ref is empty, try to use default branch
+				if event.Project != nil && event.Project.DefaultBranch != "" {
+					branchName = event.Project.DefaultBranch
+				} else {
+					branchName = "main" // Last resort fallback
+				}
 			}
 
 			// Use URLBuilder for proper URL construction
-			branchURL := urlBuilder.ConstructBranchURL(event, event.Ref)
 			authorURL := urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
+			// Construct branch URL using the determined branch name
+			branchURL := ""
+			if event.Project != nil && event.Project.WebURL != "" && branchName != "" {
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+			}
 
 			// Get project web URL for MR links
 			projectWebURL := ""
