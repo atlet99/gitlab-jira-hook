@@ -2,12 +2,11 @@ package errors
 
 import (
 	"context"
-	cryptoRand "crypto/rand"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand/v2"
 	"time"
 )
 
@@ -125,25 +124,29 @@ type RetryableOperation func(ctx context.Context, attempt int) error
 type Retryer struct {
 	config *RetryConfig
 	logger *slog.Logger
-	rng    *rand.Rand
 }
 
-// generateSecureSeed generates a cryptographically secure seed for math/rand/v2
-func generateSecureSeed() uint64 {
-	var seed uint64
-	err := binary.Read(cryptoRand.Reader, binary.BigEndian, &seed)
+// generateSecureFloat64 generates a cryptographically secure float64 in range [0, 1)
+func generateSecureFloat64() float64 {
+	var buf [8]byte
+	_, err := rand.Read(buf[:])
 	if err != nil {
-		// Fallback to time-based seed if crypto/rand fails
+		// Fallback to time-based pseudo-random if crypto/rand fails
 		nanoTime := time.Now().UnixNano()
-		// Safe conversion from int64 to uint64 to avoid gosec G115
-		// UnixNano() is always positive since Unix epoch, but we check for safety
-		if nanoTime >= 0 {
-			return uint64(nanoTime) // #nosec G115 -- checked nanoTime >= 0
+		// Safe fallback using time - convert to positive number and create float
+		if nanoTime < 0 {
+			nanoTime = -nanoTime
 		}
-		// This should never happen with UnixNano(), but handle gracefully
-		return uint64(-nanoTime) // #nosec G115 -- negated to make positive
+		const fallbackModulo = 1000000
+		return float64(nanoTime%fallbackModulo) / fallbackModulo
 	}
-	return seed
+
+	// Convert random bytes to uint64, then to float64 in [0, 1)
+	randUint64 := binary.BigEndian.Uint64(buf[:])
+	// Use IEEE 754 double precision mantissa (53 bits)
+	const mantissaBits = 53
+	const mask = (1 << mantissaBits) - 1
+	return float64(randUint64&mask) / float64(mask+1)
 }
 
 // NewRetryer creates a new retryer with the given configuration
@@ -155,8 +158,6 @@ func NewRetryer(config *RetryConfig, logger *slog.Logger) *Retryer {
 	return &Retryer{
 		config: config,
 		logger: logger,
-		// Using crypto/rand for seeding to satisfy security requirements
-		rng: rand.New(rand.NewPCG(generateSecureSeed(), generateSecureSeed())), //nolint:gosec // crypto/rand used for seeding
 	}
 }
 
@@ -259,7 +260,7 @@ func (r *Retryer) calculateDelay(attempt int) time.Duration {
 	// Add jitter if enabled (±25% random variation)
 	if r.config.Jitter {
 		jitterRange := delay * jitterPercentage
-		jitter := (r.rng.Float64() - jitterOffset) * jitterMultiplier * jitterRange // -25% to +25%
+		jitter := (generateSecureFloat64() - jitterOffset) * jitterMultiplier * jitterRange // -25% to +25%
 		delay += jitter
 	}
 
