@@ -74,7 +74,11 @@ func (c *EnhancedAPIClient) ExecuteRequest(
 		}
 		defer func() {
 			if resp.Body != nil {
-				_ = resp.Body.Close()
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					c.logger.Warn("Failed to close response body",
+						"operation", operation,
+						"error", closeErr)
+				}
 			}
 		}()
 
