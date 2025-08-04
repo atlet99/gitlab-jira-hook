@@ -42,7 +42,7 @@ type JiraClient interface {
 
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
-	urlBuilder := NewURLBuilder(cfg)
+	urlBuilder := NewURLBuilder(cfg, logger)
 	jiraClient := jira.NewClient(cfg)
 	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, cfg, logger)
 	debugLogger := NewDebugLogger(logger)

@@ -166,19 +166,32 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 					branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
 				}
 			} else {
-				// Fallback: if Ref is empty, try to use default branch
-				if event.Project != nil && event.Project.DefaultBranch != "" {
-					branchName = event.Project.DefaultBranch
-					ep.logger.Debug("Using default branch as fallback",
-						"default_branch", branchName)
+				// Fallback: try to get default branch from GitLab API
+				if event.Project != nil && event.Project.ID != 0 {
+					apiDefaultBranch := ep.urlBuilder.GetProjectDefaultBranch(ctx, event.Project.ID)
+					if apiDefaultBranch != "" {
+						branchName = apiDefaultBranch
+						ep.logger.Debug("Using default branch from GitLab API",
+							"default_branch", branchName)
+					} else if event.Project.DefaultBranch != "" {
+						branchName = event.Project.DefaultBranch
+						ep.logger.Debug("Using default branch from webhook",
+							"default_branch", branchName)
+					} else {
+						branchName = "main" // Last resort fallback
+						ep.logger.Debug("Using 'main' as final fallback for branch name")
+					}
 				} else {
 					branchName = "main" // Last resort fallback
 					ep.logger.Debug("Using 'main' as final fallback for branch name")
 				}
 			}
 
+			// Get username from GitLab API
+			username := ep.urlBuilder.GetUsernameByEmail(ctx, commit.Author.Email)
+
 			// Build proper URLs using existing urlBuilder
-			authorURL := ep.urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
+			authorURL := ep.urlBuilder.ConstructAuthorURLFromEmail(ctx, commit.Author.Email)
 			// Construct branch URL using the determined branch name
 			branchURL := ""
 			if event.Project != nil && event.Project.WebURL != "" && branchName != "" {
@@ -188,16 +201,23 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 			// Debug: log URL construction results
 			ep.logger.Debug("URL construction results",
 				"issue_id", issueID,
+				"username", username,
 				"author_url", authorURL,
 				"branch_url", branchURL,
 				"event_ref", event.Ref,
 				"extracted_branch_name", branchName)
 
+			// Use username if available, otherwise fallback to author name
+			displayName := username
+			if displayName == "" {
+				displayName = commit.Author.Name
+			}
+
 			// Use existing jira.GenerateCommitADFComment function
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
-				commit.Author.Name,
+				displayName, // Use username instead of full name
 				commit.Author.Email,
 				authorURL,
 				commit.Message,

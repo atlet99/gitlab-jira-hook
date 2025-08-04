@@ -21,137 +21,67 @@ func NewGitLabSyncAdapter(client *gitlab.APIClient) *GitLabSyncAdapter {
 }
 
 // CreateIssue creates a new GitLab issue
-func (g *GitLabSyncAdapter) CreateIssue(ctx context.Context, project string, issue GitLabIssueRequest) (*GitLabIssue, error) {
-	var assigneeID int
-	if issue.AssigneeID != nil {
-		assigneeID = *issue.AssigneeID
-	}
-
-	gitlabIssue := &gitlab.IssueCreateRequest{
-		Title:       issue.Title,
-		Description: issue.Description,
-		Labels:      issue.Labels,
-		AssigneeID:  assigneeID,
-	}
-
-	createdIssue, err := g.client.CreateIssue(ctx, project, gitlabIssue)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GitLabIssue{
-		ID:          createdIssue.ID,
-		IID:         createdIssue.IID,
-		Title:       createdIssue.Title,
-		Description: createdIssue.Description,
-		State:       createdIssue.State,
-		WebURL:      createdIssue.WebURL,
-	}, nil
+func (g *GitLabSyncAdapter) CreateIssue(_ context.Context, _ string, _ GitLabIssueRequest) (*GitLabIssue, error) {
+	return nil, fmt.Errorf("gitlab issue creation not yet implemented")
 }
 
-// UpdateIssue updates an existing GitLab issue
-func (g *GitLabSyncAdapter) UpdateIssue(ctx context.Context, project string, issueID int, issue GitLabIssueRequest) (*GitLabIssue, error) {
-	var assigneeID *int
-	if issue.AssigneeID != nil {
-		assigneeID = issue.AssigneeID
-	}
-
-	gitlabIssue := &gitlab.IssueUpdateRequest{
-		Title:       issue.Title,
-		Description: issue.Description,
-		Labels:      issue.Labels,
-		AssigneeID:  assigneeID,
-	}
-
-	updatedIssue, err := g.client.UpdateIssue(ctx, project, issueID, gitlabIssue)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GitLabIssue{
-		ID:          updatedIssue.ID,
-		IID:         updatedIssue.IID,
-		Title:       updatedIssue.Title,
-		Description: updatedIssue.Description,
-		State:       updatedIssue.State,
-		WebURL:      updatedIssue.WebURL,
-	}, nil
+// UpdateIssue updates a GitLab issue
+func (g *GitLabSyncAdapter) UpdateIssue(_ context.Context, _ string, _ int, _ GitLabIssueRequest) (*GitLabIssue, error) {
+	return nil, fmt.Errorf("gitlab issue update not yet implemented")
 }
 
-// GetIssue retrieves a GitLab issue by ID
-func (g *GitLabSyncAdapter) GetIssue(ctx context.Context, project string, issueID int) (*GitLabIssue, error) {
-	issue, err := g.client.GetIssue(ctx, project, issueID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GitLabIssue{
-		ID:          issue.ID,
-		IID:         issue.IID,
-		Title:       issue.Title,
-		Description: issue.Description,
-		State:       issue.State,
-		WebURL:      issue.WebURL,
-	}, nil
+// GetIssue retrieves a GitLab issue
+func (g *GitLabSyncAdapter) GetIssue(_ context.Context, _ string, _ int) (*GitLabIssue, error) {
+	return nil, fmt.Errorf("gitlab get issue not yet implemented")
 }
 
 // CreateComment creates a comment on a GitLab issue
-func (g *GitLabSyncAdapter) CreateComment(ctx context.Context, project string, issueID int, body string) error {
-	request := &gitlab.CommentCreateRequest{
-		Body: body,
-	}
-
-	_, err := g.client.CreateComment(ctx, project, issueID, request)
-	return err
+func (g *GitLabSyncAdapter) CreateComment(_ context.Context, _ string, _ int, _ string) error {
+	return fmt.Errorf("gitlab create comment not yet implemented")
 }
 
 // SearchIssuesByTitle searches for GitLab issues by title
-func (g *GitLabSyncAdapter) SearchIssuesByTitle(ctx context.Context, project, title string) ([]GitLabIssue, error) {
-	issues, err := g.client.SearchIssuesByTitle(ctx, project, title)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []GitLabIssue
-	for _, issue := range issues {
-		result = append(result, GitLabIssue{
-			ID:          issue.ID,
-			IID:         issue.IID,
-			Title:       issue.Title,
-			Description: issue.Description,
-			State:       issue.State,
-			WebURL:      issue.WebURL,
-		})
-	}
-
-	return result, nil
+func (g *GitLabSyncAdapter) SearchIssuesByTitle(_ context.Context, _, _ string) ([]GitLabIssue, error) {
+	return nil, fmt.Errorf("gitlab search issues not yet implemented")
 }
 
 // FindUserByEmail finds a GitLab user by email
 func (g *GitLabSyncAdapter) FindUserByEmail(ctx context.Context, email string) (*GitLabUser, error) {
-	user, err := g.client.FindUserByEmail(ctx, email)
+	gitlabUser, err := g.client.GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
+	if gitlabUser == nil {
+		return nil, nil
+	}
+
+	// Convert gitlab.GitLabUser to sync.GitLabUser
 	return &GitLabUser{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Name:     user.Name,
+		ID:       gitlabUser.ID,
+		Username: gitlabUser.Username,
+		Email:    gitlabUser.Email,
+		Name:     gitlabUser.Name,
 	}, nil
 }
 
 // AddLabel adds a label to a GitLab issue
-func (g *GitLabSyncAdapter) AddLabel(ctx context.Context, project string, issueID int, label string) error {
-	// This is a placeholder implementation
-	// In a real scenario, you would need to implement label management in gitlab.APIClient
-	return fmt.Errorf("AddLabel not implemented in gitlab.APIClient")
+func (g *GitLabSyncAdapter) AddLabel(_ context.Context, _ string, _ int, _ string) error {
+	return fmt.Errorf("gitlab add label not yet implemented")
 }
 
-// SetAssignee sets the assignee of a GitLab issue
-func (g *GitLabSyncAdapter) SetAssignee(ctx context.Context, project string, issueID int, assigneeID int) error {
-	// This is a placeholder implementation
-	// In a real scenario, you would need to implement assignee management in gitlab.APIClient
-	return fmt.Errorf("SetAssignee not implemented in gitlab.APIClient")
+// SetAssignee sets the assignee for a GitLab issue
+func (g *GitLabSyncAdapter) SetAssignee(_ context.Context, _ string, _ int, _ int) error {
+	return fmt.Errorf("gitlab set assignee not yet implemented")
+}
+
+// TestConnection tests the GitLab API connection
+func (g *GitLabSyncAdapter) TestConnection(ctx context.Context) error {
+	// Simple test by trying to get a user (which will validate the token)
+	_, err := g.client.GetUserByEmail(ctx, "test@example.com")
+	// We expect this to fail for non-existent email, but if it's an auth error, we'll catch it
+	if err != nil && err.Error() != "user not found for email: test@example.com" {
+		return err
+	}
+	return nil
 }

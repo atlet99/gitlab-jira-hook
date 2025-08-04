@@ -1,7 +1,9 @@
 package gitlab
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
@@ -9,13 +11,17 @@ import (
 
 // URLBuilder handles URL construction for GitLab entities
 type URLBuilder struct {
-	config *config.Config
+	config    *config.Config
+	apiClient *APIClient
+	logger    *slog.Logger
 }
 
 // NewURLBuilder creates a new URL builder
-func NewURLBuilder(cfg *config.Config) *URLBuilder {
+func NewURLBuilder(cfg *config.Config, logger *slog.Logger) *URLBuilder {
 	return &URLBuilder{
-		config: cfg,
+		config:    cfg,
+		apiClient: NewAPIClient(cfg, logger),
+		logger:    logger,
 	}
 }
 
@@ -26,14 +32,66 @@ func (b *URLBuilder) ConstructAuthorURL(event *Event, author Author) string {
 	return ""
 }
 
-// ConstructAuthorURLFromEmail constructs the URL for an author from email (placeholder)
-func (b *URLBuilder) ConstructAuthorURLFromEmail(email string) string {
-	// This is a placeholder - in practice we would need to:
-	// 1. Use GitLab API to find user by email
-	// 2. Get their username
-	// 3. Construct profile URL
-	// For now, return empty to avoid broken links
+// ConstructAuthorURLFromEmail constructs the URL for an author from email using GitLab API
+func (b *URLBuilder) ConstructAuthorURLFromEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	// Try to get user info from GitLab API
+	user, err := b.apiClient.GetUserByEmail(ctx, email)
+	if err != nil {
+		b.logger.Debug("Failed to get user from GitLab API",
+			"email", email,
+			"error", err)
+		return ""
+	}
+
+	// Use web_url from API response if available
+	if user.WebURL != "" {
+		return user.WebURL
+	}
+
+	// Fallback: construct URL from base URL and username
+	if b.config.GitLabBaseURL != "" && user.Username != "" {
+		return fmt.Sprintf("%s/%s", strings.TrimSuffix(b.config.GitLabBaseURL, "/"), user.Username)
+	}
+
 	return ""
+}
+
+// GetUsernameByEmail gets username from GitLab API by email
+func (b *URLBuilder) GetUsernameByEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	user, err := b.apiClient.GetUserByEmail(ctx, email)
+	if err != nil {
+		b.logger.Debug("Failed to get username from GitLab API",
+			"email", email,
+			"error", err)
+		return ""
+	}
+
+	return user.Username
+}
+
+// GetProjectDefaultBranch gets the default branch for a project from GitLab API
+func (b *URLBuilder) GetProjectDefaultBranch(ctx context.Context, projectID int) string {
+	if projectID == 0 {
+		return ""
+	}
+
+	project, err := b.apiClient.GetProjectInfo(ctx, projectID)
+	if err != nil {
+		b.logger.Debug("Failed to get project info from GitLab API",
+			"project_id", projectID,
+			"error", err)
+		return ""
+	}
+
+	return project.DefaultBranch
 }
 
 // ConstructBranchURL constructs the URL for a branch

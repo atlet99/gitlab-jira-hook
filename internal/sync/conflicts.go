@@ -120,7 +120,13 @@ func (cd *ConflictDetector) DetectConflicts(
 		return nil, nil // Can't detect conflicts without timestamps
 	}
 
-	gitlabModified := gitlabIssue.UpdatedAt
+	gitlabModified, err := time.Parse(time.RFC3339, gitlabIssue.UpdatedAt)
+	if err != nil {
+		cd.logger.Debug("Failed to parse GitLab UpdatedAt timestamp, skipping conflict detection",
+			"timestamp", gitlabIssue.UpdatedAt,
+			"error", err)
+		return nil, nil // Can't detect conflicts without valid timestamps
+	}
 
 	// Check if modifications are concurrent (within conflict window)
 	const conflictWindowMinutes = 5

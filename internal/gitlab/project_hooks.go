@@ -207,7 +207,7 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 	}
 
 	// Create URL builder for generating proper URLs
-	urlBuilder := NewURLBuilder(h.config)
+	urlBuilder := NewURLBuilder(h.config, h.logger)
 
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
@@ -221,16 +221,26 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 					branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
 				}
 			} else {
-				// Fallback: if Ref is empty, try to use default branch
-				if event.Project != nil && event.Project.DefaultBranch != "" {
-					branchName = event.Project.DefaultBranch
+				// Fallback: try to get default branch from GitLab API
+				if event.Project != nil && event.Project.ID != 0 {
+					apiDefaultBranch := urlBuilder.GetProjectDefaultBranch(ctx, event.Project.ID)
+					if apiDefaultBranch != "" {
+						branchName = apiDefaultBranch
+					} else if event.Project.DefaultBranch != "" {
+						branchName = event.Project.DefaultBranch
+					} else {
+						branchName = "main" // Last resort fallback
+					}
 				} else {
 					branchName = "main" // Last resort fallback
 				}
 			}
 
+			// Get username from GitLab API
+			username := urlBuilder.GetUsernameByEmail(ctx, commit.Author.Email)
+
 			// Use URLBuilder for proper URL construction
-			authorURL := urlBuilder.ConstructAuthorURLFromEmail(commit.Author.Email)
+			authorURL := urlBuilder.ConstructAuthorURLFromEmail(ctx, commit.Author.Email)
 			// Construct branch URL using the determined branch name
 			branchURL := ""
 			if event.Project != nil && event.Project.WebURL != "" && branchName != "" {
@@ -243,10 +253,16 @@ func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event)
 				projectWebURL = event.Project.WebURL
 			}
 
+			// Use username if available, otherwise fallback to author name
+			displayName := username
+			if displayName == "" {
+				displayName = commit.Author.Name
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
-				commit.Author.Name,
+				displayName, // Use username instead of full name
 				commit.Author.Email,
 				authorURL,
 				commit.Message,

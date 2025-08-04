@@ -57,7 +57,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create Jira webhook handler
 	jiraWebhookHandler := jira.NewWebhookHandler(cfg, logger)
 	// Create and set GitLab API client via adapter
-	gitlabAPIClient := gitlab.NewAPIClient(cfg)
+	gitlabAPIClient := gitlab.NewAPIClient(cfg, logger)
 	gitlabAdapter := gitlab.NewJiraAPIAdapter(gitlabAPIClient)
 	jiraWebhookHandler.SetGitLabClient(gitlabAdapter)
 
@@ -173,7 +173,7 @@ func NewWithRegistry(cfg *config.Config, logger *slog.Logger, registry prometheu
 	projectHookHandler := gitlab.NewProjectHookHandler(cfg, logger)
 	jiraWebhookHandler := jira.NewWebhookHandler(cfg, logger)
 	// Create and set GitLab API client via adapter
-	gitlabAPIClient := gitlab.NewAPIClient(cfg)
+	gitlabAPIClient := gitlab.NewAPIClient(cfg, logger)
 	gitlabAdapter := gitlab.NewJiraAPIAdapter(gitlabAPIClient)
 	jiraWebhookHandler.SetGitLabClient(gitlabAdapter)
 
