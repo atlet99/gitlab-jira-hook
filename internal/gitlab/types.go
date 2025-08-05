@@ -137,14 +137,15 @@ type ObjectAttributes struct {
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 	// Additional fields for project hooks
-	Note        string `json:"note"`
-	Content     string `json:"content"`
-	Ref         string `json:"ref"`
-	Status      string `json:"status"`
-	Name        string `json:"name"`
-	Stage       string `json:"stage"`
-	Environment string `json:"environment"`
-	Description string `json:"description"`
+	Note         string `json:"note"`
+	NoteableType string `json:"noteable_type"`
+	Content      string `json:"content"`
+	Ref          string `json:"ref"`
+	Status       string `json:"status"`
+	Name         string `json:"name"`
+	Stage        string `json:"stage"`
+	Environment  string `json:"environment"`
+	Description  string `json:"description"`
 	// Merge Request specific fields
 	SourceBranch string `json:"source_branch"`
 	TargetBranch string `json:"target_branch"`

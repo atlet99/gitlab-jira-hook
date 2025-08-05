@@ -301,25 +301,53 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 		return fmt.Errorf("missing merge request data in event")
 	}
 
-	// Get user data from User if available
-	if event.User != nil {
-		authorName = event.User.Name
-		authorEmail = event.User.Email
+	// Determine who should be displayed as the "actor" for this MR event
+	var actorName, actorEmail string
+
+	// For approve/unapprove actions, show who performed the action (event.User)
+	// For other actions (open, update, merge), show the MR author
+	if action == "approved" || action == "unapproved" || action == "approve" || action == "unapprove" {
+		// Show who performed the approval action
+		if event.User != nil {
+			actorName = event.User.Name
+			actorEmail = event.User.Email
+		}
+		ep.logger.Debug("Using action performer as actor",
+			"action", action,
+			"actor_name", actorName,
+			"actor_email", actorEmail)
+	} else {
+		// Show MR author for other actions
+		actorName = authorName
+		actorEmail = authorEmail
+		ep.logger.Debug("Using MR author as actor",
+			"action", action,
+			"actor_name", actorName,
+			"actor_email", actorEmail)
 	}
 
-	// Get username from GitLab API
+	// Get username from GitLab API for the actor
 	username := ""
 	authorURL := ""
-	if authorEmail != "" {
-		username = ep.urlBuilder.GetUsernameByEmail(ctx, authorEmail)
-		authorURL = ep.urlBuilder.ConstructAuthorURLFromEmail(ctx, authorEmail)
+	if actorEmail != "" {
+		username = ep.urlBuilder.GetUsernameByEmail(ctx, actorEmail)
+		authorURL = ep.urlBuilder.ConstructAuthorURLFromEmail(ctx, actorEmail)
+		ep.logger.Debug("GitLab API lookup results",
+			"actor_email", actorEmail,
+			"username", username,
+			"author_url", authorURL)
 	}
 
-	// Use username if available, otherwise fallback to author name
+	// Use username if available, otherwise fallback to actor name
 	displayName := username
 	if displayName == "" {
-		displayName = authorName
+		displayName = actorName
 	}
+
+	ep.logger.Debug("Final display name determination",
+		"username", username,
+		"actor_name", actorName,
+		"display_name", displayName)
 
 	// Extract issue IDs from MR title and description
 	issueIDs := ep.parser.ExtractIssueIDs(title)
@@ -449,34 +477,124 @@ func (ep *EventProcessor) processIssueEvent(ctx context.Context, event *Event) e
 
 // processNoteEvent processes note (comment) events
 func (ep *EventProcessor) processNoteEvent(ctx context.Context, event *Event) error {
-	var noteContent string
+	var noteContent, noteURL, noteableType string
 	var noteID int
+	var authorName, authorEmail string
 
 	// Try to get data from ObjectAttributes first
 	if event.ObjectAttributes != nil {
 		noteContent = event.ObjectAttributes.Note
 		noteID = event.ObjectAttributes.ID
+		noteURL = event.ObjectAttributes.URL
+		noteableType = event.ObjectAttributes.NoteableType
 	} else if event.Note != nil {
 		// Fallback to Note structure
 		noteContent = event.Note.Note
 		noteID = event.Note.ID
+		noteURL = event.Note.URL
+		noteableType = event.Note.Noteable
 	} else {
 		return fmt.Errorf("missing note data in event")
+	}
+
+	// Get author information
+	if event.User != nil {
+		authorName = event.User.Name
+		authorEmail = event.User.Email
+	}
+
+	// Get username from GitLab API
+	username := ""
+	authorURL := ""
+	if authorEmail != "" {
+		username = ep.urlBuilder.GetUsernameByEmail(ctx, authorEmail)
+		authorURL = ep.urlBuilder.ConstructAuthorURLFromEmail(ctx, authorEmail)
+	}
+
+	// Use username if available, otherwise fallback to author name
+	displayName := username
+	if displayName == "" {
+		displayName = authorName
 	}
 
 	// Extract issue IDs from note content
 	issueIDs := ep.parser.ExtractIssueIDs(noteContent)
 
+	// For MR comments, also check MR title and description for issue IDs
+	if noteableType == "MergeRequest" && event.MergeRequest != nil {
+		mrIssueIDs := ep.parser.ExtractIssueIDs(event.MergeRequest.Title)
+		mrIssueIDs = append(mrIssueIDs, ep.parser.ExtractIssueIDs(event.MergeRequest.Description)...)
+
+		// Add MR issue IDs to the list (avoid duplicates)
+		for _, mrID := range mrIssueIDs {
+			found := false
+			for _, existingID := range issueIDs {
+				if existingID == mrID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				issueIDs = append(issueIDs, mrID)
+			}
+		}
+
+		ep.logger.Debug("Found issue IDs for MR comment",
+			"note_content_issues", ep.parser.ExtractIssueIDs(noteContent),
+			"mr_title_issues", ep.parser.ExtractIssueIDs(event.MergeRequest.Title),
+			"mr_desc_issues", ep.parser.ExtractIssueIDs(event.MergeRequest.Description),
+			"total_issues", issueIDs)
+	}
+
 	if len(issueIDs) == 0 {
-		ep.logger.Info("No Jira issue IDs found in note",
+		ep.logger.Info("No Jira issue IDs found in note or related content",
 			"note_id", noteID,
+			"noteable_type", noteableType,
 			"project_id", event.Project.ID,
 		)
 		return nil
 	}
+	// Get project information
+	projectName := "Unknown Project"
+	projectURL := ""
+	if event.Project != nil {
+		projectName = event.Project.Name
+		projectURL = event.Project.WebURL
+	}
 
-	// Create a simple comment
-	comment := ep.buildSimpleComment("Comment", noteContent, "added")
+	// Determine comment title based on noteable type
+	commentTitle := "Comment"
+	if noteableType == "MergeRequest" {
+		commentTitle = "MR Comment"
+		if event.MergeRequest != nil {
+			commentTitle = fmt.Sprintf("MR Comment: %s", event.MergeRequest.Title)
+		}
+	} else if noteableType == "Issue" {
+		commentTitle = "Issue Comment"
+		if event.Issue != nil {
+			commentTitle = fmt.Sprintf("Issue Comment: %s", event.Issue.Title)
+		}
+	}
+
+	// Create beautiful ADF comment for note
+	comment := jira.GenerateNoteADFComment(
+		commentTitle,
+		noteURL,
+		projectName,
+		projectURL,
+		"added", // action is always "added" for new comments
+		displayName,
+		noteContent,
+		ep.config.Timezone,
+	)
+
+	ep.logger.Debug("Note comment construction results",
+		"note_id", noteID,
+		"noteable_type", noteableType,
+		"username", username,
+		"author_url", authorURL,
+		"note_url", noteURL,
+		"comment_title", commentTitle)
 
 	for _, issueID := range issueIDs {
 		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {
