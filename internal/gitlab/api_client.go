@@ -178,3 +178,66 @@ type GitLabIssue struct {
 	Assignee    *GitLabUser `json:"assignee"`
 	WebURL      string      `json:"web_url"`
 }
+
+// GitLabMergeRequest represents a GitLab merge request from API
+type GitLabMergeRequest struct {
+	ID           int         `json:"id"`
+	IID          int         `json:"iid"`
+	ProjectID    int         `json:"project_id"`
+	Title        string      `json:"title"`
+	Description  string      `json:"description"`
+	State        string      `json:"state"`
+	SourceBranch string      `json:"source_branch"`
+	TargetBranch string      `json:"target_branch"`
+	Author       *GitLabUser `json:"author"`
+	WebURL       string      `json:"web_url"`
+	CreatedAt    string      `json:"created_at"`
+	UpdatedAt    string      `json:"updated_at"`
+}
+
+// GetMergeRequest fetches MR details from GitLab API
+func (c *APIClient) GetMergeRequest(ctx context.Context, projectID, mrIID int) (*GitLabMergeRequest, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests/%d",
+		strings.TrimSuffix(c.baseURL, "/"), projectID, mrIID)
+
+	c.logger.Debug("Getting MR info from GitLab API",
+		"project_id", projectID,
+		"mr_iid", mrIID,
+		"url", url)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("User-Agent", "GitLab-Jira-Hook/1.0")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Error("Failed to close response body", "error", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var mr GitLabMergeRequest
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	c.logger.Debug("Retrieved MR info",
+		"project_id", projectID,
+		"mr_iid", mrIID,
+		"source_branch", mr.SourceBranch,
+		"target_branch", mr.TargetBranch,
+		"title", mr.Title)
+
+	return &mr, nil
+}

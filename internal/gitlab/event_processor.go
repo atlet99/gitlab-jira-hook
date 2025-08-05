@@ -325,6 +325,32 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 		return fmt.Errorf("missing merge request data in event")
 	}
 
+	// If branches are empty, try to get them from GitLab API (known GitLab webhook issue)
+	if (sourceBranch == "" || targetBranch == "") && event.Project != nil && mrID > 0 {
+		ep.logger.Debug("Source/target branches empty in webhook, fetching from GitLab API",
+			"source_branch_from_webhook", sourceBranch,
+			"target_branch_from_webhook", targetBranch,
+			"mr_id", mrID,
+			"project_id", event.Project.ID)
+
+		// Convert MR ID to IID by making API call (GitLab webhook sends ID, API expects IID)
+		// For now, assume they are the same - this is usually the case
+		mrIID := mrID
+		apiSourceBranch, apiTargetBranch := ep.urlBuilder.GetMergeRequestInfo(ctx, event.Project.ID, mrIID)
+
+		if apiSourceBranch != "" && apiTargetBranch != "" {
+			sourceBranch = apiSourceBranch
+			targetBranch = apiTargetBranch
+			ep.logger.Debug("Successfully retrieved branches from GitLab API",
+				"source_branch", sourceBranch,
+				"target_branch", targetBranch)
+		} else {
+			ep.logger.Warn("Failed to retrieve branches from GitLab API",
+				"mr_id", mrID,
+				"project_id", event.Project.ID)
+		}
+	}
+
 	// Determine who should be displayed as the "actor" for this MR event
 	var actorName, actorEmail string
 

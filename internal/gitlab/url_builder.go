@@ -94,6 +94,24 @@ func (b *URLBuilder) GetProjectDefaultBranch(ctx context.Context, projectID int)
 	return project.DefaultBranch
 }
 
+// GetMergeRequestInfo returns MR details from GitLab API
+func (b *URLBuilder) GetMergeRequestInfo(ctx context.Context, projectID, mrIID int) (sourceBranch, targetBranch string) {
+	if projectID == 0 || mrIID == 0 {
+		return "", ""
+	}
+
+	mr, err := b.apiClient.GetMergeRequest(ctx, projectID, mrIID)
+	if err != nil {
+		b.logger.Debug("Failed to get MR info from GitLab API",
+			"project_id", projectID,
+			"mr_iid", mrIID,
+			"error", err)
+		return "", ""
+	}
+
+	return mr.SourceBranch, mr.TargetBranch
+}
+
 // ConstructBranchURL constructs the URL for a branch
 func (b *URLBuilder) ConstructBranchURL(event *Event, ref string) string {
 	if event.Project == nil || event.Project.WebURL == "" || ref == "" {
