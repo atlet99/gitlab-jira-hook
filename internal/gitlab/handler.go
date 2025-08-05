@@ -693,9 +693,9 @@ func (h *Handler) processRepositoryUpdateEvent(ctx context.Context, event *Event
 		projectURL)
 
 	// Add information about changes if available
-	if len(event.Changes) > 0 {
+	if changes, ok := event.Changes.([]Change); ok && len(changes) > 0 {
 		comment += "\nChanges:"
-		for _, change := range event.Changes {
+		for _, change := range changes {
 			// Extract branch name from ref
 			branchName := change.Ref
 			if strings.HasPrefix(change.Ref, "refs/heads/") {

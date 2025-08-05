@@ -83,6 +83,26 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 		}
 	}
 
+	// Add debug logging for event type determination
+	ep.logger.Debug("Event type determination",
+		"original_object_kind", event.ObjectKind,
+		"original_type", event.Type,
+		"determined_type", eventType,
+		"has_merge_request", event.MergeRequest != nil,
+		"has_object_attributes", event.ObjectAttributes != nil,
+		"object_attributes_target_branch", func() string {
+			if event.ObjectAttributes != nil {
+				return event.ObjectAttributes.TargetBranch
+			}
+			return ""
+		}(),
+		"object_attributes_source_branch", func() string {
+			if event.ObjectAttributes != nil {
+				return event.ObjectAttributes.SourceBranch
+			}
+			return ""
+		}())
+
 	switch eventType {
 	case "push":
 		return ep.processPushEvent(ctx, event)
@@ -251,8 +271,9 @@ func (ep *EventProcessor) processPushEvent(ctx context.Context, event *Event) er
 
 // processMergeRequestEvent processes merge request events
 func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *Event) error {
-	var title, description, action string
+	var title, description, action, sourceBranch, targetBranch, mrURL string
 	var mrID int
+	var authorName, authorEmail string
 
 	// Try to get data from ObjectAttributes first
 	if event.ObjectAttributes != nil {
@@ -260,14 +281,44 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 		description = event.ObjectAttributes.Description
 		action = event.ObjectAttributes.Action
 		mrID = event.ObjectAttributes.ID
+		sourceBranch = event.ObjectAttributes.SourceBranch
+		targetBranch = event.ObjectAttributes.TargetBranch
+		mrURL = event.ObjectAttributes.URL
 	} else if event.MergeRequest != nil {
 		// Fallback to MergeRequest structure
 		title = event.MergeRequest.Title
 		description = event.MergeRequest.Description
 		action = "updated" // Default action for merge request
 		mrID = event.MergeRequest.ID
+		sourceBranch = event.MergeRequest.SourceBranch
+		targetBranch = event.MergeRequest.TargetBranch
+		mrURL = event.MergeRequest.WebURL
+		if event.MergeRequest.Author != nil {
+			authorName = event.MergeRequest.Author.Name
+			authorEmail = event.MergeRequest.Author.Email
+		}
 	} else {
 		return fmt.Errorf("missing merge request data in event")
+	}
+
+	// Get user data from User if available
+	if event.User != nil {
+		authorName = event.User.Name
+		authorEmail = event.User.Email
+	}
+
+	// Get username from GitLab API
+	username := ""
+	authorURL := ""
+	if authorEmail != "" {
+		username = ep.urlBuilder.GetUsernameByEmail(ctx, authorEmail)
+		authorURL = ep.urlBuilder.ConstructAuthorURLFromEmail(ctx, authorEmail)
+	}
+
+	// Use username if available, otherwise fallback to author name
+	displayName := username
+	if displayName == "" {
+		displayName = authorName
 	}
 
 	// Extract issue IDs from MR title and description
@@ -283,8 +334,39 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 		return nil
 	}
 
-	// Create a simple comment
-	comment := ep.buildSimpleComment("Merge Request", title, action)
+	// Get project web URL
+	projectWebURL := ""
+	if event.Project != nil {
+		projectWebURL = event.Project.WebURL
+	}
+
+	// Create beautiful ADF comment for MR using existing function
+	comment := jira.GenerateMergeRequestADFComment(
+		title,              // title
+		mrURL,              // url
+		event.Project.Name, // projectName
+		projectWebURL,      // projectURL
+		action,             // action
+		sourceBranch,       // sourceBranch
+		targetBranch,       // targetBranch
+		"",                 // status (empty for now)
+		displayName,        // author
+		description,        // description
+		ep.config.Timezone, // timezone
+		nil,                // participants (empty for now)
+		nil,                // approvedBy (empty for now)
+		nil,                // reviewers (empty for now)
+		nil,                // approvers (empty for now)
+	)
+
+	ep.logger.Debug("MR comment construction results",
+		"mr_id", mrID,
+		"username", username,
+		"author_url", authorURL,
+		"source_branch", sourceBranch,
+		"target_branch", targetBranch,
+		"action", action,
+		"mr_url", mrURL)
 
 	for _, issueID := range issueIDs {
 		if err := ep.jiraClient.AddComment(ctx, issueID, comment); err != nil {

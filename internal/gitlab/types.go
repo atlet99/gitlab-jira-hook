@@ -102,8 +102,9 @@ type Event struct {
 	// Tag events
 	TagPush bool `json:"tag_push"`
 	// Repository update event specific fields
-	Changes []Change `json:"changes"`
-	Refs    []string `json:"refs"`
+	// Changes is a map for merge request events or an array for repository update events
+	Changes interface{} `json:"changes"`
+	Refs    []string    `json:"refs"`
 }
 
 // Commit represents a Git commit
@@ -185,6 +186,7 @@ type MergeRequest struct {
 	Description string `json:"description"`
 	State       string `json:"state"`
 	URL         string `json:"url"`
+	WebURL      string `json:"web_url"`
 	// Additional merge request fields
 	SourceBranch string   `json:"source_branch"`
 	TargetBranch string   `json:"target_branch"`
