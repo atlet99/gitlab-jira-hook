@@ -275,6 +275,30 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 	var mrID int
 	var authorName, authorEmail string
 
+	// Debug: Log full event structure for troubleshooting
+	ep.logger.Debug("MR Event Debug - Full event structure",
+		"event_user", func() string {
+			if event.User != nil {
+				return fmt.Sprintf("Name:%s, Email:%s, Username:%s", event.User.Name, event.User.Email, event.User.Username)
+			}
+			return "nil"
+		}(),
+		"event_merge_request", func() string {
+			if event.MergeRequest != nil {
+				return fmt.Sprintf("ID:%d, Title:%s, SourceBranch:%s, TargetBranch:%s",
+					event.MergeRequest.ID, event.MergeRequest.Title, event.MergeRequest.SourceBranch, event.MergeRequest.TargetBranch)
+			}
+			return "nil"
+		}(),
+		"event_object_attributes", func() string {
+			if event.ObjectAttributes != nil {
+				return fmt.Sprintf("ID:%d, Title:%s, Action:%s, SourceBranch:%s, TargetBranch:%s",
+					event.ObjectAttributes.ID, event.ObjectAttributes.Title, event.ObjectAttributes.Action,
+					event.ObjectAttributes.SourceBranch, event.ObjectAttributes.TargetBranch)
+			}
+			return "nil"
+		}())
+
 	// Try to get data from ObjectAttributes first
 	if event.ObjectAttributes != nil {
 		title = event.ObjectAttributes.Title
@@ -336,6 +360,30 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 			"actor_email", actorEmail,
 			"username", username,
 			"author_url", authorURL)
+	}
+
+	// Fallback: if no email or API failed, try to use username directly from event
+	if username == "" && event.User != nil && event.User.Username != "" {
+		username = event.User.Username
+		if ep.config.GitLabBaseURL != "" {
+			authorURL = fmt.Sprintf("%s/%s", strings.TrimSuffix(ep.config.GitLabBaseURL, "/"), username)
+		}
+		ep.logger.Debug("Using username from event as fallback",
+			"username", username,
+			"author_url", authorURL)
+	}
+
+	// Additional fallback: if still no username, check MR author
+	if username == "" && event.MergeRequest != nil && event.MergeRequest.Author != nil {
+		if event.MergeRequest.Author.Username != "" {
+			username = event.MergeRequest.Author.Username
+			if ep.config.GitLabBaseURL != "" {
+				authorURL = fmt.Sprintf("%s/%s", strings.TrimSuffix(ep.config.GitLabBaseURL, "/"), username)
+			}
+			ep.logger.Debug("Using MR author username as fallback",
+				"username", username,
+				"author_url", authorURL)
+		}
 	}
 
 	// Use username if available, otherwise fallback to actor name
