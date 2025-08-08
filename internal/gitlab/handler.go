@@ -36,15 +36,15 @@ type Handler struct {
 // JiraClient defines the interface for Jira client operations
 // (AddComment and TestConnection)
 type JiraClient interface {
-	AddComment(issueID string, payload jira.CommentPayload) error
-	TestConnection() error
+	AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
+	TestConnection(ctx context.Context) error
 }
 
 // NewHandler creates a new GitLab webhook handler
 func NewHandler(cfg *config.Config, logger *slog.Logger) *Handler {
-	urlBuilder := NewURLBuilder(cfg)
+	urlBuilder := NewURLBuilder(cfg, logger)
 	jiraClient := jira.NewClient(cfg)
-	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, logger)
+	eventProcessor := NewEventProcessor(jiraClient, urlBuilder, cfg, logger)
 	debugLogger := NewDebugLogger(logger)
 
 	return &Handler{
@@ -234,8 +234,9 @@ func (h *Handler) convertFromInterfaceEvent(event *webhook.Event) (*Event, error
 	}
 
 	orig := &Event{
-		Type:      event.Type,
-		EventName: event.EventName,
+		Type:       event.Type,
+		EventName:  event.EventName,
+		ObjectKind: event.Type, // Set ObjectKind from Type (which comes from ObjectKind)
 	}
 
 	if event.Project != nil {
@@ -334,8 +335,23 @@ func getProjectName(event *webhook.Event) string {
 
 func getUserName(event *webhook.Event) string {
 	if event.User != nil {
-		return event.User.Username
+		if event.User.Username != "" {
+			return event.User.Username
+		}
+		if event.User.Name != "" {
+			return event.User.Name
+		}
 	}
+
+	// Try to extract user from commits
+	if len(event.Commits) > 0 {
+		for _, commit := range event.Commits {
+			if commit.Author.Name != "" {
+				return commit.Author.Name
+			}
+		}
+	}
+
 	return "unknown"
 }
 
@@ -427,7 +443,7 @@ func (h *Handler) constructProjectURL(event *Event) (string, string) {
 }
 
 // processMergeRequestEvent processes merge request events
-func (h *Handler) processMergeRequestEvent(event *Event) error {
+func (h *Handler) processMergeRequestEvent(ctx context.Context, event *Event) error {
 	if event.ObjectAttributes == nil {
 		return nil
 	}
@@ -553,7 +569,7 @@ func (h *Handler) processMergeRequestEvent(event *Event) error {
 
 	// Add comment to each issue
 	for issueID := range issueKeySet {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add MR comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -651,7 +667,7 @@ func (h *Handler) getGroupPath(event *Event) string {
 
 // Added event handlers for new event types
 
-func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
+func (h *Handler) processRepositoryUpdateEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Repository update event", "type", event.Type)
 
 	// Get project information
@@ -677,9 +693,9 @@ func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
 		projectURL)
 
 	// Add information about changes if available
-	if len(event.Changes) > 0 {
+	if changes, ok := event.Changes.([]Change); ok && len(changes) > 0 {
 		comment += "\nChanges:"
-		for _, change := range event.Changes {
+		for _, change := range changes {
 			// Extract branch name from ref
 			branchName := change.Ref
 			if strings.HasPrefix(change.Ref, "refs/heads/") {
@@ -700,7 +716,7 @@ func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
 	issueIDs := h.parser.ExtractIssueIDs(text)
 
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add repository update comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -715,7 +731,7 @@ func (h *Handler) processRepositoryUpdateEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processTagPushEvent(event *Event) error {
+func (h *Handler) processTagPushEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Tag push event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -732,7 +748,7 @@ func (h *Handler) processTagPushEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add tag push comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added tag push comment to Jira issue", "issueID", issueID)
@@ -741,7 +757,7 @@ func (h *Handler) processTagPushEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processReleaseEvent(event *Event) error {
+func (h *Handler) processReleaseEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Release event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -764,7 +780,7 @@ func (h *Handler) processReleaseEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add release comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added release comment to Jira issue", "issueID", issueID)
@@ -773,7 +789,7 @@ func (h *Handler) processReleaseEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processDeploymentEvent(event *Event) error {
+func (h *Handler) processDeploymentEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Deployment event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -797,7 +813,7 @@ func (h *Handler) processDeploymentEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add deployment comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added deployment comment to Jira issue", "issueID", issueID)
@@ -806,7 +822,7 @@ func (h *Handler) processDeploymentEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processFeatureFlagEvent(event *Event) error {
+func (h *Handler) processFeatureFlagEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Feature flag event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -828,7 +844,7 @@ func (h *Handler) processFeatureFlagEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add feature flag comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added feature flag comment to Jira issue", "issueID", issueID)
@@ -837,7 +853,7 @@ func (h *Handler) processFeatureFlagEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processWikiPageEvent(event *Event) error {
+func (h *Handler) processWikiPageEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Wiki page event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -859,7 +875,7 @@ func (h *Handler) processWikiPageEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add wiki page comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added wiki page comment to Jira issue", "issueID", issueID)
@@ -868,7 +884,7 @@ func (h *Handler) processWikiPageEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processPipelineEvent(event *Event) error {
+func (h *Handler) processPipelineEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Pipeline event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -896,7 +912,7 @@ func (h *Handler) processPipelineEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add pipeline comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added pipeline comment to Jira issue", "issueID", issueID)
@@ -905,7 +921,7 @@ func (h *Handler) processPipelineEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processBuildEvent(event *Event) error {
+func (h *Handler) processBuildEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Build event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -935,7 +951,7 @@ func (h *Handler) processBuildEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add build comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added build comment to Jira issue", "issueID", issueID)
@@ -944,7 +960,7 @@ func (h *Handler) processBuildEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processNoteEvent(event *Event) error {
+func (h *Handler) processNoteEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Note event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -962,7 +978,7 @@ func (h *Handler) processNoteEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add note comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added note comment to Jira issue", "issueID", issueID)
@@ -971,7 +987,7 @@ func (h *Handler) processNoteEvent(event *Event) error {
 	return nil
 }
 
-func (h *Handler) processIssueEvent(event *Event) error {
+func (h *Handler) processIssueEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Issue event", "type", event.Type)
 	if event.ObjectAttributes == nil {
 		return nil
@@ -1000,7 +1016,7 @@ func (h *Handler) processIssueEvent(event *Event) error {
 		h.config.Timezone,
 	)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add issue comment to Jira", "error", err, "issueID", issueID)
 		} else {
 			h.logger.Info("Added issue comment to Jira issue", "issueID", issueID)
@@ -1017,7 +1033,7 @@ func min(a, b int) int {
 	return b
 }
 
-// convertToInterfaceEvent преобразует *gitlab.Event в *webhook.Event
+// convertToInterfaceEvent converts *gitlab.Event to *webhook.Event
 func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	if e == nil {
 		return nil
@@ -1041,7 +1057,7 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	}
 
 	result := &webhook.Event{
-		Type:      e.Type,
+		Type:      e.ObjectKind, // Use ObjectKind as Type for webhook.Event
 		EventName: e.EventName,
 		Commits:   commits,
 	}
@@ -1097,12 +1113,12 @@ func (h *Handler) convertToInterfaceEvent(e *Event) *webhook.Event {
 	return result
 }
 
-// parseTime пытается распарсить строку времени в time.Time
+// parseTime attempts to parse a time string into time.Time
 func parseTime(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
-	// Попробуем RFC3339, иначе вернем zero time
+	// Try RFC3339, otherwise return zero time
 	ts, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		return time.Time{}, err

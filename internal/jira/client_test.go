@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -209,7 +210,7 @@ func TestClientAddComment(t *testing.T) {
 		client := NewClient(cfg)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.NoError(t, err)
 	})
 
@@ -238,7 +239,7 @@ func TestClientAddComment(t *testing.T) {
 		client := NewClient(cfg)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, attempts)
 	})
@@ -261,7 +262,7 @@ func TestClientAddComment(t *testing.T) {
 		client := NewClient(cfg)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "jira API error")
 	})
@@ -288,7 +289,7 @@ func TestClientAddComment(t *testing.T) {
 		t.Logf("Client base URL: %s", client.baseURL)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		t.Logf("AddComment returned error: %v", err)
 		assert.Error(t, err)
 		if err != nil {
@@ -309,7 +310,7 @@ func TestClientAddComment(t *testing.T) {
 		client := NewClient(cfg)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		if err != nil {
 			// Network error can be either "failed to send request" or HTTP error
@@ -340,7 +341,7 @@ func TestClientTestConnection(t *testing.T) {
 		}
 
 		client := NewClient(cfg)
-		err := client.TestConnection()
+		err := client.TestConnection(context.Background())
 		assert.NoError(t, err)
 	})
 
@@ -366,7 +367,7 @@ func TestClientTestConnection(t *testing.T) {
 		}
 
 		client := NewClient(cfg)
-		err := client.TestConnection()
+		err := client.TestConnection(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, 2, attempts)
 	})
@@ -386,7 +387,7 @@ func TestClientTestConnection(t *testing.T) {
 		}
 
 		client := NewClient(cfg)
-		err := client.TestConnection()
+		err := client.TestConnection(context.Background())
 		assert.Error(t, err)
 		if err != nil {
 			assert.Contains(t, err.Error(), "jira API connection failed")
@@ -404,7 +405,7 @@ func TestClientTestConnection(t *testing.T) {
 		}
 
 		client := NewClient(cfg)
-		err := client.TestConnection()
+		err := client.TestConnection(context.Background())
 		assert.Error(t, err)
 		if err != nil {
 			// Network error can be either "failed to send request" or HTTP error
@@ -450,7 +451,7 @@ func TestClientEdgeCases(t *testing.T) {
 		client := NewClient(cfg)
 		payload := createTestCommentPayload("Test comment")
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		if err != nil {
 			// Empty URL can cause various errors
@@ -491,7 +492,7 @@ func TestClientEdgeCases(t *testing.T) {
 			},
 		}
 
-		err := client.AddComment("ABC-123", payload)
+		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		if err != nil {
 			// Invalid payload can cause marshaling error or network error

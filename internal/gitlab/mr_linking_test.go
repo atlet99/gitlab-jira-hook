@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestProcessMergeRequestEvent_SystemHook_LinksToMultipleIssues(t *testing.T)
 	mockJira.On("AddComment", "ABC-789", mock.Anything).Return(nil)
 	mockJira.On("AddComment", "ABC-101", mock.Anything).Return(nil)
 
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -70,7 +71,7 @@ func TestProcessMergeRequestEvent_SystemHook_NoIssuesFound(t *testing.T) {
 	}
 
 	// No comments should be added since no issue keys are found
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertNotCalled(t, "AddComment")
 }
@@ -102,7 +103,7 @@ func TestProcessMergeRequestEvent_SystemHook_DuplicateIssues(t *testing.T) {
 	// ABC-123 appears in title, description, and source branch, but should only get one comment
 	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
 
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 	// Verify AddComment was called exactly once for ABC-123
@@ -143,7 +144,7 @@ func TestProcessMergeRequestEvent_ProjectHook_LinksToMultipleIssues(t *testing.T
 	mockJira.On("AddComment", "ABC-789", mock.Anything).Return(nil)
 	mockJira.On("AddComment", "ABC-101", mock.Anything).Return(nil)
 
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 }
@@ -177,7 +178,7 @@ func TestProcessMergeRequestEvent_ProjectHook_NoIssuesFound(t *testing.T) {
 	}
 
 	// No comments should be added since no issue keys are found
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertNotCalled(t, "AddComment")
 }
@@ -213,7 +214,7 @@ func TestProcessMergeRequestEvent_ProjectHook_DuplicateIssues(t *testing.T) {
 	// ABC-123 appears in title, description, and source branch, but should only get one comment
 	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
 
-	err := handler.processMergeRequestEvent(event)
+	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
 	mockJira.AssertExpectations(t)
 	// Verify AddComment was called exactly once for ABC-123
