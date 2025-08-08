@@ -436,29 +436,20 @@ func (ep *EventProcessor) processMergeRequestEvent(ctx context.Context, event *E
 		return nil
 	}
 
-	// Get project web URL
-	projectWebURL := ""
-	if event.Project != nil {
-		projectWebURL = event.Project.WebURL
-	}
+	// Project web URL is not required for MR simple ADF comment
 
-	// Create beautiful ADF comment for MR using existing function
-	comment := jira.GenerateMergeRequestADFComment(
+	// Create beautiful ADF comment for MR with clickable links and approver info
+	comment := jira.GenerateMergeRequestADFCommentSimple(
+		mrID,               // mrID
+		mrURL,              // mrURL
 		title,              // title
-		mrURL,              // url
-		event.Project.Name, // projectName
-		projectWebURL,      // projectURL
+		description,        // description
+		displayName,        // authorName
+		authorURL,          // authorURL (clickable link)
 		action,             // action
 		sourceBranch,       // sourceBranch
 		targetBranch,       // targetBranch
-		"",                 // status (empty for now)
-		displayName,        // author
-		description,        // description
 		ep.config.Timezone, // timezone
-		nil,                // participants (empty for now)
-		nil,                // approvedBy (empty for now)
-		nil,                // reviewers (empty for now)
-		nil,                // approvers (empty for now)
 	)
 
 	ep.logger.Debug("MR comment construction results",

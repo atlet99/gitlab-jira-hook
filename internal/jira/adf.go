@@ -12,6 +12,9 @@ import (
 // DateFormatGOST is the date format according to GOST 7.64-90 standard (DD.MM.YYYY HH:MM)
 const DateFormatGOST = "02.01.2006 15:04"
 
+// actionUpdated is a common action value used across Jira ADF builders
+const actionUpdated = "updated"
+
 // GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
 	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL, projectWebURL, timezone string,
@@ -365,6 +368,41 @@ func createAuthorField(author string) Content {
 	}
 }
 
+// createAuthorFieldWithLink creates an author field with clickable link
+func createAuthorFieldWithLink(author, authorURL string) Content {
+	var authorContent []TextContent
+
+	authorContent = append(authorContent, TextContent{
+		Type:  "text",
+		Text:  "author: ",
+		Marks: []Mark{{Type: "strong"}},
+	})
+
+	if authorURL != "" && author != "" {
+		// Create clickable author link
+		authorContent = append(authorContent, TextContent{
+			Type: "text",
+			Text: author,
+			Marks: []Mark{
+				{Type: "link", Attrs: map[string]interface{}{"href": authorURL}},
+				{Type: "strong"},
+			},
+		})
+	} else {
+		// Fallback to non-clickable author
+		authorContent = append(authorContent, TextContent{
+			Type:  "text",
+			Text:  author,
+			Marks: []Mark{{Type: "strong"}},
+		})
+	}
+
+	return Content{
+		Type:    "paragraph",
+		Content: authorContent,
+	}
+}
+
 func createDescriptionField(description string) []Content {
 	return []Content{
 		{
@@ -415,6 +453,57 @@ func GenerateMergeRequestADFComment(
 		sourceBranch, "", targetBranch, "", status, author, description, "", timezone,
 		participants, approvedBy, reviewers, approvers,
 	)
+}
+
+// GenerateMergeRequestADFCommentSimple generates a simple ADF comment for a merge request event with author URL
+func GenerateMergeRequestADFCommentSimple(
+	mrID int, mrURL, title, description, authorName, authorURL, action,
+	sourceBranch, targetBranch, timezone string,
+) CommentPayload {
+	var content []Content
+
+	// Start with author with clickable link
+	if authorName != "" {
+		content = append(content, createAuthorFieldWithLink(authorName, authorURL))
+	}
+
+	// Add MR title as header with link (if present)
+	content = append(content, buildMRTitleContent(mrID, mrURL, title)...)
+
+	// Add action with emoji (if present)
+	content = append(content, buildActionContent(action, authorName)...)
+
+	// Add branches if available
+	if sourceBranch != "" && targetBranch != "" {
+		content = append(content, Content{
+			Type: "paragraph",
+			Content: []TextContent{
+				{Type: "text", Text: "branches: ", Marks: []Mark{{Type: "strong"}}},
+				{Type: "text", Text: fmt.Sprintf("%s → %s", sourceBranch, targetBranch), Marks: []Mark{{Type: "code"}}},
+			},
+		})
+	}
+
+	// Add description if available
+	content = append(content, buildMRDescriptionContent(description)...)
+
+	// Add current date in GOST format
+	formattedTime := timeutil.FormatCurrentTimeGOST(timezone)
+	content = append(content, Content{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "date: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: formattedTime, Marks: []Mark{{Type: "code"}}},
+		},
+	})
+
+	return CommentPayload{
+		Body: CommentBody{
+			Type:    "doc",
+			Version: 1,
+			Content: content,
+		},
+	}
 }
 
 // GenerateMergeRequestADFCommentWithBranchURLs generates an ADF comment for a merge request event with branch URLs
@@ -521,6 +610,100 @@ func createMergeRequestDescription(description string) Content {
 			{Type: "text", Text: "commit: ", Marks: []Mark{{Type: "strong"}}},
 			{Type: "text", Text: description},
 		},
+	}
+}
+
+// buildMRTitleContent builds the title content for MR if title is present
+func buildMRTitleContent(mrID int, mrURL, title string) []Content {
+	if title == "" {
+		return nil
+	}
+
+	titleContent := []TextContent{
+		{Type: "text", Text: "merge request: ", Marks: []Mark{{Type: "strong"}}},
+	}
+
+	if mrURL != "" {
+		titleContent = append(titleContent, TextContent{
+			Type: "text",
+			Text: fmt.Sprintf("!%d - %s", mrID, title),
+			Marks: []Mark{
+				{Type: "link", Attrs: map[string]interface{}{"href": mrURL}},
+				{Type: "strong"},
+			},
+		})
+	} else {
+		titleContent = append(titleContent, TextContent{
+			Type:  "text",
+			Text:  fmt.Sprintf("!%d - %s", mrID, title),
+			Marks: []Mark{{Type: "strong"}},
+		})
+	}
+
+	return []Content{{
+		Type:    "paragraph",
+		Content: titleContent,
+	}}
+}
+
+// buildActionContent builds the action paragraph with emoji if action is present
+func buildActionContent(action, authorName string) []Content {
+	if action == "" {
+		return nil
+	}
+
+	actionEmoji, actionText := getActionEmojiAndText(action, authorName)
+	return []Content{{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "action: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: fmt.Sprintf("%s %s", actionEmoji, actionText), Marks: []Mark{{Type: "code"}}},
+		},
+	}}
+}
+
+// buildMRDescriptionContent builds a trimmed description paragraph if present
+func buildMRDescriptionContent(description string) []Content {
+	if description == "" {
+		return nil
+	}
+	const maxDescLength = 200
+	if len(description) > maxDescLength {
+		description = description[:maxDescLength] + "..."
+	}
+
+	return []Content{{
+		Type: "paragraph",
+		Content: []TextContent{
+			{Type: "text", Text: "description: ", Marks: []Mark{{Type: "strong"}}},
+			{Type: "text", Text: description},
+		},
+	}}
+}
+
+// getActionEmojiAndText maps action to emoji and formatted text
+func getActionEmojiAndText(action, authorName string) (emoji, text string) {
+	switch action {
+	case "open", "opened":
+		return "🔄", action
+	case "close", "closed":
+		return "❌", action
+	case "merge", "merged":
+		return "✅", action
+	case "approved", "approve":
+		if authorName != "" {
+			return "👍", fmt.Sprintf("%s (approved by %s)", action, authorName)
+		}
+		return "👍", action
+	case "unapproved", "unapprove":
+		if authorName != "" {
+			return "👎", fmt.Sprintf("%s (by %s)", action, authorName)
+		}
+		return "👎", action
+	case "update", actionUpdated:
+		return "📝", action
+	default:
+		return "🔄", action
 	}
 }
 
