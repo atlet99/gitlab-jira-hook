@@ -64,6 +64,18 @@ paths:
                 - $ref: '#/components/schemas/BuildEvent'
                 - $ref: '#/components/schemas/NoteEvent'
                 - $ref: '#/components/schemas/IssueEvent'
+                - $ref: '#/components/schemas/ConfidentialNoteEvent'
+                - $ref: '#/components/schemas/ConfidentialIssueEvent'
+                - $ref: '#/components/schemas/SubgroupEvent'
+                - $ref: '#/components/schemas/SnippetEvent'
+                - $ref: '#/components/schemas/ProjectRenameEvent'
+                - $ref: '#/components/schemas/ProjectTransferEvent'
+                - $ref: '#/components/schemas/UserUpdateEvent'
+                - $ref: '#/components/schemas/GroupRenameEvent'
+                - $ref: '#/components/schemas/KeyCreateEvent'
+                - $ref: '#/components/schemas/KeyDestroyEvent'
+                - $ref: '#/components/schemas/GroupMemberAddEvent'
+                - $ref: '#/components/schemas/GroupMemberRemoveEvent'
             examples:
               push_event:
                 summary: Push Event
@@ -162,6 +174,18 @@ paths:
                 - $ref: '#/components/schemas/ProjectDeploymentEvent'
                 - $ref: '#/components/schemas/ProjectFeatureFlagEvent'
                 - $ref: '#/components/schemas/ProjectWikiPageEvent'
+                - $ref: '#/components/schemas/ProjectConfidentialNoteEvent'
+                - $ref: '#/components/schemas/ProjectConfidentialIssueEvent'
+                - $ref: '#/components/schemas/ProjectSubgroupEvent'
+                - $ref: '#/components/schemas/ProjectSnippetEvent'
+                - $ref: '#/components/schemas/ProjectRenameEvent'
+                - $ref: '#/components/schemas/ProjectTransferEvent'
+                - $ref: '#/components/schemas/UserUpdateEvent'
+                - $ref: '#/components/schemas/GroupRenameEvent'
+                - $ref: '#/components/schemas/KeyCreateEvent'
+                - $ref: '#/components/schemas/KeyDestroyEvent'
+                - $ref: '#/components/schemas/GroupMemberAddEvent'
+                - $ref: '#/components/schemas/GroupMemberRemoveEvent'
             examples:
               project_push_event:
                 summary: Project Push Event
@@ -1120,364 +1144,336 @@ components:
         - project
         - wiki_page
 
-    # Common Schemas
-    Commit:
+    # System Hook Event Schemas (Additional)
+    ConfidentialNoteEvent:
       type: object
       properties:
-        id:
+        event_name:
           type: string
-          description: Commit SHA
-        message:
-          type: string
-          description: Commit message
-        author:
-          $ref: '#/components/schemas/Author'
-        url:
-          type: string
-          format: uri
-          description: Commit URL
-        timestamp:
-          type: string
-          format: date-time
-          description: Commit timestamp
+          enum: [confidential_note]
+        object_attributes:
+          $ref: '#/components/schemas/NoteAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
       required:
-        - id
-        - message
-        - author
+        - event_name
+        - object_attributes
+        - project
 
-    Author:
+    ConfidentialIssueEvent:
       type: object
       properties:
-        name:
+        event_name:
           type: string
-          description: Author name
-        email:
-          type: string
-          format: email
-          description: Author email
+          enum: [confidential_issue]
+        object_attributes:
+          $ref: '#/components/schemas/IssueAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
       required:
-        - name
-        - email
+        - event_name
+        - object_attributes
+        - project
 
-    Project:
+    SubgroupEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [subgroup_create, subgroup_destroy, subgroup_rename]
+        group:
+          $ref: '#/components/schemas/Group'
+        subgroup:
+          $ref: '#/components/schemas/Group'
+      required:
+        - event_name
+        - group
+        - subgroup
+
+    SnippetEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [snippet_create, snippet_update, snippet_destroy]
+        project:
+          $ref: '#/components/schemas/Project'
+        snippet:
+          $ref: '#/components/schemas/Snippet'
+      required:
+        - event_name
+        - project
+        - snippet
+
+    ProjectRenameEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [project_rename]
+        project:
+          $ref: '#/components/schemas/Project'
+        old_path_with_namespace:
+          type: string
+          description: Previous project path with namespace
+        new_path_with_namespace:
+          type: string
+          description: New project path with namespace
+      required:
+        - event_name
+        - project
+        - old_path_with_namespace
+        - new_path_with_namespace
+
+    ProjectTransferEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [project_transfer]
+        project:
+          $ref: '#/components/schemas/Project'
+        old_namespace:
+          $ref: '#/components/schemas/Namespace'
+        new_namespace:
+          $ref: '#/components/schemas/Namespace'
+      required:
+        - event_name
+        - project
+        - old_namespace
+        - new_namespace
+
+    UserUpdateEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [user_update]
+        user:
+          $ref: '#/components/schemas/User'
+        changes:
+          type: object
+          description: Changed user attributes
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            username:
+              type: string
+      required:
+        - event_name
+        - user
+        - changes
+
+    GroupRenameEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [group_rename]
+        group:
+          $ref: '#/components/schemas/Group'
+        old_path:
+          type: string
+          description: Previous group path
+        new_path:
+          type: string
+          description: New group path
+      required:
+        - event_name
+        - group
+        - old_path
+        - new_path
+
+    KeyCreateEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [key_create]
+        key:
+          $ref: '#/components/schemas/SSHKey'
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - event_name
+        - key
+        - user
+
+    KeyDestroyEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [key_destroy]
+        key:
+          $ref: '#/components/schemas/SSHKey'
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - event_name
+        - key
+        - user
+
+    GroupMemberAddEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [group_member_add]
+        group:
+          $ref: '#/components/schemas/Group'
+        user:
+          $ref: '#/components/schemas/User'
+        access_level:
+          type: integer
+          description: Access level of the user
+      required:
+        - event_name
+        - group
+        - user
+        - access_level
+
+    GroupMemberRemoveEvent:
+      type: object
+      properties:
+        event_name:
+          type: string
+          enum: [group_member_remove]
+        group:
+          $ref: '#/components/schemas/Group'
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - event_name
+        - group
+        - user
+
+    # Project Webhook Event Schemas (Additional)
+    ProjectConfidentialNoteEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [confidential_note]
+        object_attributes:
+          $ref: '#/components/schemas/NoteAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectConfidentialIssueEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [confidential_issue]
+        object_attributes:
+          $ref: '#/components/schemas/IssueAttributes'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - object_kind
+        - object_attributes
+        - project
+
+    ProjectSubgroupEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [subgroup_create, subgroup_destroy, subgroup_rename]
+        group:
+          $ref: '#/components/schemas/Group'
+        subgroup:
+          $ref: '#/components/schemas/Group'
+      required:
+        - object_kind
+        - group
+        - subgroup
+
+    ProjectSnippetEvent:
+      type: object
+      properties:
+        object_kind:
+          type: string
+          enum: [snippet_create, snippet_update, snippet_destroy]
+        project:
+          $ref: '#/components/schemas/Project'
+        snippet:
+          $ref: '#/components/schemas/Snippet'
+      required:
+        - object_kind
+        - project
+        - snippet
+
+    # Additional Common Schemas
+    Snippet:
       type: object
       properties:
         id:
           type: integer
-          description: Project ID
-        name:
-          type: string
-          description: Project name
-        web_url:
-          type: string
-          format: uri
-          description: Project web URL
-        path_with_namespace:
-          type: string
-          description: Project path with namespace
-      required:
-        - id
-        - name
-        - web_url
-
-    MergeRequestAttributes:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Merge request ID
+          description: Snippet ID
         title:
           type: string
-          description: Merge request title
-        description:
+          description: Snippet title
+        content:
           type: string
-          description: Merge request description
-        state:
-          type: string
-          enum: [opened, closed, merged]
-          description: Merge request state
-        action:
-          type: string
-          enum: [open, close, reopen, update, merge]
-          description: Action performed
-        source_branch:
-          type: string
-          description: Source branch name
-        target_branch:
-          type: string
-          description: Target branch name
+          description: Snippet content
+        visibility_level:
+          type: integer
+          description: Visibility level (0=private, 10=internal, 20=public)
         url:
           type: string
           format: uri
-          description: Merge request URL
+          description: Snippet URL
       required:
         - id
         - title
-        - state
-        - action
+        - content
 
-    IssueAttributes:
+    Namespace:
       type: object
       properties:
         id:
           type: integer
-          description: Issue ID
-        title:
-          type: string
-          description: Issue title
-        description:
-          type: string
-          description: Issue description
-        state:
-          type: string
-          enum: [opened, closed]
-          description: Issue state
-        action:
-          type: string
-          enum: [open, close, reopen, update]
-          description: Action performed
-        issue_type:
-          type: string
-          enum: [issue, incident, test_case]
-          description: Issue type
-        priority:
-          type: string
-          enum: [low, medium, high, critical]
-          description: Issue priority
-        url:
-          type: string
-          format: uri
-          description: Issue URL
-      required:
-        - id
-        - title
-        - state
-        - action
-
-    NoteAttributes:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Note ID
-        note:
-          type: string
-          description: Note content
-        noteable_type:
-          type: string
-          enum: [Commit, MergeRequest, Issue, Snippet]
-          description: Type of object being commented on
-        noteable_id:
-          type: integer
-          description: ID of the object being commented on
-        url:
-          type: string
-          format: uri
-          description: Note URL
-      required:
-        - id
-        - note
-        - noteable_type
-        - noteable_id
-
-    PipelineAttributes:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Pipeline ID
-        ref:
-          type: string
-          description: Git reference
-        status:
-          type: string
-          enum: [pending, running, success, failed, canceled, skipped]
-          description: Pipeline status
-        sha:
-          type: string
-          description: Commit SHA
-        duration:
-          type: integer
-          description: Pipeline duration in seconds
-        url:
-          type: string
-          format: uri
-          description: Pipeline URL
-      required:
-        - id
-        - ref
-        - status
-        - sha
-
-    BuildAttributes:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Build ID
+          description: Namespace ID
         name:
           type: string
-          description: Build name
-        stage:
-          type: string
-          description: Build stage
-        status:
-          type: string
-          enum: [pending, running, success, failed, canceled, skipped]
-          description: Build status
-        duration:
-          type: integer
-          description: Build duration in seconds
-        url:
-          type: string
-          format: uri
-          description: Build URL
-      required:
-        - id
-        - name
-        - stage
-        - status
-
-    User:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: User ID
-        name:
-          type: string
-          description: User name
-        email:
-          type: string
-          format: email
-          description: User email
-        username:
-          type: string
-          description: Username
-      required:
-        - id
-        - name
-        - email
-
-    Group:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Group ID
-        name:
-          type: string
-          description: Group name
+          description: Namespace name
         path:
           type: string
-          description: Group path
-        web_url:
-          type: string
-          format: uri
-          description: Group web URL
+          description: Namespace path
       required:
         - id
         - name
         - path
 
-    Release:
+    SSHKey:
       type: object
       properties:
         id:
           type: integer
-          description: Release ID
-        tag_name:
-          type: string
-          description: Release tag name
-        name:
-          type: string
-          description: Release name
-        description:
-          type: string
-          description: Release description
-        url:
-          type: string
-          format: uri
-          description: Release URL
-      required:
-        - id
-        - tag_name
-        - name
-
-    Deployment:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Deployment ID
-        ref:
-          type: string
-          description: Git reference
-        environment:
-          type: string
-          description: Deployment environment
-        status:
-          type: string
-          enum: [running, success, failed, canceled]
-          description: Deployment status
-        url:
-          type: string
-          format: uri
-          description: Deployment URL
-      required:
-        - id
-        - ref
-        - environment
-        - status
-
-    FeatureFlag:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Feature flag ID
-        name:
-          type: string
-          description: Feature flag name
-        description:
-          type: string
-          description: Feature flag description
-        active:
-          type: boolean
-          description: Whether the feature flag is active
-        url:
-          type: string
-          format: uri
-          description: Feature flag URL
-      required:
-        - id
-        - name
-        - active
-
-    WikiPage:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: Wiki page ID
+          description: SSH key ID
         title:
           type: string
-          description: Wiki page title
-        content:
+          description: SSH key title
+        key:
           type: string
-          description: Wiki page content
-        action:
+          description: SSH public key
+        created_at:
           type: string
-          enum: [create, update, delete]
-          description: Action performed
-        url:
-          type: string
-          format: uri
-          description: Wiki page URL
+          format: date-time
+          description: Key creation timestamp
       required:
         - id
         - title
-        - action
+        - key
+        - created_at
 
 tags:
   - name: System Hooks
@@ -1489,4 +1485,4 @@ tags:
   - name: Cache Management
     description: Cache system management endpoints
   - name: Configuration Management
-    description: Configuration management endpoints 
+    description: Configuration management endpoints

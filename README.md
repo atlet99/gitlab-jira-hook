@@ -333,8 +333,20 @@ gitlab-jira-hook/
 ├── docs/                        # Documentation
 │   ├── api/                     # API documentation
 │   │   └── openapi.yaml         # OpenAPI specification
-│   ├── async_architecture.md    # Async architecture docs
-│   └── broker_formula.md        # Broker formula documentation
+│   ├── architecture/            # Architecture documentation
+│   │   ├── async-processing.md  # Async processing details
+│   │   ├── error-handling.md    # Error handling implementation
+│   │   └── overview.md          # Architecture overview
+│   ├── advanced/                # Advanced features
+│   │   └── security.md          # Security implementation
+│   ├── contributing/            # Contribution guidelines
+│   │   ├── guidelines.md        # Contribution guidelines
+│   │   └── testing.md           # Testing documentation
+│   ├── getting-started/         # Getting started guides
+│   │   └── installation.md      # Installation guide
+│   └── reference/               # Reference documentation
+│       ├── config.md            # Configuration reference
+│       └── environment-variables.md # Environment variables
 ├── scripts/                     # Build and deployment scripts
 │   └── setup-env.sh             # Environment setup script
 ├── config.env.example           # Example configuration
@@ -393,129 +405,16 @@ make coverage
 make benchmark
 ```
 
-## 📊 API Reference
+## 📊 Documentation
 
-### System Hook Endpoint
-
-**POST** `/gitlab-hook`
-
-Handles GitLab System Hook events.
-
-#### Headers
-- `X-Gitlab-Event: System Hook`
-- `X-Gitlab-Token: your-secret-token`
-- `Content-Type: application/json`
-
-### Project Hook Endpoint
-
-**POST** `/project-hook`
-
-Handles GitLab Project Webhook events.
-
-#### Headers
-- `X-Gitlab-Token: your-secret-token`
-- `Content-Type: application/json`
-
-### Monitoring Endpoints
-
-**GET** `/health`
-
-Returns service health status with detailed component information.
-
-**GET** `/metrics`
-
-Returns Prometheus metrics for monitoring and alerting.
-
-**GET** `/ready`
-
-Returns service readiness status for Kubernetes health checks.
-
-### Supported Events
-
-##### Push Event
-```json
-{
-  "object_kind": "push",
-  "ref": "refs/heads/main",
-  "commits": [
-    {
-      "id": "abc123",
-      "message": "Fix login issue ABC-123",
-      "author": {
-        "name": "John Doe",
-        "email": "john@example.com"
-      },
-      "url": "https://gitlab.com/project/commit/abc123",
-      "timestamp": "2024-01-01T12:00:00Z"
-    }
-  ],
-  "project": {
-    "name": "My Project",
-    "web_url": "https://gitlab.com/project"
-  }
-}
-```
-
-##### Merge Request Event
-```json
-{
-  "object_kind": "merge_request",
-  "object_attributes": {
-    "id": 123,
-    "title": "Implement user authentication ABC-123",
-    "description": "This fixes ABC-123 requirements",
-    "state": "opened",
-    "action": "open",
-    "source_branch": "feature/auth",
-    "target_branch": "main",
-    "url": "https://gitlab.com/project/merge_requests/123"
-  },
-  "project": {
-    "name": "My Project",
-    "web_url": "https://gitlab.com/project"
-  }
-}
-```
-
-##### Issue Event
-```json
-{
-  "object_kind": "issue",
-  "object_attributes": {
-    "id": 456,
-    "title": "Bug related to ABC-123",
-    "description": "This issue is related to ABC-123",
-    "state": "opened",
-    "action": "open",
-    "issue_type": "issue",
-    "priority": "medium",
-    "url": "https://gitlab.com/project/issues/456"
-  },
-  "project": {
-    "name": "My Project",
-    "web_url": "https://gitlab.com/project"
-  }
-}
-```
-
-##### Pipeline Event
-```json
-{
-  "object_kind": "pipeline",
-  "object_attributes": {
-    "id": 101,
-    "ref": "main",
-    "status": "success",
-    "sha": "abc123",
-    "duration": 120,
-    "url": "https://gitlab.com/project/pipelines/101"
-  },
-  "project": {
-    "name": "My Project",
-    "web_url": "https://gitlab.com/project"
-  }
-}
-```
+- [Getting Started](docs/getting-started/installation.md)
+- [Architecture Overview](docs/architecture/overview.md)
+- [Async Processing](docs/architecture/async-processing.md)
+- [Error Handling](docs/architecture/error-handling.md)
+- [Security](docs/advanced/security.md)
+- [Configuration](docs/reference/config.md)
+- [Environment Variables](docs/reference/environment-variables.md)
+- [API Reference](docs/api/reference.md)
 
 ## 🔍 Monitoring & Observability
 
@@ -867,4 +766,4 @@ See [CHANGELOG.md](CHANGELOG.md) for a full list of changes, fixes, and improvem
 - Test suite stabilization and acceleration
 - Debug mode for webhook development
 - Performance monitoring improvements
-- Temporary skip of heavy performance test for CI 
+- Temporary skip of heavy performance test for CI
