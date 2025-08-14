@@ -6,6 +6,66 @@ The GitLab ↔ Jira Hook service implements comprehensive webhook security valid
 
 ## Security Mechanisms
 
+### 3. JWT Validation for Connect Apps
+
+The GitLab ↔ Jira Hook service implements comprehensive JWT validation for Jira Connect apps, supporting both:
+
+- **Asymmetric JWT (RS256)** - For lifecycle callbacks (install/uninstall) with public key validation
+- **Symmetric JWT (HS256)** - For regular webhook communications with shared secret
+- **HMAC-SHA256** - Legacy webhook signature validation (backward compatible)
+
+#### Key Components
+
+##### 1. JWTValidator (`internal/jira/jwt_validator.go`)
+- Handles JWT token parsing and validation
+- Supports both RS256 (asymmetric) and HS256 (symmetric) algorithms
+- Fetches and caches public keys from Atlassian CDN
+- Validates all required JWT claims (iss, iat, exp, qsh, aud)
+- Implements canonical query string hash validation
+- Provides comprehensive error handling with structured error types
+
+##### 2. AuthValidator (`internal/jira/auth_validator.go`)
+- Unified authentication validation for all webhook types
+- Automatically detects authentication type (JWT, HMAC, or none)
+- Supports development mode bypass for testing
+- Provides user context extraction and Connect app detection
+- Creates structured authentication errors
+
+##### 3. Enhanced WebhookHandler (`internal/jira/webhook_handler.go`)
+- Integrated with the new authentication system
+- Uses type-safe context keys for request context
+- Logs detailed authentication information
+- Supports both Connect apps and traditional webhooks
+
+#### Supported JWT Features
+
+##### Asymmetric JWT (RS256) - Lifecycle Callbacks
+- **Public Key Retrieval**: Fetches keys from `https://connect-install-keys.atlassian.com/`
+- **Key Caching**: In-memory caching with configurable TTL
+- **Signature Verification**: RSA signature verification with public key
+- **Claims Validation**: Full validation of all required and optional claims
+- **Audience Validation**: Validates `aud` claim against expected app base URL
+
+##### Symmetric JWT (HS256) - Regular Webhooks
+- **Shared Secret**: Uses secret established during app installation
+- **HMAC Verification**: HS256 signature validation
+- **Query String Hash**: Validates `qsh` claim against canonical request
+- **Context JWTs**: Supports context JWTs with fixed `qsh` value
+
+#### Security Features
+
+##### JWT Token Validation
+- **Algorithm Verification**: Ensures correct signing algorithm (prevents `alg: none` attacks)
+- **Timing Validation**: Validates `iat` and `exp` claims with clock skew tolerance
+- **Issuer Validation**: Configurable allowed issuer list
+- **Audience Validation**: Validates intended recipient
+- **Query Hash Validation**: Prevents URL tampering
+
+##### HMAC Signature Validation (Backward Compatible)
+- **Multiple Headers**: Supports `X-Atlassian-Webhook-Signature`, `X-Hub-Signature-256`, `X-Signature`
+- **Constant-Time Comparison**: Prevents timing attacks using `hmac.Equal`
+- **Flexible Formats**: Handles various signature formats (with/without `sha256=` prefix)
+
 ### 1. HMAC-SHA256 Signature Validation
 
 The primary security mechanism uses HMAC (Hash-based Message Authentication Code) with SHA-256 to validate webhook authenticity.
@@ -87,17 +147,7 @@ INFO Jira webhook job submitted for async processing eventType=jira:issue_create
 DEBUG HMAC signature validation successful
 ```
 
-### Enhanced JWT Validation for Jira Connect Apps
 
-The GitLab ↔ Jira Hook service now includes comprehensive JWT validation support for Jira Connect apps, implementing the official Atlassian JWT specification.
-
-#### Overview
-
-This enhancement adds production-ready JWT validation for Jira Cloud Connect apps, supporting both:
-
-- **Asymmetric JWT (RS256)** - For lifecycle callbacks (install/uninstall) with public key validation
-- **Symmetric JWT (HS256)** - For regular webhook communications with shared secret
-- **HMAC-SHA256** - Legacy webhook signature validation (backward compatible)
 
 #### Implementation
 

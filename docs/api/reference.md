@@ -259,3 +259,64 @@ All error responses follow the structured format:
 - **Max Queue Size**: 1000 jobs
 - **Processing Time**: 200ms/job (average)
 - **Worker Scaling**: 2-32 workers (dynamic)
+
+## Bidirectional Automation Guide
+
+This section provides a comprehensive guide for automating Jira Cloud workflows using the REST API v3.
+
+### 0) Authentication and Base Constants
+- **Basic Auth**: Email + API token (passwords not used in Cloud). Token is created in Atlassian Account and used instead of password. Alternative — OAuth 2.0 / Personal Access Tokens (if enabled).
+- **Base URL**: `https://<your-domain>.atlassian.net/rest/api/3`
+
+### 1) Getting User ID by Email/Query
+- `GET /user/search?query=<email_or_name>` → parse `.accountId` from the first result
+
+### 2) Checking Available Transitions for an Issue
+- `GET /issue/{key}/transitions?expand=transitions.fields` (only shows allowed transitions from current status)
+
+### 3) Transitioning an Issue to a New Status
+- `POST /issue/{key}/transitions` with body:
+```json
+{
+  "transition": {"id": "<transition_id>"},
+  "fields": { ... }  // if the transition has a screen/validators
+}
+```
+
+### 4) Assigning an Issue
+- `PUT /issue/{key}/assignee` with body:
+```json
+{"accountId": "<user_accountId>"}  // assign to user
+{"accountId": null}              // Unassigned (if allowed)
+{"accountId": "-1"}              // Default assignee for the project
+```
+
+### 5) Editing Issue Fields
+- `PUT /issue/{key}` with body:
+```json
+{ "fields": { "priority": {"name": "High"}, "labels": ["ops", "auto"] } }
+```
+
+### 6) Bulk Issue Processing
+- `GET /search?jql=<JQL>&maxResults=100` (pagination via `startAt`)
+- Iterative processing through transitions and updates
+
+### 7) Additional Actions
+- **Comments**: `POST /issue/{key}/comment` (ADF format)
+- **Links**: `POST /issueLink` (e.g., `type.name="Relates"`)
+- **Watchers**: `POST /issue/{key}/watchers` with `{"accountId": "..."}`
+
+### 8) Common Recipes
+- **A**: "If issue is in To Do + High priority → In Progress + default assignee"
+- **B**: "Assign by email and immediately transition to Done with resolution"
+- **C**: "Scheduled/external triggers via Search → transition loop"
+
+### 9) Permissions and Guarantees
+- **Project Permissions Check**: Verify user has required permissions
+- **Workflow Constraints**: Account for workflow restrictions
+- **Error Handling**: Process 403/400 errors appropriately
+
+### 10) Pagination and Reliability
+- **Pagination**: Use `startAt`/`maxResults` for large result sets
+- **Backoff**: Implement retry with backoff for 429 errors
+- **Idempotency**: Ensure operations are idempotent where possible

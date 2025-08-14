@@ -411,9 +411,13 @@ make benchmark
 - [Architecture Overview](docs/architecture/overview.md)
 - [Async Processing](docs/architecture/async-processing.md)
 - [Error Handling](docs/architecture/error-handling.md)
+- [Monitoring & Configuration Hot-Reloading](docs/architecture/monitoring.md)
 - [Security](docs/advanced/security.md)
-- [Configuration](docs/reference/config.md)
+- [Contributing Guidelines](docs/contributing/guidelines.md)
+- [Testing Documentation](docs/contributing/testing.md)
+- [Configuration Reference](docs/reference/config.md)
 - [Environment Variables](docs/reference/environment-variables.md)
+- [Metrics Reference](docs/reference/metrics.md)
 - [API Reference](docs/api/reference.md)
 
 ## 🔍 Monitoring & Observability

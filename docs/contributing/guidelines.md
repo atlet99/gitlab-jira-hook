@@ -1,213 +1,152 @@
 # Contribution Guidelines
 
-## Code Structure and Organization
+This document outlines the standards and processes for contributing to the GitLab ↔ Jira Hook project. Following these guidelines ensures your contributions align with project standards and increases the likelihood of your pull request being accepted.
 
-The GitLab ↔ Jira Hook service follows Go best practices and clean architecture principles. Understanding the code structure is essential for making effective contributions.
+## Code Structure & Organization
 
 ### Project Layout
+The project follows standard Go project structure with clear separation of concerns:
+
 ```
-.
-├── cmd/                    # Application entry points
-├── internal/               # Private application code
-│   ├── async/              # Async processing components
-│   ├── cache/              # Caching implementation
-│   ├── config/             # Configuration management
-│   ├── errors/             # Error handling utilities
-│   ├── gitlab/             # GitLab integration
-│   ├── jira/               # Jira integration
-│   ├── monitoring/         # Monitoring and observability
-│   ├── server/             # HTTP server implementation
-│   ├── sync/               # Bidirectional sync logic
-│   └── ...                 # Other internal packages
-├── pkg/                    # Public libraries
-│   └── logger/             # Structured logging
-└── ...                     # Other top-level directories
+internal/
+├── async/          # Asynchronous job processing
+├── cache/          # Caching implementations
+├── config/         # Configuration management
+├── gitlab/         # GitLab integration
+├── jira/           # Jira integration
+├── monitoring/     # Observability features
+├── server/         # HTTP server implementation
+└── ...             # Other domain-specific packages
 ```
 
-### Key Design Patterns
-- **Clean Architecture**: Clear separation between business logic and infrastructure
-- **Dependency Injection**: All components are injected via interfaces
-- **Composition over Inheritance**: Extensive use of Go interfaces
-- **Error Wrapping**: Using Go 1.13+ error wrapping with `%w`
-- **Context Propagation**: All operations use `context.Context`
-- **Structured Logging**: Using `log/slog` with JSON output
-
-## Making a Good Pull Request
-
-### Before You Start
-1. Check if an issue exists for your work (create one if needed)
-2. Discuss major changes in the issue before implementation
-3. Ensure your work aligns with the project's roadmap
-
-### Pull Request Requirements
-- **Clear Description**: Explain what the PR does and why
-- **Issue Reference**: Link to the relevant issue (e.g., "Fixes #123")
-- **Tests**: Include appropriate unit/integration tests
-- **Documentation**: Update relevant documentation
-- **Small Scope**: Keep PRs focused on a single change
-- **Conventional Commits**: Follow [conventional commits](https://www.conventionalcommits.org/) format
-
-### Example PR Description
-```markdown
-## Summary
-This PR implements JWT validation for Jira Connect apps, addressing #45.
-
-## Changes
-- Added `jwt_validator.go` with RS256 and HS256 support
-- Integrated with existing authentication system
-- Added comprehensive test coverage
-
-## Testing
-- Added 15 new test cases covering all validation scenarios
-- Verified with real Jira Connect app tokens
-- Benchmarked performance impact (negligible)
-
-## Documentation
-- Updated security.md with JWT implementation details
-- Added examples to API reference
-```
-
-## Code Review Expectations
-
-### What We Look For
-- **Correctness**: Does the code work as intended?
-- **Readability**: Is the code clear and well-structured?
-- **Test Coverage**: Are all edge cases covered?
-- **Performance**: Any potential bottlenecks?
-- **Error Handling**: Proper error wrapping and recovery?
-- **Documentation**: Clear comments and documentation?
-
-### Common Feedback Areas
-- Missing or insufficient test coverage
-- Inadequate error handling
-- Lack of performance considerations
-- Insufficient documentation
-- Violations of Go idioms
-- Overly complex implementations
-
-## Development Workflow
-
-### Setting Up Your Environment
-1. Install Go 1.21+
-2. Clone the repository: `git clone https://github.com/atlet99/gitlab-jira-hook.git`
-3. Install dependencies: `make deps`
-4. Run tests: `make test`
-5. Start development server: `make run`
-
-### Testing Guidelines
-- **Unit Tests**: Test individual functions with table-driven tests
-- **Integration Tests**: Test component interactions
-- **Performance Tests**: Benchmark critical paths
-- **Error Scenarios**: Test all error conditions
-
-Example test structure:
-```go
-func TestValidateRequest(t *testing.T) {
-    tests := []struct {
-        name          string
-        setup         func() *AuthValidator
-        request       *http.Request
-        body          []byte
-        expectedValid bool
-        expectedError string
-    }{
-        {
-            name: "Valid HMAC signature",
-            setup: func() *AuthValidator {
-                return NewAuthValidator(logger, []byte("secret"), false)
-            },
-            request: func() *http.Request {
-                req, _ := http.NewRequest("POST", "/webhook", strings.NewReader(`{"test":"data"}`))
-                req.Header.Set("X-Atlassian-Webhook-Signature", "valid-signature")
-                return req
-            }(),
-            body:          []byte(`{"test":"data"}`),
-            expectedValid: true,
-        },
-        // More test cases...
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            validator := tt.setup()
-            result := validator.ValidateRequest(context.Background(), tt.request, tt.body)
-            if result.Valid != tt.expectedValid {
-                t.Errorf("ValidateRequest() valid = %v, want %v", result.Valid, tt.expectedValid)
-            }
-            // More assertions...
-        })
-    }
-}
-```
-
-## Style Guidelines
-
-### Go Formatting
-- Follow `gofmt` standards
-- Use 4-space indentation
-- Maximum line length: 120 characters
-- Use `golangci-lint` for static analysis
+### Package Organization Principles
+- **Single Responsibility**: Each package should have a clear, focused purpose
+- **Layered Architecture**: Follow clean architecture principles (domain → application → infrastructure)
+- **Interface-Driven**: Define interfaces in the package that uses them
+- **Testability**: Design packages to be easily testable in isolation
 
 ### Naming Conventions
-- Use clear, descriptive names
-- Avoid abbreviations unless they're well-known
-- Use `CamelCase` for exported identifiers
-- Use `snake_case` for configuration variables
+- **Packages**: Use singular, lowercase names (e.g., `config`, `cache`)
+- **Types**: Use PascalCase for exported types (e.g., `WebhookHandler`)
+- **Functions**: Use camelCase for exported functions (e.g., `NewWebhookHandler`)
+- **Variables**: Use descriptive names (avoid single-letter variables except in loops)
 
-### Comments and Documentation
-- Write comprehensive godoc for all exported functions
-- Include examples where helpful
-- Document non-obvious implementation details
-- Keep comments up-to-date with code changes
+## Design Patterns
 
-## Performance Considerations
+### Key Patterns Used
+- **Dependency Injection**: All components receive dependencies through constructors
+- **Adapter Pattern**: For integrating with external systems (GitLab, Jira)
+- **Strategy Pattern**: For configurable behaviors (cache strategies, error recovery)
+- **Middleware Pattern**: For HTTP request processing pipeline
+- **Worker Pool Pattern**: For async job processing
 
-### Critical Paths
-- Webhook processing pipeline
-- Async job queue management
-- Cache operations
-- Error recovery mechanisms
+### Error Handling
+- Use Go 1.24 error wrapping: `fmt.Errorf("operation failed: %w", err)`
+- Create custom error types for domain-specific errors
+- Use `errors.Is` and `errors.As` for error inspection
+- Include context in errors: `fmt.Errorf("processing webhook %s: %w", id, err)`
 
-### Profiling
-Use Go's built-in profiling tools:
+### Context Usage
+- Always use `context.Context` for cancellation and timeouts
+- Never store context in structs (pass as first parameter to functions)
+- Use context values only for request-scoped data
+- Create derived contexts with timeouts for external calls
+
+## Pull Request Standards
+
+### Requirements for Acceptance
+- **Tests**: All new features must include unit and integration tests
+- **Documentation**: Update relevant documentation for new features
+- **Formatting**: Code must pass `gofmt` and linter checks
+- **Commit Messages**: Follow conventional commits format
+- **Size**: Keep PRs focused (ideally < 500 lines of changes)
+
+### Good Pull Request Examples
+- **Small Feature**: Adds a single, well-defined capability with tests
+- **Bug Fix**: Includes reproduction steps and verification test
+- **Refactor**: Improves code structure without changing behavior
+- **Documentation**: Comprehensive updates with clear examples
+
+### Code Review Expectations
+- **Timeliness**: Reviews will be completed within 2 business days
+- **Constructive Feedback**: Focus on improvement, not criticism
+- **Technical Depth**: Expect detailed feedback on design decisions
+- **Collaboration**: Be prepared to discuss alternatives and iterate
+
+## Development Process
+
+### Branching Strategy
+- Create feature branches from `main`
+- Name branches using: `feature/<description>`, `fix/<description>`, `refactor/<description>`
+- Keep branches up-to-date with `main` through regular rebasing
+
+### Testing Requirements
+- **Unit Tests**: Cover all exported functions
+- **Integration Tests**: Cover critical integration points
+- **Table-Driven Tests**: For functions with multiple input cases
+- **Benchmark Tests**: For performance-critical code paths
+- **Test Coverage**: Maintain >80% coverage
+
+### Documentation Standards
+- **Godoc Comments**: All exported functions must have godoc
+- **Examples**: Include usage examples in documentation
+- **Error Documentation**: Document all possible error scenarios
+- **API Documentation**: Keep OpenAPI spec up-to-date
+
+## Code Quality Standards
+
+### Linting Requirements
+All code must pass these linters:
 ```bash
-# CPU profiling
-go test -cpuprofile=cpu.prof -bench=.
-
-# Memory profiling
-go test -memprofile=mem.prof -bench=.
-
-# Analyze profiles
-go tool pprof -http=:8080 cpu.prof
+golangci-lint run --config .golangci.yml
 ```
 
-## Security Guidelines
+### Performance Considerations
+- Avoid unnecessary allocations in hot paths
+- Use buffered channels where appropriate
+- Minimize lock contention in concurrent code
+- Profile before optimizing (use pprof)
 
-### Input Validation
-- Validate all incoming webhook data
-- Sanitize user-provided content
+### Security Requirements
+- Validate all external inputs
 - Use parameterized queries for database access
-- Implement proper rate limiting
+- Implement proper authentication/authorization
+- Follow OWASP guidelines for web security
 
-### Secrets Management
-- Never hardcode secrets
-- Use environment variables for production secrets
-- Support secret management systems
-- Rotate secrets regularly
+## Review Process
 
-## Getting Help
+### Pull Request Checklist
+- [ ] All tests pass
+- [ ] Documentation updated
+- [ ] Linter checks pass
+- [ ] Performance impact analyzed
+- [ ] Security implications considered
+- [ ] Changelog entry added (if applicable)
 
-If you need assistance:
-1. Check existing issues for similar questions
-2. Join the community Slack channel
-3. Ask in the relevant issue thread
-4. For urgent matters, tag maintainers in your PR
+### Merge Process
+1. PR created with description of changes
+2. Automated checks run (CI, linters, tests)
+3. At least one maintainer approval required
+4. PR squashed and merged to `main`
+5. Release notes updated for significant changes
 
-## Next Steps
+## Community Guidelines
 
-1. Create an issue for your proposed change
-2. Fork the repository
-3. Create a feature branch
-4. Implement your changes
-5. Write tests and documentation
-6. Submit a pull request
+### Communication
+- Be respectful in all communications
+- Assume positive intent
+- Provide constructive feedback
+- Document decisions in issues/PRs
+
+### Issue Management
+- Search for existing issues before creating new ones
+- Provide clear reproduction steps
+- Label issues appropriately
+- Respond promptly to requests for clarification
+
+## Resources
+
+- [Go Best Practices](https://golang.org/doc/effective_go.html)
+- [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- [Go Error Handling](https://go.dev/blog/go1.13-errors)
+- [Go Generics Tutorial](https://go.dev/doc/tutorial/generics)

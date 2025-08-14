@@ -34,6 +34,10 @@ paths:
         Handles GitLab System Hook events. Validates the webhook signature and processes
         various GitLab events to create comments in Jira issues.
         
+        **Authentication Methods:**
+        - HMAC-SHA256: Using X-Gitlab-Token header (traditional webhooks)
+        - JWT: Using Authorization: Bearer header (Jira Connect apps)
+        
         **Features:**
         - Rate limiting with adaptive algorithms
         - Request tracing with OpenTelemetry
@@ -43,6 +47,7 @@ paths:
         - System Hooks
       security:
         - GitLabToken: []
+        - JiraConnectToken: []
       requestBody:
         required: true
         content:
@@ -148,6 +153,10 @@ paths:
         Handles GitLab Project Webhook events. Validates the webhook signature and processes
         various project events to create comments in Jira issues.
         
+        **Authentication Methods:**
+        - HMAC-SHA256: Using X-Gitlab-Token header (traditional webhooks)
+        - JWT: Using Authorization: Bearer header (Jira Connect apps)
+        
         **Features:**
         - Rate limiting with adaptive algorithms
         - Request tracing with OpenTelemetry
@@ -157,6 +166,7 @@ paths:
         - Project Webhooks
       security:
         - GitLabToken: []
+        - JiraConnectToken: []
       requestBody:
         required: true
         content:
@@ -456,6 +466,137 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /performance:
+    get:
+      summary: Get current performance metrics
+      description: |
+        Returns real-time performance score and metrics.
+        
+        **Performance Score (0-100):**
+        - Based on response time, error rate, throughput, and memory usage
+        - Target compliance tracking
+        - Automatic alerting thresholds
+      tags:
+        - Performance Monitoring
+      responses:
+        '200':
+          description: Current performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetrics'
+        '500':
+          description: Error retrieving performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /performance/history:
+    get:
+      summary: Get performance history
+      description: |
+        Returns historical performance data for trend analysis.
+        
+        **Available Periods:**
+        - hour: Last 60 minutes (1-minute intervals)
+        - day: Last 24 hours (1-hour intervals)
+        - week: Last 7 days (daily intervals)
+        - month: Last 30 days (daily intervals)
+      tags:
+        - Performance Monitoring
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+          description: Time period for history data
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of data points to return
+      responses:
+        '200':
+          description: Performance history data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceHistory'
+        '400':
+          description: Invalid period parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /performance/targets:
+    get:
+      summary: Get performance targets
+      description: |
+        Returns configured performance targets and thresholds.
+        
+        **Target Metrics:**
+        - Response time (ms)
+        - Error rate (%)
+        - Throughput (requests/sec)
+        - Memory usage (MB)
+        - Cache hit rate (%)
+      tags:
+        - Performance Monitoring
+      responses:
+        '200':
+          description: Performance targets configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceTargets'
+        '500':
+          description: Error retrieving performance targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /performance/reset:
+    post:
+      summary: Reset performance metrics
+      description: |
+        Resets all performance metrics to initial state.
+        
+        **Security:** Requires admin token in production environments.
+      tags:
+        - Performance Monitoring
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Performance metrics reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Performance metrics reset"
+                  reset_at:
+                    type: string
+                    format: date-time
+                    example: "2024-01-01T12:00:00Z"
+        '401':
+          description: Unauthorized - requires admin token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     GitLabToken:
@@ -468,6 +609,11 @@ components:
       name: X-Admin-Token
       in: header
       description: Admin token for privileged operations
+    JiraConnectToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for Jira Connect apps authentication
 
   schemas:
     SuccessResponse:
@@ -739,6 +885,140 @@ components:
         - status
         - strategy
         - statistics
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        score:
+          type: number
+          description: Overall performance score (0-100)
+          example: 92.5
+        timestamp:
+          type: string
+          format: date-time
+          description: Metrics timestamp
+          example: "2024-01-01T12:00:00Z"
+        metrics:
+          type: object
+          properties:
+            response_time:
+              type: number
+              description: Average response time in milliseconds
+              example: 125.3
+            error_rate:
+              type: number
+              description: Error rate percentage
+              example: 0.1
+            throughput:
+              type: number
+              description: Requests per second
+              example: 15.5
+            memory_usage:
+              type: number
+              description: Memory usage in MB
+              example: 125.7
+            cache_hit_rate:
+              type: number
+              description: Cache hit rate percentage
+              example: 85.5
+            worker_utilization:
+              type: number
+              description: Worker pool utilization percentage
+              example: 65.2
+        compliance:
+          type: object
+          properties:
+            response_time:
+              type: boolean
+              description: Meets response time target
+              example: true
+            error_rate:
+              type: boolean
+              description: Meets error rate target
+              example: true
+            throughput:
+              type: boolean
+              description: Meets throughput target
+              example: true
+      required:
+        - score
+        - timestamp
+        - metrics
+
+    PerformanceHistory:
+      type: object
+      properties:
+        period:
+          type: string
+          description: Time period for history data
+          example: "day"
+        interval:
+          type: string
+          description: Data interval
+          example: "1h"
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+                example: "2024-01-01T12:00:00Z"
+              score:
+                type: number
+                example: 92.5
+              metrics:
+                type: object
+                properties:
+                  response_time:
+                    type: number
+                    example: 125.3
+                  error_rate:
+                    type: number
+                    example: 0.1
+                  throughput:
+                    type: number
+                    example: 15.5
+      required:
+        - period
+        - interval
+        - data
+
+    PerformanceTargets:
+      type: object
+      properties:
+        response_time:
+          type: number
+          description: Target response time in milliseconds
+          example: 200
+        error_rate:
+          type: number
+          description: Target error rate percentage
+          example: 0.5
+        throughput:
+          type: number
+          description: Target throughput (requests/sec)
+          example: 10
+        memory_usage:
+          type: number
+          description: Target memory usage in MB
+          example: 256
+        cache_hit_rate:
+          type: number
+          description: Target cache hit rate percentage
+          example: 80
+        alert_thresholds:
+          type: object
+          properties:
+            warning:
+              type: number
+              description: Warning threshold (score)
+              example: 75
+            critical:
+              type: number
+              description: Critical threshold (score)
+              example: 50
 
     # System Hook Event Schemas
     PushEvent:
@@ -1486,3 +1766,5 @@ tags:
     description: Cache system management endpoints
   - name: Configuration Management
     description: Configuration management endpoints
+  - name: Performance Monitoring
+    description: Performance metrics and monitoring endpoints

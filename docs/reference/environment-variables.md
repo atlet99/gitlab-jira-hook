@@ -1,264 +1,319 @@
 # Environment Variables Reference
 
-This document details all environment variables used by the GitLab ↔ Jira Hook service. Proper configuration of these variables is essential for correct operation.
+This document details all environment variables used by the GitLab ↔ Jira Hook service. Proper configuration of these variables is essential for the service to function correctly in different environments.
 
 ## Core Configuration
 
 ### `JIRA_WEBHOOK_SECRET`
-- **Description**: Secret key used for HMAC-SHA256 signature validation of incoming webhooks
-- **Required**: Yes (in production)
+- **Description**: Secret key used for HMAC-SHA256 signature validation of Jira webhooks
+- **Required**: Yes (for production)
 - **Default**: None
-- **Example**: `JIRA_WEBHOOK_SECRET=your-secure-random-32-byte-secret`
-- **Security Note**: Must match the secret configured in Jira webhook settings. Never commit to version control.
-
-### `DEBUG_MODE`
-- **Description**: Enables development mode with relaxed security and detailed logging
-- **Required**: No
-- **Default**: `false`
-- **Example**: `DEBUG_MODE=true`
-- **Note**: Should be disabled in production environments.
-
-### `PORT`
-- **Description**: Port number for the HTTP server to listen on
-- **Required**: No
-- **Default**: `8080`
-- **Example**: `PORT=9000`
-
-### `LOG_LEVEL`
-- **Description**: Logging verbosity level
-- **Required**: No
-- **Default**: `info`
-- **Valid Values**: `debug`, `info`, `warn`, `error`
-- **Example**: `LOG_LEVEL=debug`
-
-## Jira Configuration
-
-### `JIRA_BASE_URL`
-- **Description**: Base URL of your Jira Cloud instance
-- **Required**: Yes
-- **Default**: None
-- **Example**: `JIRA_BASE_URL=https://your-domain.atlassian.net`
-
-### `JIRA_CONNECT_APP_KEY`
-- **Description**: Key for Jira Connect app authentication
-- **Required**: Yes (for Connect app integration)
-- **Default**: None
-- **Example**: `JIRA_CONNECT_APP_KEY=your-connect-app-key`
-
-### `JIRA_WEBHOOK_SECRET`
-- **Description**: Shared secret for Jira Connect app JWT validation
-- **Required**: Yes (for Connect app integration)
-- **Default**: None
-- **Example**: `JIRA_WEBHOOK_SECRET=your-connect-app-secret`
-
-## GitLab Configuration
-
-### `GITLAB_BASE_URL`
-- **Description**: Base URL of your GitLab instance
-- **Required**: Yes
-- **Default**: `https://gitlab.com`
-- **Example**: `GITLAB_BASE_URL=https://gitlab.example.com`
+- **Example**: `JIRA_WEBHOOK_SECRET=your-secure-webhook-secret-here`
+- **Security Note**: Must be a cryptographically secure random string (minimum 32 characters)
 
 ### `GITLAB_TOKEN`
 - **Description**: Personal access token for GitLab API access
-- **Required**: Yes (for certain features)
+- **Required**: Yes
 - **Default**: None
-- **Example**: `GITLAB_TOKEN=glpat-your-personal-access-token`
-- **Permissions Required**: `api`, `read_api`, `read_repository`
+- **Example**: `GITLAB_TOKEN=glpat-abc123xyz456`
+- **Permissions Required**: `api` scope for repository access
 
-## Cache Configuration
+### `JIRA_BASE_URL`
+- **Description**: Base URL of your Jira instance
+- **Required**: Yes
+- **Default**: None
+- **Example**: `JIRA_BASE_URL=https://your-company.atlassian.net`
+- **Note**: Must include protocol (https://)
 
-### `CACHE_STRATEGY`
-- **Description**: Cache eviction strategy to use
+### `JIRA_USER_EMAIL`
+- **Description**: Email address of the Jira user for API authentication
+- **Required**: Yes (for basic auth)
+- **Default**: None
+- **Example**: `JIRA_USER_EMAIL=user@example.com`
+
+### `JIRA_API_TOKEN`
+- **Description**: API token for Jira Cloud authentication
+- **Required**: Yes (for basic auth)
+- **Default**: None
+- **Example**: `JIRA_API_TOKEN=your-atlassian-api-token`
+- **Note**: Create tokens at https://id.atlassian.com/manage-profile/security/api-tokens
+
+## Security Configuration
+
+### `DEBUG_MODE`
+- **Description**: Enables development mode with relaxed security
 - **Required**: No
-- **Default**: `adaptive`
-- **Valid Values**: `lru`, `lfu`, `fifo`, `ttl`, `adaptive`
-- **Example**: `CACHE_STRATEGY=lru`
+- **Default**: `false`
+- **Example**: `DEBUG_MODE=true`
+- **Warning**: Never enable in production environments
 
-### `CACHE_TTL`
-- **Description**: Time-to-live for cache entries (in seconds)
+### `ALLOWED_GITLAB_IP_RANGES`
+- **Description**: Comma-separated list of allowed GitLab IP ranges
 - **Required**: No
-- **Default**: `3600` (1 hour)
-- **Example**: `CACHE_TTL=7200`
+- **Default**: All IPs allowed
+- **Example**: `ALLOWED_GITLAB_IP_RANGES=34.74.12.0/24,35.202.128.0/24`
+- **Note**: See GitLab's [IP ranges documentation](https://docs.gitlab.com/ee/user/gitlab_com/index.html#ip-range)
 
-### `CACHE_MAX_ITEMS`
-- **Description**: Maximum number of items in cache
+### `JWT_ALLOWED_ISSUERS`
+- **Description**: Comma-separated list of allowed Jira Connect app client keys
+- **Required**: No (for Connect apps)
+- **Default**: None
+- **Example**: `JWT_ALLOWED_ISSUERS=client-key-1,client-key-2`
+- **Note**: Required for JWT validation of Connect apps
+
+### `JWT_AUDIENCE`
+- **Description**: Expected audience for JWT tokens
+- **Required**: No (for Connect apps)
+- **Default**: None
+- **Example**: `JWT_AUDIENCE=https://your-app.com`
+- **Note**: Should match your app's base URL
+
+## Server Configuration
+
+### `SERVER_PORT`
+- **Description**: Port for the HTTP server to listen on
 - **Required**: No
-- **Default**: `10000`
-- **Example**: `CACHE_MAX_ITEMS=5000`
+- **Default**: `8080`
+- **Example**: `SERVER_PORT=9000`
 
-## Rate Limiting
-
-### `RATE_LIMIT`
-- **Description**: Maximum requests per time window
+### `READ_TIMEOUT`
+- **Description**: Maximum duration for reading the entire request
 - **Required**: No
-- **Default**: `100`
-- **Example**: `RATE_LIMIT=200`
+- **Default**: `15s`
+- **Example**: `READ_TIMEOUT=30s`
+- **Format**: Go duration string (e.g., "30s", "1m")
 
-### `RATE_LIMIT_WINDOW`
-- **Description**: Time window for rate limiting (in seconds)
+### `WRITE_TIMEOUT`
+- **Description**: Maximum duration before timing out writes
 - **Required**: No
-- **Default**: `60`
-- **Example**: `RATE_LIMIT_WINDOW=30`
+- **Default**: `15s`
+- **Example**: `WRITE_TIMEOUT=30s`
 
-## Async Processing
+### `IDLE_TIMEOUT`
+- **Description**: Maximum amount of time to wait for the next request
+- **Required**: No
+- **Default**: `60s`
+- **Example**: `IDLE_TIMEOUT=120s`
+
+## Async Processing Configuration
 
 ### `WORKER_POOL_SIZE`
-- **Description**: Number of worker goroutines for async processing
+- **Description**: Number of concurrent workers for async processing
 - **Required**: No
 - **Default**: `10`
 - **Example**: `WORKER_POOL_SIZE=20`
+- **Note**: Adjust based on system resources
 
 ### `MAX_QUEUE_SIZE`
-- **Description**: Maximum size of the job queue
+- **Description**: Maximum number of jobs in the processing queue
 - **Required**: No
 - **Default**: `1000`
 - **Example**: `MAX_QUEUE_SIZE=5000`
 
-### `JOB_TIMEOUT`
-- **Description**: Maximum time to process a job (in seconds)
+### `QUEUE_TIMEOUT`
+- **Description**: Maximum time a job can wait in the queue
 - **Required**: No
-- **Default**: `30`
-- **Example**: `JOB_TIMEOUT=60`
+- **Default**: `5m`
+- **Example**: `QUEUE_TIMEOUT=10m`
 
-## Error Recovery
-
-### `MAX_RETRY_ATTEMPTS`
-- **Description**: Maximum number of retry attempts for failed jobs
+### `DELAYED_QUEUE_TTL`
+- **Description**: Time-to-live for delayed queue items
 - **Required**: No
-- **Default**: `3`
-- **Example**: `MAX_RETRY_ATTEMPTS=5`
+- **Default**: `24h`
+- **Example**: `DELAYED_QUEUE_TTL=48h`
 
-### `RETRY_BACKOFF_BASE`
-- **Description**: Base delay for exponential backoff (in milliseconds)
+## Cache Configuration
+
+### `CACHE_TTL`
+- **Description**: Default time-to-live for cache entries
+- **Required**: No
+- **Default**: `5m`
+- **Example**: `CACHE_TTL=10m`
+
+### `CACHE_JITTER`
+- **Description**: Random jitter percentage to prevent cache stampedes
+- **Required**: No
+- **Default**: `10`
+- **Example**: `CACHE_JITTER=20`
+- **Note**: Value between 0-100 (percentage)
+
+### `CACHE_MAX_ITEMS`
+- **Description**: Maximum number of items in the cache
 - **Required**: No
 - **Default**: `1000`
-- **Example**: `RETRY_BACKOFF_BASE=2000`
+- **Example**: `CACHE_MAX_ITEMS=5000`
 
-### `RETRY_BACKOFF_MAX`
-- **Description**: Maximum delay for exponential backoff (in milliseconds)
-- **Required**: No
-- **Default**: `30000` (30 seconds)
-- **Example**: `RETRY_BACKOFF_MAX=60000`
+## Monitoring Configuration
 
-## Security
-
-### `ALLOWED_ISSUERS`
-- **Description**: Comma-separated list of allowed JWT issuers
-- **Required**: No
-- **Default**: None
-- **Example**: `ALLOWED_ISSUERS=issuer1,issuer2,issuer3`
-- **Note**: Required for JWT validation with Connect apps.
-
-### `EXPECTED_AUDIENCE`
-- **Description**: Expected audience for JWT validation
-- **Required**: No
-- **Default**: None
-- **Example**: `EXPECTED_AUDIENCE=https://your-app.com`
-- **Note**: Required for JWT validation with Connect apps.
-
-## Monitoring
-
-### `PROMETHEUS_ENABLED`
+### `METRICS_ENABLED`
 - **Description**: Enable Prometheus metrics endpoint
 - **Required**: No
 - **Default**: `true`
-- **Example**: `PROMETHEUS_ENABLED=false`
+- **Example**: `METRICS_ENABLED=false`
+
+### `METRICS_PATH`
+- **Description**: Path for the metrics endpoint
+- **Required**: No
+- **Default**: `/metrics`
+- **Example**: `METRICS_PATH=/prometheus`
 
 ### `TRACING_ENABLED`
 - **Description**: Enable distributed tracing
 - **Required**: No
-- **Default**: `true`
-- **Example**: `TRACING_ENABLED=false`
+- **Default**: `false`
+- **Example**: `TRACING_ENABLED=true`
 
 ### `TRACING_SAMPLING_RATE`
-- **Description**: Sampling rate for distributed traces (0.0-1.0)
+- **Description**: Sampling rate for traces (0.0 to 1.0)
 - **Required**: No
 - **Default**: `0.1`
 - **Example**: `TRACING_SAMPLING_RATE=0.5`
 
-## Configuration Management
+## Logging Configuration
+
+### `LOG_LEVEL`
+- **Description**: Minimum log level to output
+- **Required**: No
+- **Default**: `info`
+- **Options**: `debug`, `info`, `warn`, `error`, `fatal`
+- **Example**: `LOG_LEVEL=debug`
+
+### `LOG_FORMAT`
+- **Description**: Log output format
+- **Required**: No
+- **Default**: `json`
+- **Options**: `json`, `text`
+- **Example**: `LOG_FORMAT=text`
+
+### `LOG_INCLUDE_SOURCE`
+- **Description**: Include source file and line number in logs
+- **Required**: No
+- **Default**: `false`
+- **Example**: `LOG_INCLUDE_SOURCE=true`
+
+## Advanced Configuration
 
 ### `CONFIG_HOT_RELOAD`
 - **Description**: Enable configuration hot-reloading
 - **Required**: No
 - **Default**: `true`
 - **Example**: `CONFIG_HOT_RELOAD=false`
+- **Note**: Requires configuration file monitoring
 
-### `CONFIG_WATCH_INTERVAL`
-- **Description**: Interval for checking configuration changes (in seconds)
+### `CONFIG_FILE_PATH`
+- **Description**: Path to configuration file
 - **Required**: No
-- **Default**: `5`
-- **Example**: `CONFIG_WATCH_INTERVAL=10`
+- **Default**: `config.yaml`
+- **Example**: `CONFIG_FILE_PATH=/etc/gitlab-jira-hook/config.yaml`
 
-## Development
+### `MAX_REQUEST_SIZE`
+- **Description**: Maximum size of incoming requests
+- **Required**: No
+- **Default**: `4MB`
+- **Example**: `MAX_REQUEST_SIZE=8MB`
 
-### `TEST_ENV`
-- **Description**: Flag indicating test environment
+### `RATE_LIMIT_ENABLED`
+- **Description**: Enable rate limiting for webhook endpoints
+- **Required**: No
+- **Default**: `true`
+- **Example**: `RATE_LIMIT_ENABLED=false`
+
+### `RATE_LIMIT_PER_SECOND`
+- **Description**: Requests per second per IP
+- **Required**: No
+- **Default**: `10`
+- **Example**: `RATE_LIMIT_PER_SECOND=20`
+
+## Development Configuration
+
+### `DEV_MODE`
+- **Description**: Enable development-specific features
 - **Required**: No
 - **Default**: `false`
-- **Example**: `TEST_ENV=true`
-- **Note**: Automatically set by test framework.
+- **Example**: `DEV_MODE=true`
+- **Note**: Not for production use
 
-## Best Practices
+### `MOCK_GITLAB`
+- **Description**: Use mock GitLab API responses
+- **Required**: No
+- **Default**: `false`
+- **Example**: `MOCK_GITLAB=true`
 
-### Security Recommendations
-- Store secrets in environment variables, not in code
-- Use a secrets management system in production
-- Rotate secrets regularly
-- Restrict environment variable access to necessary processes
+### `MOCK_JIRA`
+- **Description**: Use mock Jira API responses
+- **Required**: No
+- **Default**: `false`
+- **Example**: `MOCK_JIRA=true`
 
-### Configuration Management
-- Use `.env` files for local development (add to `.gitignore`)
-- Create `config.env.example` with placeholder values
-- Use consistent naming conventions (UPPER_SNAKE_CASE)
-- Document all configuration options
+## Example Configuration File
 
-### Example `.env` File
 ```env
-# Core Configuration
-JIRA_WEBHOOK_SECRET=your-secure-secret-here
-DEBUG_MODE=false
-PORT=8080
+# Production configuration example
+JIRA_WEBHOOK_SECRET=your-secure-secret-1234567890abcdef
+GITLAB_TOKEN=glpat-abc123xyz456
+JIRA_BASE_URL=https://your-company.atlassian.net
+JIRA_USER_EMAIL=service-account@your-company.com
+JIRA_API_TOKEN=your-atlassian-api-token
+SERVER_PORT=8080
+WORKER_POOL_SIZE=20
+CACHE_TTL=10m
 LOG_LEVEL=info
-
-# Jira Configuration
-JIRA_BASE_URL=https://your-domain.atlassian.net
-JIRA_CONNECT_APP_KEY=your-connect-app-key
-JIRA_WEBHOOK_SECRET=your-connect-app-secret
-
-# GitLab Configuration
-GITLAB_BASE_URL=https://gitlab.com
-GITLAB_TOKEN=glpat-your-token-here
-
-# Cache Configuration
-CACHE_STRATEGY=adaptive
-CACHE_TTL=3600
-CACHE_MAX_ITEMS=10000
+METRICS_ENABLED=true
 ```
+
+## Security Best Practices
+
+1. **Never commit secrets to version control**
+   - Always use `.env` files excluded from git
+   - Add `.env` to your `.gitignore`
+
+2. **Use secret management systems in production**
+   - AWS Secrets Manager
+   - HashiCorp Vault
+   - Kubernetes Secrets
+
+3. **Rotate secrets regularly**
+   - Set up a schedule for secret rotation
+   - Monitor for secret leaks
+
+4. **Restrict environment variable access**
+   - Use file permissions to restrict access
+   - Limit who can view environment variables
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### "No signature found in webhook headers"
-- **Cause**: Jira webhook not configured with a secret
-- **Solution**: Add `JIRA_WEBHOOK_SECRET` and configure secret in Jira
-
 #### "HMAC signature validation failed"
-- **Cause**: Secret mismatch between Jira and service
-- **Solution**: Verify both sides use the same secret
+- **Cause**: Mismatch between Jira webhook secret and `JIRA_WEBHOOK_SECRET`
+- **Solution**: Verify both values match exactly
 
 #### "JWT validation failed: invalid issuer"
-- **Cause**: JWT issuer not in `ALLOWED_ISSUERS`
-- **Solution**: Add issuer to `ALLOWED_ISSUERS` list
+- **Cause**: Jira Connect app client key not in `JWT_ALLOWED_ISSUERS`
+- **Solution**: Add the client key to the allowed issuers list
 
 #### "Connection refused to Jira API"
-- **Cause**: Incorrect `JIRA_BASE_URL`
-- **Solution**: Verify URL format (must include `https://`)
+- **Cause**: Incorrect `JIRA_BASE_URL` or network issues
+- **Solution**: Verify URL format and network connectivity
 
-### Debugging Tips
-- Enable debug logging: `LOG_LEVEL=debug`
-- Verify environment variables are set: `printenv | grep JIRA`
-- Test with sample requests using curl
-- Check server logs for detailed error messages
+#### "Rate limit exceeded"
+- **Cause**: Too many requests from the same IP
+- **Solution**: Adjust `RATE_LIMIT_PER_SECOND` or implement retry logic
+
+## Validation
+
+All environment variables are validated at startup. The service will fail to start if:
+- Required variables are missing
+- Variables have invalid formats
+- Security-sensitive variables are insecure
+
+Validation errors include detailed messages to help with configuration fixes.
+
+## Dynamic Configuration
+
+Some configuration values can be changed at runtime:
+- `WORKER_POOL_SIZE` - Can be adjusted via hot-reload
+- `CACHE_TTL` - Can be updated without restart
+- `LOG_LEVEL` - Can be changed dynamically
+
+See the [Configuration Hot-Reloading](../architecture/monitoring.md) documentation for details.
