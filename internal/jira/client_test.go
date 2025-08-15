@@ -266,6 +266,403 @@ func TestClientAddComment(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "jira API error")
 	})
+}
+
+// Helper function to create a test Jira issue
+func createTestIssue(key, status string) JiraIssue {
+	return JiraIssue{
+		ID:  "12345",
+		Key: key,
+		Fields: &JiraIssueFields{
+			Summary: "Test Issue",
+			Status: &Status{
+				ID:   "10001",
+				Name: status,
+			},
+		},
+	}
+}
+
+// Tests for GetTransitions
+func TestClientGetTransitions(t *testing.T) {
+	t.Run("successful transitions retrieval", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/transitions", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+						"transitions": [
+							{
+								"id": "11",
+								"name": "To Do",
+								"to": {
+									"id": "10000",
+									"name": "To Do"
+								}
+							},
+							{
+								"id": "21",
+								"name": "In Progress",
+								"to": {
+									"id": "10001",
+									"name": "In Progress"
+								}
+							},
+							{
+								"id": "31",
+								"name": "Done",
+								"to": {
+									"id": "10002",
+									"name": "Done"
+								}
+							}
+						]
+					}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		transitions, err := client.GetTransitions(context.Background(), "ABC-123")
+		assert.NoError(t, err)
+		assert.Len(t, transitions, 3)
+		assert.Equal(t, "11", transitions[0].ID)
+		assert.Equal(t, "To Do", transitions[0].Name)
+		assert.Equal(t, "Done", transitions[2].To.Name)
+	})
+
+	t.Run("transitions retrieval fails on 4xx error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error": "Issue not found"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		transitions, err := client.GetTransitions(context.Background(), "ABC-123")
+		assert.Error(t, err)
+		assert.Nil(t, transitions)
+		assert.Contains(t, err.Error(), "jira API error")
+		assert.Contains(t, err.Error(), "404")
+	})
+}
+
+// Tests for ExecuteTransition
+func TestClientExecuteTransition(t *testing.T) {
+	t.Run("successful transition execution", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/transitions", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			// Verify request body
+			var payload TransitionPayload
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
+			assert.Equal(t, "21", payload.Transition.ID)
+
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.ExecuteTransition(context.Background(), "ABC-123", "21")
+		assert.NoError(t, err)
+	})
+
+	t.Run("transition execution fails on 4xx error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error": "Invalid transition"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.ExecuteTransition(context.Background(), "ABC-123", "999")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "jira API error")
+		assert.Contains(t, err.Error(), "400")
+	})
+}
+
+// Tests for FindTransition
+func TestClientFindTransition(t *testing.T) {
+	t.Run("successful transition find", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/transitions", r.URL.Path)
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"transitions": [
+					{
+						"id": "11",
+						"name": "To Do",
+						"to": {
+							"id": "10000",
+							"name": "To Do"
+						}
+					},
+					{
+						"id": "21",
+						"name": "In Progress",
+						"to": {
+							"id": "10001",
+							"name": "In Progress"
+						}
+					},
+					{
+						"id": "31",
+						"name": "Done",
+						"to": {
+							"id": "10002",
+							"name": "Done"
+						}
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		transition, err := client.FindTransition(context.Background(), "ABC-123", "In Progress")
+		assert.NoError(t, err)
+		assert.NotNil(t, transition)
+		assert.Equal(t, "21", transition.ID)
+		assert.Equal(t, "In Progress", transition.Name)
+		assert.Equal(t, "In Progress", transition.To.Name)
+	})
+
+	t.Run("transition not found", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/transitions", r.URL.Path)
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"transitions": [
+					{
+						"id": "11",
+						"name": "To Do",
+						"to": {
+							"id": "10000",
+							"name": "To Do"
+						}
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		transition, err := client.FindTransition(context.Background(), "ABC-123", "Done")
+		assert.Error(t, err)
+		assert.Nil(t, transition)
+		assert.Contains(t, err.Error(), "transition to status 'Done' not available")
+	})
+}
+
+// Tests for TransitionToStatus
+func TestClientTransitionToStatus(t *testing.T) {
+	t.Run("successful transition to new status", func(t *testing.T) {
+		// Create a test server that handles both get issue and transitions endpoints
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" && r.URL.Path == "/rest/api/3/issue/ABC-123" {
+				// Return current issue with "To Do" status
+				w.WriteHeader(http.StatusOK)
+				issue := createTestIssue("ABC-123", "To Do")
+				jsonData, _ := json.Marshal(issue)
+				_, _ = w.Write(jsonData)
+			} else if r.Method == "GET" && r.URL.Path == "/rest/api/3/issue/ABC-123/transitions" {
+				// Return available transitions
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"transitions": [
+						{
+							"id": "21",
+							"name": "In Progress",
+							"to": {
+								"id": "10001",
+								"name": "In Progress"
+							}
+						}
+					]
+				}`))
+			} else if r.Method == "POST" && r.URL.Path == "/rest/api/3/issue/ABC-123/transitions" {
+				// Verify transition execution
+				var payload TransitionPayload
+				err := json.NewDecoder(r.Body).Decode(&payload)
+				require.NoError(t, err)
+				assert.Equal(t, "21", payload.Transition.ID)
+				w.WriteHeader(http.StatusNoContent)
+			}
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.TransitionToStatus(context.Background(), "ABC-123", "In Progress")
+		assert.NoError(t, err)
+	})
+
+	t.Run("no transition needed - already in target status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" && r.URL.Path == "/rest/api/3/issue/ABC-123" {
+				// Return current issue with "In Progress" status
+				w.WriteHeader(http.StatusOK)
+				issue := createTestIssue("ABC-123", "In Progress")
+				jsonData, _ := json.Marshal(issue)
+				_, _ = w.Write(jsonData)
+			}
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.TransitionToStatus(context.Background(), "ABC-123", "In Progress")
+		assert.NoError(t, err)
+	})
+
+	t.Run("transition not available", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" && r.URL.Path == "/rest/api/3/issue/ABC-123" {
+				// Return current issue with "To Do" status
+				w.WriteHeader(http.StatusOK)
+				issue := createTestIssue("ABC-123", "To Do")
+				jsonData, _ := json.Marshal(issue)
+				_, _ = w.Write(jsonData)
+			} else if r.Method == "GET" && r.URL.Path == "/rest/api/3/issue/ABC-123/transitions" {
+				// Return no transitions to "Done"
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"transitions": [
+						{
+							"id": "21",
+							"name": "In Progress",
+							"to": {
+								"id": "10001",
+								"name": "In Progress"
+							}
+						}
+					]
+				}`))
+			}
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.TransitionToStatus(context.Background(), "ABC-123", "Done")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "transition to status 'Done' not available")
+	})
+}
+
+// Tests for GetIssue
+func TestClientGetIssue(t *testing.T) {
+	t.Run("successful issue retrieval", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			w.WriteHeader(http.StatusOK)
+			issue := createTestIssue("ABC-123", "To Do")
+			jsonData, _ := json.Marshal(issue)
+			_, _ = w.Write(jsonData)
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		issue, err := client.GetIssue(context.Background(), "ABC-123")
+		assert.NoError(t, err)
+		assert.NotNil(t, issue)
+		assert.Equal(t, "ABC-123", issue.Key)
+		assert.Equal(t, "To Do", issue.Fields.Status.Name)
+	})
+
+	t.Run("issue retrieval fails on 4xx error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error": "Issue not found"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		issue, err := client.GetIssue(context.Background(), "ABC-123")
+		assert.Error(t, err)
+		assert.Nil(t, issue)
+		assert.Contains(t, err.Error(), "jira API error")
+		assert.Contains(t, err.Error(), "404")
+	})
 
 	t.Run("comment addition fails on 4xx error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

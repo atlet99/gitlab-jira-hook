@@ -229,6 +229,33 @@ type CommentPayload struct {
 	Body CommentBody `json:"body"`
 }
 
+// Transition represents a Jira issue transition
+type Transition struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	To   Status `json:"to"`
+}
+
+// TransitionsResponse represents the response from the transitions API
+type TransitionsResponse struct {
+	Transitions []Transition `json:"transitions"`
+}
+
+// TransitionPayload represents the payload for executing a transition
+type TransitionPayload struct {
+	Transition TransitionID `json:"transition"`
+}
+
+// TransitionID represents the transition ID in the payload
+type TransitionID struct {
+	ID string `json:"id"`
+}
+
+// TransitionRequest represents a request to execute a transition
+type TransitionRequest struct {
+	TransitionID string `json:"transitionId"`
+}
+
 // CommentBody represents the body of a comment
 type CommentBody struct {
 	Type    string    `json:"type"`

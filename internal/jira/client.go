@@ -164,6 +164,215 @@ func (c *Client) AddComment(ctx context.Context, issueID string, payload Comment
 	return lastErr
 }
 
+// GetTransitions retrieves available transitions for a Jira issue
+func (c *Client) GetTransitions(ctx context.Context, issueKey string) ([]Transition, error) {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response
+	var transitionsResp TransitionsResponse
+	if err := json.Unmarshal(body, &transitionsResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal transitions response: %w", err)
+	}
+
+	return transitionsResp.Transitions, nil
+}
+
+// ExecuteTransition executes a transition for a Jira issue
+func (c *Client) ExecuteTransition(ctx context.Context, issueKey, transitionID string) error {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create payload
+	payload := TransitionPayload{
+		Transition: TransitionID{
+			ID: transitionID,
+		},
+	}
+
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal transition payload: %w", err)
+	}
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// FindTransition finds a transition by target status name
+func (c *Client) FindTransition(ctx context.Context, issueKey, targetStatus string) (*Transition, error) {
+	transitions, err := c.GetTransitions(ctx, issueKey)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, t := range transitions {
+		if t.To.Name == targetStatus {
+			return &t, nil
+		}
+	}
+
+	return nil, fmt.Errorf("transition to status '%s' not available for issue %s", targetStatus, issueKey)
+}
+
+// TransitionToStatus transitions an issue to a specific status if possible
+func (c *Client) TransitionToStatus(ctx context.Context, issueKey, targetStatus string) error {
+	// First check if we're already in the target status
+	currentIssue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to get current issue status: %w", err)
+	}
+
+	if currentIssue.Fields.Status.Name == targetStatus {
+		// Already in target status, nothing to do
+		return nil
+	}
+
+	// Find the appropriate transition
+	transition, err := c.FindTransition(ctx, issueKey, targetStatus)
+	if err != nil {
+		return err
+	}
+
+	// Execute the transition
+	return c.ExecuteTransition(ctx, issueKey, transition.ID)
+}
+
+// GetIssue retrieves a Jira issue by key
+func (c *Client) GetIssue(ctx context.Context, issueKey string) (*JiraIssue, error) {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response
+	var issue JiraIssue
+	if err := json.Unmarshal(body, &issue); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal issue response: %w", err)
+	}
+
+	return &issue, nil
+}
+
 // buildCommentRequest builds HTTP request for adding comment to Jira issue
 func (c *Client) buildCommentRequest(
 	ctx context.Context, issueID string, payload CommentPayload,
