@@ -3,6 +3,7 @@ package async
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -153,6 +154,9 @@ type PriorityQueue struct {
 	metricsEnabled bool
 	healthChecker  *HealthChecker
 
+	// Logging
+	logger *slog.Logger
+
 	// Context for shutdown
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -167,7 +171,7 @@ type jobQueue struct {
 }
 
 // NewPriorityQueue creates a new priority-based job queue
-func NewPriorityQueue(cfg *config.Config, decider PriorityDecider) *PriorityQueue {
+func NewPriorityQueue(cfg *config.Config, decider PriorityDecider, logger *slog.Logger) *PriorityQueue {
 	if decider == nil {
 		decider = &DefaultPriorityDecider{}
 	}
@@ -180,6 +184,7 @@ func NewPriorityQueue(cfg *config.Config, decider PriorityDecider) *PriorityQueu
 		decider:           decider,
 		globalRateLimiter: rate.NewLimiter(rate.Limit(cfg.MaxConcurrentJobs), cfg.MaxConcurrentJobs),
 		metricsEnabled:    cfg.MetricsEnabled,
+		logger:            logger,
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -292,11 +297,17 @@ func (pq *PriorityQueue) CompleteJob(job *Job, err error) {
 		job.Status = StatusFailed
 		pq.updateStats(job, "failed")
 
-		// Check if we should retry
-		if job.RetryCount < job.MaxRetries {
+		// Check if we should retry (don't retry context cancellation errors)
+		if job.RetryCount < job.MaxRetries && job.ctx.Err() != context.Canceled {
 			job.Status = StatusRetrying
 			job.RetryCount++
 			pq.scheduleRetry(job)
+		} else if job.ctx.Err() == context.Canceled {
+			// Log context cancellation without retry
+			pq.logger.Warn("Job canceled, skipping retry",
+				"job_id", job.ID,
+				"event_type", job.Event.Type,
+				"retry_count", job.RetryCount)
 		}
 	} else {
 		job.Status = StatusCompleted
@@ -346,11 +357,21 @@ func (pq *PriorityQueue) scheduleRetry(job *Job) {
 
 	// Schedule retry
 	go func() {
+		pq.logger.Info("Scheduling job retry",
+			"job_id", job.ID,
+			"event_type", job.Event.Type,
+			"retry_count", job.RetryCount,
+			"delay_ms", delay.Milliseconds(),
+			"max_retries", job.MaxRetries)
+
 		time.Sleep(delay)
 
 		// Check if queue is still running
 		select {
 		case <-pq.ctx.Done():
+			pq.logger.Warn("Queue shutdown during retry, job abandoned",
+				"job_id", job.ID,
+				"event_type", job.Event.Type)
 			return
 		default:
 		}
@@ -360,11 +381,19 @@ func (pq *PriorityQueue) scheduleRetry(job *Job) {
 		select {
 		case queue.jobs <- job:
 			pq.updateStats(job, "retry_scheduled")
+			pq.logger.Info("Job retry scheduled successfully",
+				"job_id", job.ID,
+				"event_type", job.Event.Type,
+				"retry_count", job.RetryCount)
 		default:
 			// Queue is full, mark as failed
 			job.Status = StatusFailed
 			job.LastError = fmt.Errorf("queue full during retry")
 			pq.updateStats(job, "retry_failed")
+			pq.logger.Error("Job retry failed: queue full",
+				"job_id", job.ID,
+				"event_type", job.Event.Type,
+				"retry_count", job.RetryCount)
 		}
 	}()
 }

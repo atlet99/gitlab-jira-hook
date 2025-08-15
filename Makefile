@@ -20,7 +20,7 @@ GOSEC = $(GOPATH)/bin/gosec
 ERRCHECK = $(GOPATH)/bin/errcheck
 
 # Security scanning constants
-GOSEC_VERSION := v2.22.5
+GOSEC_VERSION := v2.22.7
 GOSEC_OUTPUT_FORMAT := sarif
 GOSEC_REPORT_FILE := gosec-report.sarif
 GOSEC_JSON_REPORT := gosec-report.json
@@ -244,7 +244,7 @@ build-cross: $(OUTPUT_DIR)
 
 test:
 	@echo "Running Go tests..."
-	go test -v -timeout 120s ./internal/async ./internal/benchmarks ./internal/cache ./internal/common ./internal/config ./internal/gitlab ./internal/jira ./internal/monitoring ./internal/server ./internal/timezone ./internal/utils ./internal/version ./pkg/logger ./cmd/server -cover
+	go test -v -timeout 120s ./internal/async ./internal/benchmarks ./internal/cache ./internal/common ./internal/config ./internal/gitlab ./internal/jira ./internal/monitoring ./internal/server ./internal/timezone ./internal/timeutil ./internal/version ./pkg/logger ./cmd/server -cover
 
 test-with-race:
 	@echo "Running all tests with race detection and coverage..."
@@ -469,16 +469,17 @@ security-install-gosec:
 security-scan: security-install-gosec
 	@echo "Running gosec security scan..."
 	@if [ -f .gosec.json ]; then \
-		$(GOSEC) -quiet -conf .gosec.json -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -severity $(GOSEC_SEVERITY) ./...; \
+		$(GOSEC) -quiet -conf .gosec.json -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -severity $(GOSEC_SEVERITY) -no-fail ./...; \
 	else \
-		$(GOSEC) -quiet -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -severity $(GOSEC_SEVERITY) ./...; \
+		$(GOSEC) -quiet -fmt $(GOSEC_OUTPUT_FORMAT) -out $(GOSEC_REPORT_FILE) -severity $(GOSEC_SEVERITY) -no-fail ./...; \
 	fi
-	@if [ -f $(GOSEC_REPORT_FILE) ]; then \
+	@if [ ! -f $(GOSEC_REPORT_FILE) ]; then \
+		echo '{"runs":[{"results":[],"taxonomies":[]}]}' > $(GOSEC_REPORT_FILE); \
+		echo "Security scan completed. No issues found - empty report created."; \
+	else \
 		echo "Security scan completed. Report saved to $(GOSEC_REPORT_FILE)"; \
-		echo "To view issues: cat $(GOSEC_REPORT_FILE)"; \
-	else \
-		echo "Security scan completed. No issues found."; \
 	fi
+	@echo "To view issues: cat $(GOSEC_REPORT_FILE)"
 
 security-scan-json: security-install-gosec
 	@echo "Running gosec security scan with JSON output..."

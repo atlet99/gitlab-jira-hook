@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -20,7 +21,7 @@ func newMockJiraClient() *mockJiraClient {
 	return &mockJiraClient{comments: make(map[string][]string)}
 }
 
-func (m *mockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
+func (m *mockJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -29,7 +30,7 @@ func (m *mockJiraClient) AddComment(issueID string, payload jira.CommentPayload)
 	return nil
 }
 
-func (m *mockJiraClient) TestConnection() error { return nil }
+func (m *mockJiraClient) TestConnection(ctx context.Context) error { return nil }
 
 func (m *mockJiraClient) GetComments(issueID string) []string {
 	return m.comments[issueID]
@@ -51,7 +52,7 @@ func TestProcessTagPushEvent_AddsComment(t *testing.T) {
 			Name:   "v1.0.0",
 		},
 	}
-	err := h.processTagPushEvent(event)
+	err := h.processTagPushEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("ABC-123")
 	require.NotEmpty(t, comments)
@@ -73,7 +74,7 @@ func TestProcessReleaseEvent_AddsComment(t *testing.T) {
 			URL:         "https://gitlab.example.com/release/ABC-456",
 		},
 	}
-	err := h.processReleaseEvent(event)
+	err := h.processReleaseEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("ABC-456")
 	require.NotEmpty(t, comments)
@@ -98,7 +99,7 @@ func TestProcessDeploymentEvent_AddsComment(t *testing.T) {
 			Name:        "John Doe",
 		},
 	}
-	err := h.processDeploymentEvent(event)
+	err := h.processDeploymentEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("DEF-789")
 	require.NotEmpty(t, comments)
@@ -121,7 +122,7 @@ func TestProcessFeatureFlagEvent_AddsComment(t *testing.T) {
 			Action:      "create",
 		},
 	}
-	err := h.processFeatureFlagEvent(event)
+	err := h.processFeatureFlagEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("GHI-321")
 	require.NotEmpty(t, comments)
@@ -145,7 +146,7 @@ func TestProcessWikiPageEvent_AddsComment(t *testing.T) {
 			Name:    "Jane Smith",
 		},
 	}
-	err := h.processWikiPageEvent(event)
+	err := h.processWikiPageEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("JKL-654")
 	require.NotEmpty(t, comments)
@@ -171,7 +172,7 @@ func TestProcessPipelineEvent_AddsComment(t *testing.T) {
 			Name:     "Bob Wilson",
 		},
 	}
-	err := h.processPipelineEvent(event)
+	err := h.processPipelineEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("MNO-987")
 	require.NotEmpty(t, comments)
@@ -197,7 +198,7 @@ func TestProcessBuildEvent_AddsComment(t *testing.T) {
 			Duration: 60,
 		},
 	}
-	err := h.processBuildEvent(event)
+	err := h.processBuildEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("PQR-654")
 	require.NotEmpty(t, comments)
@@ -221,7 +222,7 @@ func TestProcessNoteEvent_AddsComment(t *testing.T) {
 			Name:   "John Doe",
 		},
 	}
-	err := h.processNoteEvent(event)
+	err := h.processNoteEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("STU-321")
 	require.NotEmpty(t, comments)
@@ -245,7 +246,7 @@ func TestProcessIssueEvent_AddsComment(t *testing.T) {
 			Name:        "Jane Smith",
 		},
 	}
-	err := h.processIssueEvent(event)
+	err := h.processIssueEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("VWX-987")
 	require.NotEmpty(t, comments)
@@ -300,7 +301,7 @@ func TestProcessMergeRequestEvent_WithParticipants(t *testing.T) {
 		},
 	}
 
-	err := h.processMergeRequestEvent(event)
+	err := h.processMergeRequestEvent(context.Background(), event)
 	require.NoError(t, err)
 	comments := jira.GetComments("ABC-123")
 	require.NotEmpty(t, comments)
