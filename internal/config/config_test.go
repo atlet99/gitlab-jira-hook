@@ -21,11 +21,12 @@ func TestLoad(t *testing.T) {
 		{
 			name: "load with default values",
 			envVars: map[string]string{
-				"GITLAB_SECRET":   "test-secret",
-				"GITLAB_BASE_URL": "https://gitlab.example.com",
-				"JIRA_EMAIL":      "test@example.com",
-				"JIRA_TOKEN":      "test-token",
-				"JIRA_BASE_URL":   "https://jira.example.com",
+				"GITLAB_SECRET":    "test-secret",
+				"GITLAB_BASE_URL":  "https://gitlab.example.com",
+				"GITLAB_API_TOKEN": "test-api-token",
+				"JIRA_EMAIL":       "test@example.com",
+				"JIRA_TOKEN":       "test-token",
+				"JIRA_BASE_URL":    "https://jira.example.com",
 			},
 			expectError: false,
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -43,8 +44,9 @@ func TestLoad(t *testing.T) {
 			envVars: map[string]string{
 				"GITLAB_SECRET":      "custom-secret",
 				"GITLAB_BASE_URL":    "https://custom-gitlab.example.com",
+				"GITLAB_API_TOKEN":   "custom-api-token",
 				"JIRA_EMAIL":         "custom@example.com",
-				"JIRA_API_TOKEN":     "custom-token",
+				"JIRA_TOKEN":         "custom-token",
 				"JIRA_BASE_URL":      "https://custom-jira.example.com",
 				"PORT":               "9090",
 				"LOG_LEVEL":          "debug",
@@ -76,6 +78,7 @@ func TestLoad(t *testing.T) {
 			envVars: map[string]string{
 				"GITLAB_SECRET":      "test-secret",
 				"GITLAB_BASE_URL":    "https://gitlab.example.com",
+				"GITLAB_API_TOKEN":   "test-api-token",
 				"JIRA_EMAIL":         "test@example.com",
 				"JIRA_TOKEN":         "test-token",
 				"JIRA_BASE_URL":      "https://jira.example.com",
@@ -95,6 +98,7 @@ func TestLoad(t *testing.T) {
 			envVars: map[string]string{
 				"GITLAB_SECRET":      "test-secret",
 				"GITLAB_BASE_URL":    "https://gitlab.example.com",
+				"GITLAB_API_TOKEN":   "test-api-token",
 				"JIRA_EMAIL":         "test@example.com",
 				"JIRA_TOKEN":         "test-token",
 				"JIRA_BASE_URL":      "https://jira.example.com",
@@ -108,12 +112,13 @@ func TestLoad(t *testing.T) {
 		{
 			name: "load with boolean values",
 			envVars: map[string]string{
-				"GITLAB_SECRET":   "test-secret",
-				"GITLAB_BASE_URL": "https://gitlab.example.com",
-				"JIRA_EMAIL":      "test@example.com",
-				"JIRA_API_TOKEN":  "test-token",
-				"JIRA_BASE_URL":   "https://jira.example.com",
-				"METRICS_ENABLED": "false",
+				"GITLAB_SECRET":    "test-secret",
+				"GITLAB_BASE_URL":  "https://gitlab.example.com",
+				"GITLAB_API_TOKEN": "test-api-token",
+				"JIRA_EMAIL":       "test@example.com",
+				"JIRA_TOKEN":       "test-token",
+				"JIRA_BASE_URL":    "https://jira.example.com",
+				"METRICS_ENABLED":  "false",
 			},
 			expectError: false,
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -178,11 +183,12 @@ func TestNewConfigFromEnv(t *testing.T) {
 		{
 			name: "create config with default values",
 			envVars: map[string]string{
-				"GITLAB_SECRET":   "test-secret",
-				"GITLAB_BASE_URL": "https://gitlab.example.com",
-				"JIRA_EMAIL":      "test@example.com",
-				"JIRA_API_TOKEN":  "test-token",
-				"JIRA_BASE_URL":   "https://jira.example.com",
+				"GITLAB_SECRET":    "test-secret",
+				"GITLAB_BASE_URL":  "https://gitlab.example.com",
+				"GITLAB_API_TOKEN": "test-api-token",
+				"JIRA_EMAIL":       "test@example.com",
+				"JIRA_TOKEN":       "test-token",
+				"JIRA_BASE_URL":    "https://jira.example.com",
 			},
 			expectError: false,
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -216,6 +222,7 @@ func TestNewConfigFromEnv(t *testing.T) {
 			envVars: map[string]string{
 				"GITLAB_SECRET":         "custom-secret",
 				"GITLAB_BASE_URL":       "https://custom-gitlab.example.com",
+				"GITLAB_API_TOKEN":      "custom-api-token",
 				"JIRA_EMAIL":            "custom@example.com",
 				"JIRA_TOKEN":            "custom-token",
 				"JIRA_BASE_URL":         "https://custom-jira.example.com",
@@ -316,12 +323,22 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &Config{
-				GitLabSecret:  "test-secret",
-				GitLabBaseURL: "https://gitlab.example.com",
-				JiraEmail:     "test@example.com",
-				JiraToken:     "test-token",
-				JiraBaseURL:   "https://jira.example.com",
-				Port:          "8080",
+				GitLabSecret:         "test-secret",
+				GitLabBaseURL:        "https://gitlab.example.com",
+				GitLabAPIToken:       "test-api-token",
+				JiraEmail:            "test@example.com",
+				JiraToken:            "test-token",
+				JiraBaseURL:          "https://jira.example.com",
+				Port:                 "8080",
+				MinWorkers:           1,
+				MaxWorkers:           10,
+				ScaleUpThreshold:     5,
+				ScaleDownThreshold:   2,
+				JobTimeoutSeconds:    30,
+				GitLabNamespace:      "test-namespace",
+				JiraRateLimit:        10,
+				JiraRetryBaseDelayMs: 100,
+				MaxConcurrentJobs:    10,
 			},
 			expectError: false,
 		},
@@ -593,6 +610,7 @@ func TestConfigurationIntegration(t *testing.T) {
 		envVars := map[string]string{
 			"GITLAB_SECRET":         "integration-secret",
 			"GITLAB_BASE_URL":       "https://integration-gitlab.example.com",
+			"GITLAB_API_TOKEN":      "integration-api-token",
 			"JIRA_EMAIL":            "integration@example.com",
 			"JIRA_TOKEN":            "integration-token",
 			"JIRA_BASE_URL":         "https://integration-jira.example.com",
@@ -735,11 +753,12 @@ func TestConfigurationPerformance(t *testing.T) {
 	t.Run("load performance", func(t *testing.T) {
 		// Set up environment
 		envVars := map[string]string{
-			"GITLAB_SECRET":   "perf-secret",
-			"GITLAB_BASE_URL": "https://perf-gitlab.example.com",
-			"JIRA_EMAIL":      "perf@example.com",
-			"JIRA_TOKEN":      "perf-token",
-			"JIRA_BASE_URL":   "https://perf-jira.example.com",
+			"GITLAB_SECRET":    "perf-secret",
+			"GITLAB_BASE_URL":  "https://perf-gitlab.example.com",
+			"GITLAB_API_TOKEN": "perf-api-token",
+			"JIRA_EMAIL":       "perf@example.com",
+			"JIRA_TOKEN":       "perf-token",
+			"JIRA_BASE_URL":    "https://perf-jira.example.com",
 		}
 
 		for key, value := range envVars {

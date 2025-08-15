@@ -51,8 +51,8 @@ func TestNewEventProcessor(t *testing.T) {
 
 func TestEventProcessor_ProcessEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -128,8 +128,8 @@ func TestEventProcessor_ProcessEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessPushEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -162,8 +162,8 @@ func TestEventProcessor_ProcessPushEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessMergeRequestEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -193,8 +193,8 @@ func TestEventProcessor_ProcessMergeRequestEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessIssueEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -224,8 +224,8 @@ func TestEventProcessor_ProcessIssueEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessNoteEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -252,8 +252,8 @@ func TestEventProcessor_ProcessNoteEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessPipelineEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -279,8 +279,8 @@ func TestEventProcessor_ProcessPipelineEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessJobEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -307,8 +307,8 @@ func TestEventProcessor_ProcessJobEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessDeploymentEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -334,8 +334,8 @@ func TestEventProcessor_ProcessDeploymentEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessReleaseEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -363,8 +363,8 @@ func TestEventProcessor_ProcessReleaseEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessWikiPageEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -391,8 +391,8 @@ func TestEventProcessor_ProcessWikiPageEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessFeatureFlagEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
@@ -419,8 +419,8 @@ func TestEventProcessor_ProcessFeatureFlagEvent(t *testing.T) {
 
 func TestEventProcessor_BuildSimpleComment(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 

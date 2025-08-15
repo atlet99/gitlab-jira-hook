@@ -9,10 +9,26 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
+	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
+// MockJiraClientForMRLinking is a simplified mock implementation for testing
+type MockJiraClientForMRLinking struct {
+	mock.Mock
+}
+
+func (m *MockJiraClientForMRLinking) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
+	args := m.Called(ctx, issueID, payload)
+	return args.Error(0)
+}
+
+func (m *MockJiraClientForMRLinking) TestConnection(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestProcessMergeRequestEvent_SystemHook_LinksToMultipleIssues(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &Handler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -36,10 +52,10 @@ func TestProcessMergeRequestEvent_SystemHook_LinksToMultipleIssues(t *testing.T)
 	}
 
 	// Expect comments to be added to all found issues: ABC-123, ABC-456, ABC-789, ABC-101
-	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-456", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-789", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-101", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-123", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-456", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-789", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-101", mock.Anything).Return(nil)
 
 	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
@@ -47,7 +63,7 @@ func TestProcessMergeRequestEvent_SystemHook_LinksToMultipleIssues(t *testing.T)
 }
 
 func TestProcessMergeRequestEvent_SystemHook_NoIssuesFound(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &Handler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -77,7 +93,7 @@ func TestProcessMergeRequestEvent_SystemHook_NoIssuesFound(t *testing.T) {
 }
 
 func TestProcessMergeRequestEvent_SystemHook_DuplicateIssues(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &Handler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -101,7 +117,7 @@ func TestProcessMergeRequestEvent_SystemHook_DuplicateIssues(t *testing.T) {
 	}
 
 	// ABC-123 appears in title, description, and source branch, but should only get one comment
-	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-123", mock.Anything).Return(nil)
 
 	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
@@ -111,7 +127,7 @@ func TestProcessMergeRequestEvent_SystemHook_DuplicateIssues(t *testing.T) {
 }
 
 func TestProcessMergeRequestEvent_ProjectHook_LinksToMultipleIssues(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &ProjectHookHandler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -139,10 +155,10 @@ func TestProcessMergeRequestEvent_ProjectHook_LinksToMultipleIssues(t *testing.T
 	}
 
 	// Expect comments to be added to all found issues: ABC-123, ABC-456, ABC-789, ABC-101
-	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-456", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-789", mock.Anything).Return(nil)
-	mockJira.On("AddComment", "ABC-101", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-123", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-456", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-789", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-101", mock.Anything).Return(nil)
 
 	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
@@ -150,7 +166,7 @@ func TestProcessMergeRequestEvent_ProjectHook_LinksToMultipleIssues(t *testing.T
 }
 
 func TestProcessMergeRequestEvent_ProjectHook_NoIssuesFound(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &ProjectHookHandler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -184,7 +200,7 @@ func TestProcessMergeRequestEvent_ProjectHook_NoIssuesFound(t *testing.T) {
 }
 
 func TestProcessMergeRequestEvent_ProjectHook_DuplicateIssues(t *testing.T) {
-	mockJira := &MockJiraClient{}
+	mockJira := &MockJiraClientForMRLinking{}
 	handler := &ProjectHookHandler{
 		logger: slog.Default(),
 		jira:   mockJira,
@@ -212,7 +228,7 @@ func TestProcessMergeRequestEvent_ProjectHook_DuplicateIssues(t *testing.T) {
 	}
 
 	// ABC-123 appears in title, description, and source branch, but should only get one comment
-	mockJira.On("AddComment", "ABC-123", mock.Anything).Return(nil)
+	mockJira.On("AddComment", context.Background(), "ABC-123", mock.Anything).Return(nil)
 
 	err := handler.processMergeRequestEvent(context.Background(), event)
 	assert.NoError(t, err)
