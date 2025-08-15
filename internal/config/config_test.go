@@ -32,8 +32,6 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, "test-secret", cfg.GitLabSecret)
 				assert.Equal(t, "test@example.com", cfg.JiraEmail)
 				assert.Equal(t, "test-token", cfg.JiraToken)
-				assert.Equal(t, "test-token", cfg.JiraToken)
-				assert.Equal(t, "test-token", cfg.JiraToken)
 				assert.Equal(t, "https://jira.example.com", cfg.JiraBaseURL)
 				assert.Equal(t, DefaultPort, cfg.Port)
 				assert.Equal(t, DefaultLogLevel, cfg.LogLevel)
