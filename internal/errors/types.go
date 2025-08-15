@@ -44,6 +44,7 @@ const (
 	ErrCodeJiraRateLimit    ErrorCode = "JIRA_RATE_LIMIT"
 	ErrCodeJiraUnauthorized ErrorCode = "JIRA_UNAUTHORIZED"
 	ErrCodeJiraNotFound     ErrorCode = "JIRA_NOT_FOUND"
+	ErrCodePermissionDenied ErrorCode = "PERMISSION_DENIED"
 
 	// Processing errors
 	ErrCodeProcessingFailed   ErrorCode = "PROCESSING_FAILED"
@@ -140,6 +141,8 @@ func (e *ServiceError) HTTPStatusCode() int {
 	case ErrCodeUnauthorized, ErrCodeGitLabUnauthorized, ErrCodeJiraUnauthorized, ErrCodeInvalidSignature:
 		return http.StatusUnauthorized
 	case ErrCodeForbidden:
+		return http.StatusForbidden
+	case ErrCodePermissionDenied:
 		return http.StatusForbidden
 	case ErrCodeNotFound, ErrCodeGitLabNotFound, ErrCodeJiraNotFound:
 		return http.StatusNotFound
@@ -288,27 +291,6 @@ func (e *ServiceError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.ToErrorResponse())
 }
 
-// getDefaultCategory returns default category for error code
-func getDefaultCategory(code ErrorCode) ErrorCategory {
-	switch code {
-	case ErrCodeInvalidRequest, ErrCodeUnauthorized, ErrCodeForbidden,
-		ErrCodeNotFound, ErrCodeInvalidSignature, ErrCodeInvalidWebhook, ErrCodeValidationFailed:
-		return CategoryClientError
-	case ErrCodeRateLimited, ErrCodeGitLabRateLimit, ErrCodeJiraRateLimit:
-		return CategoryRateLimitError
-	case ErrCodeTimeout, ErrCodeGitLabTimeout, ErrCodeJiraTimeout:
-		return CategoryTimeoutError
-	case ErrCodeGitLabAPIError, ErrCodeJiraAPIError:
-		return CategoryExternalError
-	case ErrCodeServiceUnavailable, ErrCodeQueueFull, ErrCodeWorkerUnavailable:
-		return CategoryRetryableError
-	case ErrCodeCircuitBreakerOpen:
-		return CategoryRetryableError
-	default:
-		return CategoryServerError
-	}
-}
-
 // getDefaultSeverity returns default severity for error code
 func getDefaultSeverity(code ErrorCode) Severity {
 	switch code {
@@ -324,6 +306,27 @@ func getDefaultSeverity(code ErrorCode) Severity {
 		return SeverityCritical
 	default:
 		return SeverityMedium
+	}
+}
+
+// getDefaultCategory returns default category for error code
+func getDefaultCategory(code ErrorCode) ErrorCategory {
+	switch code {
+	case ErrCodeInvalidRequest, ErrCodeUnauthorized, ErrCodeForbidden,
+		ErrCodeNotFound, ErrCodeInvalidSignature, ErrCodeInvalidWebhook, ErrCodeValidationFailed, ErrCodePermissionDenied:
+		return CategoryClientError
+	case ErrCodeRateLimited, ErrCodeGitLabRateLimit, ErrCodeJiraRateLimit:
+		return CategoryRateLimitError
+	case ErrCodeTimeout, ErrCodeGitLabTimeout, ErrCodeJiraTimeout:
+		return CategoryTimeoutError
+	case ErrCodeGitLabAPIError, ErrCodeJiraAPIError:
+		return CategoryExternalError
+	case ErrCodeServiceUnavailable, ErrCodeQueueFull, ErrCodeWorkerUnavailable:
+		return CategoryRetryableError
+	case ErrCodeCircuitBreakerOpen:
+		return CategoryRetryableError
+	default:
+		return CategoryServerError
 	}
 }
 
@@ -344,6 +347,8 @@ func getUserFriendlyMessage(code ErrorCode) string {
 		return "Webhook signature validation failed. Please check your secret configuration."
 	case ErrCodeServiceUnavailable:
 		return "Service is temporarily unavailable. Please try again later."
+	case ErrCodePermissionDenied:
+		return "You don't have permission to perform this action. Required permissions are missing."
 	case ErrCodeTimeout:
 		return "Request timed out. Please try again."
 	case ErrCodeExternalAPIError:

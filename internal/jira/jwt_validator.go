@@ -32,13 +32,14 @@ type JWTValidator struct {
 
 // JWTClaims represents the claims in a Jira JWT token
 type JWTClaims struct {
-	Issuer    string                 `json:"iss"`               // Client key for tenant identification
-	IssuedAt  int64                  `json:"iat"`               // Issued at time (Unix timestamp)
-	ExpiresAt int64                  `json:"exp"`               // Expiration time (Unix timestamp)
-	QueryHash string                 `json:"qsh"`               // Query string hash
-	Subject   string                 `json:"sub,omitempty"`     // User account ID (optional)
-	Audience  interface{}            `json:"aud,omitempty"`     // Audience (optional, string or []string)
-	Context   map[string]interface{} `json:"context,omitempty"` // Connect context (optional)
+	Issuer       string                 `json:"iss"`               // Client key for tenant identification
+	IssuedAt     int64                  `json:"iat"`               // Issued at time (Unix timestamp)
+	ExpiresAt    int64                  `json:"exp"`               // Expiration time (Unix timestamp)
+	QueryHash    string                 `json:"qsh"`               // Query string hash
+	Subject      string                 `json:"sub,omitempty"`     // User account ID (optional)
+	Audience     interface{}            `json:"aud,omitempty"`     // Audience (optional, string or []string)
+	Context      map[string]interface{} `json:"context,omitempty"` // Connect context (optional)
+	ScopesString string                 `json:"scp,omitempty"`     // Space-separated scopes string
 	jwt.RegisteredClaims
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/errors"
@@ -351,9 +352,47 @@ func (v *AuthValidator) ValidateConnectAppPermissions(result *AuthValidationResu
 		return fmt.Errorf("operation requires Connect app authentication")
 	}
 
-	// TODO: Implement scope validation based on app installation data
-	// This would require storing app permissions during installation
-	// For now, we allow all operations for valid Connect apps
+	// Check if required scopes are available in JWT claims
+	if result.JWTClaims != nil && result.JWTClaims.ScopesString != "" {
+		// Split scopes string into individual scopes
+		availableScopes := strings.Split(result.JWTClaims.ScopesString, " ")
+		sort.Strings(availableScopes)
+		for _, required := range requiredScopes {
+			found := false
+			for _, available := range availableScopes {
+				if available == required {
+					found = true
+					break
+				}
+			}
+			if !found {
+				v.logger.Warn("Connect app missing required scope",
+					"client_key", result.IssuerClientKey,
+					"missing_scope", required,
+					"available_scopes", availableScopes)
+
+				return &errors.ServiceError{
+					Code:     errors.ErrCodePermissionDenied,
+					Message:  fmt.Sprintf("Missing required scope: %s", required),
+					Details:  fmt.Sprintf("Connect app %s lacks required scope: %s", result.IssuerClientKey, required),
+					Severity: errors.SeverityHigh,
+					Category: errors.CategoryClientError,
+				}
+			}
+		}
+	} else {
+		v.logger.Warn("Connect app has no scopes defined",
+			"client_key", result.IssuerClientKey,
+			"required_scopes", requiredScopes)
+
+		return &errors.ServiceError{
+			Code:     errors.ErrCodePermissionDenied,
+			Message:  "Connect app has no defined scopes",
+			Details:  "Application permissions not configured during installation",
+			Severity: errors.SeverityHigh,
+			Category: errors.CategoryClientError,
+		}
+	}
 
 	v.logger.Debug("Connect app permissions validated",
 		"client_key", result.IssuerClientKey,

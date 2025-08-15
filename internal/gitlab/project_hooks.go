@@ -79,15 +79,26 @@ func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Limit request body size to prevent DoS attacks
+	maxBodySize := int64(1 << 20) // 1 MB
+	limitedBody := http.MaxBytesReader(w, r.Body, maxBodySize)
+	defer func() {
+		if err := limitedBody.Close(); err != nil {
+			h.logger.Warn("Failed to close request body", "error", err)
+		}
+	}()
+
 	// Read request body
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(limitedBody)
 	if err != nil {
+		if err != nil && err.Error() == "http: request body too large" {
+			h.logger.Warn("Request body too large", "maxSize", maxBodySize)
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		h.logger.Error("Failed to read request body", "error", err)
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
-	}
-	if err := r.Body.Close(); err != nil {
-		h.logger.Warn("Failed to close request body", "error", err)
 	}
 
 	// Parse webhook event
