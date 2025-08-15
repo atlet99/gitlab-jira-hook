@@ -502,6 +502,9 @@ func TestAuthValidator_ValidateConnectAppPermissions(t *testing.T) {
 				Valid:           true,
 				AuthType:        AuthTypeJWT,
 				IssuerClientKey: "test-client-key",
+				JWTClaims: &JWTClaims{
+					ScopesString: "READ WRITE",
+				},
 			},
 			requiredScopes: []string{"READ", "WRITE"},
 			expectError:    false,

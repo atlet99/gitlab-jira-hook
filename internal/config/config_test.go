@@ -32,6 +32,8 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, "test-secret", cfg.GitLabSecret)
 				assert.Equal(t, "test@example.com", cfg.JiraEmail)
 				assert.Equal(t, "test-token", cfg.JiraToken)
+				assert.Equal(t, "test-token", cfg.JiraToken)
+				assert.Equal(t, "test-token", cfg.JiraToken)
 				assert.Equal(t, "https://jira.example.com", cfg.JiraBaseURL)
 				assert.Equal(t, DefaultPort, cfg.Port)
 				assert.Equal(t, DefaultLogLevel, cfg.LogLevel)
@@ -44,7 +46,7 @@ func TestLoad(t *testing.T) {
 				"GITLAB_SECRET":      "custom-secret",
 				"GITLAB_BASE_URL":    "https://custom-gitlab.example.com",
 				"JIRA_EMAIL":         "custom@example.com",
-				"JIRA_TOKEN":         "custom-token",
+				"JIRA_API_TOKEN":     "custom-token",
 				"JIRA_BASE_URL":      "https://custom-jira.example.com",
 				"PORT":               "9090",
 				"LOG_LEVEL":          "debug",
@@ -111,7 +113,7 @@ func TestLoad(t *testing.T) {
 				"GITLAB_SECRET":   "test-secret",
 				"GITLAB_BASE_URL": "https://gitlab.example.com",
 				"JIRA_EMAIL":      "test@example.com",
-				"JIRA_TOKEN":      "test-token",
+				"JIRA_API_TOKEN":  "test-token",
 				"JIRA_BASE_URL":   "https://jira.example.com",
 				"METRICS_ENABLED": "false",
 			},
@@ -133,6 +135,10 @@ func TestLoad(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Remove .env file to prevent interference
+			if err := os.Remove(".env"); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("Failed to remove .env file: %v", err)
+			}
 			// Set environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
@@ -177,7 +183,7 @@ func TestNewConfigFromEnv(t *testing.T) {
 				"GITLAB_SECRET":   "test-secret",
 				"GITLAB_BASE_URL": "https://gitlab.example.com",
 				"JIRA_EMAIL":      "test@example.com",
-				"JIRA_TOKEN":      "test-token",
+				"JIRA_API_TOKEN":  "test-token",
 				"JIRA_BASE_URL":   "https://jira.example.com",
 			},
 			expectError: false,

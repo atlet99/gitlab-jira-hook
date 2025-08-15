@@ -352,6 +352,11 @@ func (v *AuthValidator) ValidateConnectAppPermissions(result *AuthValidationResu
 		return fmt.Errorf("operation requires Connect app authentication")
 	}
 
+	// If no scopes are required, permission is granted
+	if len(requiredScopes) == 0 {
+		return nil
+	}
+
 	// Check if required scopes are available in JWT claims
 	if result.JWTClaims != nil && result.JWTClaims.ScopesString != "" {
 		// Split scopes string into individual scopes
