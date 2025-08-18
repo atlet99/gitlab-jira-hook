@@ -1,57 +1,82 @@
 # GitLab ↔ Jira Cloud Webhook
 
-A lightweight Go webhook server that connects GitLab System Hooks and Project Webhooks with Jira Cloud. Automatically posts commit, merge request, and other GitLab activity to corresponding Jira issues with rich, informative comments.
+An advanced Go webhook server that provides bidirectional synchronization between GitLab and Jira Cloud. Automatically posts commit, merge request, and other GitLab activity to corresponding Jira issues with rich, informative comments, while also supporting Jira → GitLab synchronization for comprehensive issue lifecycle management.
 
 ## 🎯 Overview
 
-This service listens to GitLab System Hook and Project Webhook events and automatically comments on Jira issues when commits, merge requests, or other activities reference them. It extracts Jira issue IDs from various sources and posts detailed activity updates to the corresponding Jira issues using Jira Cloud REST API v3.0.
+This service provides comprehensive bidirectional synchronization between GitLab and Jira:
+
+- **GitLab → Jira**: Automatically comments on Jira issues when commits, merge requests, or other activities reference them
+- **Jira → GitLab**: Automatically creates GitLab issues from Jira issues with real-time status and comment synchronization
+- **Advanced Features**: OAuth 2.0 authentication, JWT validation for Connect apps, dynamic worker pool scaling, advanced caching, comprehensive monitoring, and error recovery strategies
+
+The service extracts Jira issue IDs from various sources and posts detailed activity updates to the corresponding Jira issues using Jira Cloud REST API v3.0 with Atlassian Document Format (ADF) for rich content.
 
 ## ✨ Features
 
 ### Core Functionality
+- **Bidirectional Synchronization**: Complete two-way sync between GitLab and Jira
 - **GitLab System Hook Integration**: Listens to all System Hook events (push, merge_request, project_create, user_create, etc.)
 - **GitLab Project Webhook Integration**: Listens to Project Webhook events (push, merge_request, issue, note, pipeline, etc.)
 - **Jira Cloud API v3.0 Integration**: Posts rich comments via REST API with ADF (Atlassian Document Format)
 - **Smart Issue Detection**: Extracts Jira issue IDs using regex patterns from various sources
 - **Branch Filtering**: Configurable push event filtering by branch patterns with wildcard support
 - **Project/Group Filtering**: Filter events by specific projects or groups
-- **Secure Authentication**: Uses Jira API tokens with Basic Auth
+- **Secure Authentication**: Multiple authentication methods (Basic Auth, OAuth 2.0, JWT for Connect apps)
 - **Rate Limiting & Retry**: Built-in rate limiting and retry mechanisms for Jira API calls
 - **Environment Configuration**: Flexible configuration via environment variables
 - **JQL-based Event Filtering**: Filter events using JQL queries to process only relevant issues
 - **Structured Logging**: Comprehensive logging for monitoring and debugging
 - **Idempotent Operations**: Handles duplicate events gracefully
 
-### Phase 3: Error Handling & Monitoring
+### Advanced Bidirectional Sync
+- **Jira → GitLab Sync**: Automatic GitLab issue creation from Jira issues
+- **Real-time User Assignment**: Email-based user matching and assignment
+- **Status Synchronization**: Map Jira statuses to GitLab labels
+- **Comment Synchronization**: Bidirectional comment and worklog sync
+- **Conflict Resolution**: Multiple strategies (last_write_wins, merge, manual)
+- **Project Mapping**: Flexible project routing with namespace and explicit mappings
+- **Field Mapping**: Dynamic field synchronization between systems
+
+### Authentication & Security
+- **Multiple Auth Methods**: Basic Auth, OAuth 2.0, JWT validation for Connect apps
+- **OAuth 2.0 Support**: Enhanced security with token management and auto-refresh
+- **JWT Validation**: Secure authentication for Jira Connect apps
+- **Input Validation**: Comprehensive input sanitization and validation
+- **SHA-256 Hashing**: Secure hashing algorithms
+- **Secret Management**: Secure handling of authentication tokens
+
+### Performance & Scalability
+- **Dynamic Worker Pool**: Auto-scaling based on queue length and system load
+- **Priority Queue**: Job prioritization based on importance and urgency
+- **Advanced Caching**: Multiple eviction strategies (LRU, LFU, FIFO, TTL, Adaptive)
+- **Memory Optimization**: Compression and optional encryption for cached data
+- **Load Balancing**: Consistent hashing for distributed environments
+- **Throughput Optimization**: Configurable concurrency and timeout settings
+
+### Monitoring & Observability
 - **Distributed Tracing**: OpenTelemetry integration for request tracing and debugging
 - **Advanced Monitoring**: Prometheus metrics for comprehensive system observability
-- **Error Recovery Manager**: Multiple recovery strategies (retry, circuit breaker, fallback, graceful degradation, restart)
 - **Health Checks**: Comprehensive health monitoring with detailed status reporting
+- **Performance Scoring**: Real-time performance metrics and trend analysis
+- **Error Recovery Manager**: Multiple recovery strategies (retry, circuit breaker, fallback, graceful degradation, restart)
 - **Alerting System**: Configurable alerts for system events and performance metrics
 - **Structured Logging**: Enhanced logging with context support and correlation IDs
-
-### Advanced Caching System
-- **Multi-Level Cache**: L1/L2 architecture for optimal performance
-- **Multiple Eviction Strategies**: LRU, LFU, FIFO, TTL, and Adaptive algorithms
-- **Distributed Caching**: Consistent hashing for distributed environments
-- **Cache Compression**: Built-in compression for memory optimization
-- **Cache Encryption**: Optional encryption for sensitive data
-- **Cache Monitoring**: Comprehensive statistics and performance metrics
 
 ### Configuration Management
 - **Hot Reload**: Real-time configuration updates without service restart
 - **File Monitoring**: Automatic detection of configuration file changes
 - **Environment Variables**: Dynamic environment variable change detection
-- **Retry Mechanisms**: Configurable retry policies for configuration loading
-- **Change Handlers**: Event-driven configuration change notifications
+- **Auto-Detection**: Automatic worker and queue sizing based on system resources
+- **Validation**: Comprehensive configuration validation with helpful error messages
 
 ### Security & Performance
 - **Adaptive Rate Limiting**: Dynamic rate limiting based on system load
 - **Per-IP Limiting**: Granular rate limiting by IP address
 - **Per-Endpoint Limiting**: Specific rate limits for different endpoints
-- **SHA-256 Hashing**: Secure hashing algorithms (replaced deprecated MD5)
 - **Slowloris Protection**: Built-in protection against Slowloris attacks
-- **Input Validation**: Comprehensive input sanitization and validation
+- **Request Validation**: Comprehensive input sanitization and validation
+- **Circuit Breaker**: Automatic failure detection and recovery
 
 ## 🚀 Quick Start
 
@@ -202,7 +227,9 @@ These parameters can be set via config file or environment variables. See `inter
 
 ## 📋 Usage
 
-### Commit Messages
+### GitLab → Jira Synchronization
+
+#### Commit Messages
 
 Include Jira issue IDs in your commit messages:
 
@@ -211,7 +238,7 @@ git commit -m "Fix login issue ABC-123"
 git commit -m "Implements feature XYZ-456 and resolves ABC-789"
 ```
 
-### Merge Request Titles
+#### Merge Request Titles
 
 Include Jira issue IDs in MR titles:
 
@@ -221,7 +248,7 @@ Include Jira issue IDs in MR titles:
 "Fix database connection XYZ-456"
 ```
 
-### Issue Titles and Descriptions
+#### Issue Titles and Descriptions
 
 Include Jira issue IDs in GitLab issue titles and descriptions:
 
@@ -233,7 +260,7 @@ Include Jira issue IDs in GitLab issue titles and descriptions:
 "This issue is related to ABC-123 and XYZ-456"
 ```
 
-### Comments and Notes
+#### Comments and Notes
 
 Include Jira issue IDs in comments on merge requests, issues, or commits:
 
@@ -245,14 +272,42 @@ Include Jira issue IDs in comments on merge requests, issues, or commits:
 "Related to ABC-123 and XYZ-456"
 ```
 
-### Supported Jira ID Patterns
+#### Supported Jira ID Patterns
 
 The service recognizes these patterns:
 - `ABC-123` (standard format)
 - `XYZ-456` (any 2+ letter prefix)
 - `PROJ-789` (project-specific)
 
+### Jira → GitLab Synchronization
+
+#### Automatic Issue Creation
+When bidirectional sync is enabled, Jira issues are automatically created in GitLab with:
+- Proper project mapping
+- User assignment based on email matching
+- Status labels applied
+- Comments and worklogs synchronized
+
+#### Configuration Requirements
+To enable Jira → GitLab sync, ensure you have:
+- `GITLAB_API_TOKEN` with appropriate permissions
+- `JIRA_WEBHOOK_SECRET` for webhook validation
+- Project mappings configured via `PROJECT_MAPPINGS` or `GITLAB_NAMESPACE`
+
+#### Supported Jira Events
+- `issue_created`, `issue_updated`, `issue_deleted`
+- `comment_created`, `comment_updated`, `comment_deleted`
+- `worklog_created`, `worklog_updated`, `worklog_deleted`
+
+#### Conflict Resolution
+The system provides multiple conflict resolution strategies:
+- `last_write_wins`: Most recent update takes precedence
+- `merge`: Attempts to merge changes from both systems
+- `manual`: Requires manual intervention for conflicts
+
 ## 🏗️ Architecture
+
+### System Architecture
 
 ```
 ┌─────────────┐    ┌─────────────────┐    ┌─────────────┐
@@ -260,6 +315,12 @@ The service recognizes these patterns:
 │ System Hook │    │      (Go)       │    │   Cloud     │
 │ Project Hook│    │                 │    │   API v3.0  │
 └─────────────┘    └─────────────────┘    └─────────────┘
+       ▲                                        │
+       │                                        ▼
+       │                            ┌─────────────────┐
+       └───────────────────────────▶│   Jira Webhook  │
+                                    │   (for bidirectional) │
+                                    └─────────────────┘
                         │
                         ▼
               ┌─────────────────---┐
@@ -269,6 +330,15 @@ The service recognizes these patterns:
               │   + OpenTelemetry) │
               └─────────────────---┘
 ```
+
+### Key Components
+
+1. **Webhook Server**: Main HTTP server handling GitLab and Jira webhooks
+2. **Bidirectional Sync Manager**: Handles synchronization between GitLab and Jira
+3. **Advanced Cache**: Multi-level caching with multiple eviction strategies
+4. **Worker Pool**: Dynamic scaling worker pool for job processing
+5. **Monitoring System**: Comprehensive metrics and health monitoring
+6. **Error Recovery**: Multiple recovery strategies for system resilience
 
 ### Project Structure
 
@@ -555,6 +625,11 @@ spec:
             secretKeyRef:
               name: gitlab-jira-hook-secrets
               key: gitlab-secret
+        - name: GITLAB_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-jira-hook-secrets
+              key: gitlab-api-token
         - name: JIRA_EMAIL
           valueFrom:
             secretKeyRef:
@@ -567,6 +642,11 @@ spec:
               key: jira-token
         - name: JIRA_BASE_URL
           value: "https://yourcompany.atlassian.net"
+        - name: JIRA_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-jira-hook-secrets
+              key: jira-webhook-secret
         livenessProbe:
           httpGet:
             path: /health
@@ -589,9 +669,11 @@ Set these environment variables in production:
 export PORT=8080
 export GITLAB_SECRET=your-secret
 export GITLAB_BASE_URL=https://gitlab.com
+export GITLAB_API_TOKEN=your-gitlab-api-token
 export JIRA_EMAIL=your-email@company.com
 export JIRA_TOKEN=your-token
 export JIRA_BASE_URL=https://yourcompany.atlassian.net
+export JIRA_WEBHOOK_SECRET=your-jira-webhook-secret
 export JIRA_RATE_LIMIT=10
 export JIRA_RETRY_MAX_ATTEMPTS=3
 export JIRA_RETRY_BASE_DELAY_MS=200
@@ -604,9 +686,132 @@ export ENABLE_METRICS=true
 export METRICS_PORT=9090
 export CACHE_ENABLED=true
 export RATE_LIMIT_ENABLED=true
+export BIDIRECTIONAL_ENABLED=true
+export MIN_WORKERS=5
+export MAX_WORKERS=50
+export MAX_CONCURRENT_JOBS=100
 ```
 
 ## 🔧 Configuration Examples
+
+### Basic Setup
+
+```env
+# Server Configuration
+PORT=8080
+LOG_LEVEL=info
+TIMEZONE=Etc/GMT-5
+
+# GitLab Configuration
+GITLAB_SECRET=your-secret-token
+GITLAB_BASE_URL=https://gitlab.com
+GITLAB_API_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
+GITLAB_NAMESPACE=jira-sync
+
+# Jira Configuration
+JIRA_EMAIL=your-email@company.com
+JIRA_TOKEN=your-jira-api-token
+JIRA_BASE_URL=https://yourcompany.atlassian.net
+JIRA_WEBHOOK_SECRET=your-jira-webhook-secret
+
+# Basic Rate Limiting
+JIRA_RATE_LIMIT=10
+JIRA_RETRY_MAX_ATTEMPTS=3
+JIRA_RETRY_BASE_DELAY_MS=200
+```
+
+### Bidirectional Sync Setup
+
+```env
+# Enable bidirectional synchronization
+BIDIRECTIONAL_ENABLED=true
+BIDIRECTIONAL_EVENTS=issue_created,issue_updated,comment_created
+BIDIRECTIONAL_SYNC_INTERVAL=30
+BIDIRECTIONAL_CONFLICT_STRATEGY=last_write_wins
+
+# Status mapping
+STATUS_MAPPING_ENABLED=true
+STATUS_MAPPING="To Do=todo,In Progress=in-progress,Done=done,Blocked=blocked"
+DEFAULT_GITLAB_LABEL=external-sync
+
+# Comment sync
+COMMENT_SYNC_ENABLED=true
+COMMENT_SYNC_DIRECTION=bidirectional
+COMMENT_TEMPLATE_JIRA_TO_GITLAB="**From Jira**: {content}"
+COMMENT_TEMPLATE_GITLAB_TO_JIRA="**From GitLab**: {content}"
+
+# User mapping
+ASSIGNEE_SYNC_ENABLED=true
+USER_MAPPING="john.doe@company.com=jdoe,jane.smith@company.com=jsmith"
+DEFAULT_GITLAB_ASSIGNEE=jdoe
+
+# Sync limits
+SYNC_BATCH_SIZE=10
+SYNC_RATE_LIMIT=60
+SYNC_RETRY_ATTEMPTS=3
+SKIP_OLD_EVENTS=true
+MAX_EVENT_AGE=24
+```
+
+### OAuth 2.0 Authentication
+
+```env
+# Enable OAuth 2.0
+JIRA_AUTH_METHOD=oauth2
+JIRA_OAUTH2_CLIENT_ID=your-oauth2-client-id
+JIRA_OAUTH2_CLIENT_SECRET=your-oauth2-client-secret
+JIRA_OAUTH2_SCOPE="read:jira-work write:jira-work manage:jira-webhook"
+JIRA_OAUTH2_TOKEN_URL=https://auth.atlassian.com/oauth/token
+JIRA_OAUTH2_AUTH_URL=https://auth.atlassian.com/authorize
+JIRA_OAUTH2_REDIRECT_URL=https://your-app.com/auth/jira/callback
+```
+
+### JWT Authentication for Connect Apps
+
+```env
+# JWT Configuration
+JWT_ENABLED=true
+JWT_EXPECTED_AUDIENCE=https://your-app.com/webhook
+JWT_ALLOWED_ISSUERS=atlassian-connect-examples,my-connect-app
+```
+
+### High-Performance Setup
+
+```env
+# Worker pool configuration
+MIN_WORKERS=10
+MAX_WORKERS=100
+SCALE_UP_THRESHOLD=5
+SCALE_DOWN_THRESHOLD=2
+SCALE_INTERVAL=10
+
+# Rate limiting and throughput
+MAX_CONCURRENT_JOBS=200
+JOB_TIMEOUT_SECONDS=120
+QUEUE_TIMEOUT_MS=5000
+
+# Retry configuration
+MAX_RETRIES=5
+RETRY_DELAY_MS=500
+BACKOFF_MULTIPLIER=1.5
+MAX_BACKOFF_MS=30000
+
+# Monitoring
+METRICS_ENABLED=true
+HEALTH_CHECK_INTERVAL=15
+```
+
+### Advanced Caching
+
+```env
+# Cache configuration (auto-detected based on system resources)
+# Manual configuration if needed:
+CACHE_MAX_SIZE=2000
+CACHE_TTL=3600
+CACHE_STRATEGY=adaptive
+CACHE_COMPRESSION=true
+CACHE_ENCRYPTION=false
+```
 
 ### Branch Filtering
 
@@ -663,28 +868,6 @@ JQL_FILTER=status = "In Progress" OR status = "To Do"
 
 # Process only issues created in the last 7 days
 JQL_FILTER=created >= -7d
-```
-
-### Cache Configuration
-
-Configure advanced caching:
-
-```env
-# Enable caching
-CACHE_ENABLED=true
-
-# Cache size and TTL
-CACHE_MAX_SIZE=1000
-CACHE_TTL=3600
-
-# Cache strategy (LRU, LFU, FIFO, TTL, Adaptive)
-CACHE_STRATEGY=LRU
-
-# Enable compression
-CACHE_COMPRESSION=true
-
-# Enable encryption
-CACHE_ENCRYPTION=false
 ```
 
 ### Monitoring Configuration
@@ -792,8 +975,12 @@ DEBUG_MODE=true
 
 ## 📋 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for a full list of changes, fixes, and improvements in version 0.1.5, including:
-- Test suite stabilization and acceleration
-- Debug mode for webhook development
-- Performance monitoring improvements
-- Temporary skip of heavy performance test for CI
+See [CHANGELOG.md](CHANGELOG.md) for a full list of changes, fixes, and improvements, including:
+- Comprehensive bidirectional synchronization system
+- Advanced OAuth 2.0 and JWT authentication support
+- Dynamic worker pool scaling with auto-detection
+- Advanced caching with multiple eviction strategies
+- Enhanced monitoring and observability features
+- Improved error recovery and resilience
+- Performance optimizations and security enhancements
+- Comprehensive test suite and documentation
