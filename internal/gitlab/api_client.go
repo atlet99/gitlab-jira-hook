@@ -117,6 +117,11 @@ func (c *APIClient) GetProjectInfo(ctx context.Context, projectID int) (*GitLabP
 		return nil, fmt.Errorf("invalid project ID: %d", projectID)
 	}
 
+	// Additional validation to prevent SSRF attacks
+	if !c.isValidProjectID(projectID) {
+		return nil, fmt.Errorf("project ID validation failed: %d", projectID)
+	}
+
 	// Use url.URL for safer URL construction
 	baseURL, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -1118,4 +1123,13 @@ func (c *APIClient) parseProjectID(projectID string) (int, error) {
 	// If it's not a numeric ID, try to get it by namespace/project path
 	// This is a simplified implementation - in production you might need more complex logic
 	return 0, fmt.Errorf("project ID must be numeric")
+}
+
+// isValidProjectID validates that the project ID is within acceptable bounds
+// This helps prevent SSRF attacks by ensuring the project ID is reasonable
+func (c *APIClient) isValidProjectID(projectID int) bool {
+	// Project IDs should be positive and within a reasonable range
+	// This prevents attackers from using extremely large numbers that might
+	// cause performance issues or bypass security controls
+	return projectID > 0 && projectID <= 1000000
 }
