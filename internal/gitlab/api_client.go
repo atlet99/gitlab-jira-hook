@@ -112,7 +112,20 @@ func (c *APIClient) GetProjectInfo(ctx context.Context, projectID int) (*GitLabP
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d", c.baseURL, projectID)
+	// Validate projectID to prevent request forgery
+	if projectID <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectID)
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d", projectID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -199,15 +212,30 @@ type GitLabMergeRequest struct {
 
 // GetMergeRequest fetches MR details from GitLab API
 func (c *APIClient) GetMergeRequest(ctx context.Context, projectID, mrIID int) (*GitLabMergeRequest, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests/%d",
-		strings.TrimSuffix(c.baseURL, "/"), projectID, mrIID)
+	// Validate inputs to prevent request forgery
+	if projectID <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectID)
+	}
+	if mrIID <= 0 {
+		return nil, fmt.Errorf("invalid MR IID: %d", mrIID)
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/merge_requests/%d", projectID, mrIID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	c.logger.Debug("Getting MR info from GitLab API",
 		"project_id", projectID,
 		"mr_iid", mrIID,
-		"url", url)
+		"url", apiURL)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -259,13 +287,29 @@ func (c *APIClient) CreateIssue(ctx context.Context, projectID string, request *
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues", c.baseURL, projectIDInt)
+	// Validate request data
+	if request == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	if request.Title == "" {
+		return nil, fmt.Errorf("title is required")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/issues", projectIDInt)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -334,13 +378,34 @@ func (c *APIClient) UpdateIssue(ctx context.Context, projectID string, issueIID 
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", c.baseURL, projectIDInt, issueIID)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if issueIID <= 0 {
+		return nil, fmt.Errorf("invalid issue IID: %d", issueIID)
+	}
+
+	// Validate request data
+	if request == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/issues/%d", projectIDInt, issueIID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -399,13 +464,29 @@ func (c *APIClient) GetIssue(ctx context.Context, projectID string, issueIID int
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", c.baseURL, projectIDInt, issueIID)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if issueIID <= 0 {
+		return nil, fmt.Errorf("invalid issue IID: %d", issueIID)
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/issues/%d", projectIDInt, issueIID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -458,15 +539,31 @@ func (c *APIClient) SearchIssuesByTitle(ctx context.Context, projectID, title st
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	// URL encode the title parameter
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if title == "" {
+		return nil, fmt.Errorf("title cannot be empty")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// URL encode the title parameter safely
 	encodedTitle := url.QueryEscape(title)
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues?search=%s", c.baseURL, projectIDInt, encodedTitle)
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/issues?search=%s", projectIDInt, encodedTitle)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -540,13 +637,37 @@ func (c *APIClient) CreateComment(ctx context.Context, projectID string, issueII
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", c.baseURL, projectIDInt, issueIID)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if issueIID <= 0 {
+		return nil, fmt.Errorf("invalid issue IID: %d", issueIID)
+	}
+
+	// Validate request data
+	if request == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	if request.Body == "" {
+		return nil, fmt.Errorf("comment body cannot be empty")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", projectIDInt, issueIID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -636,13 +757,26 @@ func (c *APIClient) GetMilestones(ctx context.Context, projectID string) ([]*Git
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/milestones", c.baseURL, projectIDInt)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/milestones", projectIDInt)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -697,13 +831,34 @@ func (c *APIClient) CreateMilestone(ctx context.Context, projectID string, reque
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/milestones", c.baseURL, projectIDInt)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+
+	// Validate request data
+	if request == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	if request.Title == "" {
+		return nil, fmt.Errorf("title is required")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/milestones", projectIDInt)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -759,13 +914,34 @@ func (c *APIClient) UpdateMilestone(ctx context.Context, projectID string, miles
 		return nil, fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/milestones/%d", c.baseURL, projectIDInt, milestoneID)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return nil, fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if milestoneID <= 0 {
+		return nil, fmt.Errorf("invalid milestone ID: %d", milestoneID)
+	}
+
+	// Validate request data
+	if request == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/milestones/%d", projectIDInt, milestoneID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -823,13 +999,29 @@ func (c *APIClient) DeleteMilestone(ctx context.Context, projectID string, miles
 		return fmt.Errorf("gitlab token not configured")
 	}
 
-	// Convert string projectID to int
+	// Convert string projectID to int with validation
 	projectIDInt, err := c.parseProjectID(projectID)
 	if err != nil {
 		return fmt.Errorf("invalid project ID: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/milestones/%d", c.baseURL, projectIDInt, milestoneID)
+	// Validate inputs to prevent request forgery
+	if projectIDInt <= 0 {
+		return fmt.Errorf("invalid project ID: %d", projectIDInt)
+	}
+	if milestoneID <= 0 {
+		return fmt.Errorf("invalid milestone ID: %d", milestoneID)
+	}
+
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := fmt.Sprintf("/api/v4/projects/%d/milestones/%d", projectIDInt, milestoneID)
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", apiURL, nil)
 	if err != nil {
@@ -875,8 +1067,15 @@ func (c *APIClient) TestConnection(ctx context.Context) error {
 		return fmt.Errorf("gitlab token not configured")
 	}
 
-	// Use a simple API call to test connection
-	apiURL := fmt.Sprintf("%s/api/v4/user", c.baseURL)
+	// Use url.URL for safer URL construction
+	baseURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Build URL path safely
+	path := "/api/v4/user"
+	apiURL := baseURL.ResolveReference(&url.URL{Path: path}).String()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {

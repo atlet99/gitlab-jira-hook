@@ -78,6 +78,7 @@ func ExtractTextFromADF(content CommentPayload) string {
 // Returns the validated ADF content or a plain text fallback
 func validateAndFallback(content CommentPayload) CommentPayload {
 	// Try to validate the ADF content
+	//nolint:errcheck // Error is handled in the if statement below
 	validatedContent, err := validateADF(content)
 	if err != nil {
 		// If validation fails, fall back to plain text
