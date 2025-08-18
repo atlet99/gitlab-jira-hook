@@ -613,7 +613,7 @@ spec:
     spec:
       containers:
       - name: gitlab-jira-hook
-        image: atlet99/gitlab-jira-hook:latest
+        image: ghcr.io/atlet99/gitlab-jira-hook:v0.1.5
         ports:
         - containerPort: 8080
         - containerPort: 9090
