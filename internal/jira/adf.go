@@ -15,6 +15,14 @@ const DateFormatGOST = "02.01.2006 15:04"
 // actionUpdated is a common action value used across Jira ADF builders
 const actionUpdated = "updated"
 
+// String constants for action types
+const (
+	ActionOpen   = "open"
+	ActionOpened = "opened"
+	ActionClose  = "close"
+	ActionClosed = "closed"
+)
+
 // GenerateCommitADFComment generates an ADF comment for a commit event
 func GenerateCommitADFComment(
 	commitID, commitURL, authorName, _, authorURL, message, date, branch, branchURL, projectWebURL, timezone string,
@@ -684,9 +692,9 @@ func buildMRDescriptionContent(description string) []Content {
 // getActionEmojiAndText maps action to emoji and formatted text
 func getActionEmojiAndText(action, authorName string) (emoji, text string) {
 	switch action {
-	case "open", "opened":
+	case ActionOpen, ActionOpened:
 		return "🔄", action
-	case "close", "closed":
+	case ActionClose, ActionClosed:
 		return "❌", action
 	case "merge", "merged":
 		return "✅", action

@@ -47,7 +47,7 @@ func (ep *EventProcessor) shouldProcessEvent(ctx context.Context, event *Event) 
 
 	// Extract issue IDs from the event
 	issueIDs := ep.extractIssueIDsFromEvent(event)
-	
+
 	// If no issue IDs found, process the event (to avoid missing important events)
 	if len(issueIDs) == 0 {
 		return true, nil
@@ -57,7 +57,7 @@ func (ep *EventProcessor) shouldProcessEvent(ctx context.Context, event *Event) 
 	for _, issueID := range issueIDs {
 		// Create JQL query to check if this specific issue matches the filter
 		jql := fmt.Sprintf("(%s) AND issueKey = %s", ep.config.JQLFilter, issueID)
-		
+
 		// Execute JQL query
 		issues, err := ep.jiraClient.SearchIssues(ctx, jql)
 		if err != nil {
@@ -68,13 +68,13 @@ func (ep *EventProcessor) shouldProcessEvent(ctx context.Context, event *Event) 
 			// If JQL execution fails, process the event to avoid missing important events
 			return true, nil
 		}
-		
+
 		// If any issues match the filter, process the event
 		if len(issues) > 0 {
 			return true, nil
 		}
 	}
-	
+
 	// If none of the issues match the filter, skip processing
 	return false, nil
 }
@@ -82,29 +82,29 @@ func (ep *EventProcessor) shouldProcessEvent(ctx context.Context, event *Event) 
 // extractIssueIDsFromEvent extracts all Jira issue IDs from an event
 func (ep *EventProcessor) extractIssueIDsFromEvent(event *Event) []string {
 	var issueIDs []string
-	
+
 	// Extract from commits
 	for _, commit := range event.Commits {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(commit.Message)...)
 	}
-	
+
 	// Extract from merge request
 	if event.MergeRequest != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.MergeRequest.Title)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.MergeRequest.Description)...)
 	}
-	
+
 	// Extract from issue
 	if event.Issue != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Issue.Title)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Issue.Description)...)
 	}
-	
+
 	// Extract from note
 	if event.Note != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Note.Note)...)
 	}
-	
+
 	// Extract from object attributes
 	if event.ObjectAttributes != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Title)...)
@@ -112,40 +112,40 @@ func (ep *EventProcessor) extractIssueIDsFromEvent(event *Event) []string {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Note)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Ref)...)
 	}
-	
+
 	// Extract from pipeline
 	if event.Pipeline != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Pipeline.Ref)...)
 	}
-	
+
 	// Extract from build
 	if event.Build != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Build.Name)...)
 	}
-	
+
 	// Extract from deployment
 	if event.Deployment != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Deployment.Environment)...)
 	}
-	
+
 	// Extract from release
 	if event.Release != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Release.Name)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Release.Description)...)
 	}
-	
+
 	// Extract from wiki page
 	if event.WikiPage != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.WikiPage.Title)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.WikiPage.Content)...)
 	}
-	
+
 	// Extract from feature flag
 	if event.FeatureFlag != nil {
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.FeatureFlag.Name)...)
 		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.FeatureFlag.Description)...)
 	}
-	
+
 	// Remove duplicates
 	uniqueIssueIDs := make(map[string]bool)
 	var result []string
@@ -155,7 +155,7 @@ func (ep *EventProcessor) extractIssueIDsFromEvent(event *Event) []string {
 			result = append(result, id)
 		}
 	}
-	
+
 	return result
 }
 
@@ -168,7 +168,7 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error 
 			"error", err)
 		// Continue processing even if JQL check fails to avoid missing important events
 	}
-	
+
 	if !shouldProcess {
 		ep.logger.Debug("Skipping event due to JQL filter",
 			"object_kind", event.ObjectKind,

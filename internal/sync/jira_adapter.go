@@ -37,6 +37,6 @@ func (a *JiraSyncAdapter) GetIssue(_ context.Context, _ string) (*jira.JiraIssue
 }
 
 // SetAssignee updates the assignee for a Jira issue using accountId
-func (a *JiraSyncAdapter) SetAssignee(ctx context.Context, issueKey string, accountId string) error {
-	return a.client.SetAssignee(ctx, issueKey, accountId)
+func (a *JiraSyncAdapter) SetAssignee(ctx context.Context, issueKey, accountID string) error {
+	return a.client.SetAssignee(ctx, issueKey, accountID)
 }

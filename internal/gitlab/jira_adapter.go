@@ -47,7 +47,7 @@ func (a *JiraAPIAdapter) SearchIssuesByTitle(_ context.Context, _, _ string) ([]
 
 // FindUserByEmail finds a GitLab user by email
 func (a *JiraAPIAdapter) FindUserByEmail(ctx context.Context, email string) (*jira.GitLabUser, error) {
-	gitlabUser, err := a.client.GetUserByEmail(ctx, email)
+	gitlabUser, err := a.client.FindUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +63,32 @@ func (a *JiraAPIAdapter) FindUserByEmail(ctx context.Context, email string) (*ji
 // TestConnection tests the connection to GitLab API
 func (a *JiraAPIAdapter) TestConnection(ctx context.Context) error {
 	// Simple test by trying to get a user (which will validate the token)
-	_, err := a.client.GetUserByEmail(ctx, "test@example.com")
+	_, err := a.client.FindUserByEmail(ctx, "test@example.com")
 	// We expect this to fail for non-existent email, but if it's an auth error, we'll catch it
 	if err != nil && err.Error() != "user not found for email: test@example.com" {
 		return err
 	}
 	return nil
+}
+
+// GetMilestones retrieves all milestones for a project
+func (a *JiraAPIAdapter) GetMilestones(ctx context.Context, projectID string) ([]*jira.GitLabMilestone, error) {
+	return nil, fmt.Errorf("gitlab get milestones not yet implemented")
+}
+
+// CreateMilestone creates a new milestone in GitLab
+func (a *JiraAPIAdapter) CreateMilestone(ctx context.Context, projectID string, request *jira.GitLabMilestoneCreateRequest) (*jira.GitLabMilestone, error) {
+	return nil, fmt.Errorf("gitlab create milestone not yet implemented")
+}
+
+// UpdateMilestone updates an existing milestone in GitLab
+func (a *JiraAPIAdapter) UpdateMilestone(ctx context.Context, projectID string, milestoneID int, request *jira.GitLabMilestoneUpdateRequest) (*jira.GitLabMilestone, error) {
+	return nil, fmt.Errorf("gitlab update milestone not yet implemented")
+}
+
+// DeleteMilestone deletes a milestone from GitLab
+func (a *JiraAPIAdapter) DeleteMilestone(ctx context.Context, projectID string, milestoneID int) error {
+	return fmt.Errorf("gitlab delete milestone not yet implemented")
 }
 
 // Helper function to convert GitLab user types

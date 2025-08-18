@@ -112,6 +112,10 @@ func (m *mockJiraAPI) GetIssue(ctx context.Context, issueKey string) (*jira.Jira
 	}, nil
 }
 
+func (m *mockJiraAPI) SetAssignee(ctx context.Context, issueKey string, accountID string) error {
+	return nil
+}
+
 func TestSyncManager_SyncJiraToGitLab_Disabled(t *testing.T) {
 	cfg := &config.Config{
 		BidirectionalEnabled: false,

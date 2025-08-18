@@ -85,7 +85,7 @@ func TestValidateADF(t *testing.T) {
 			// Debug output to see what's in the content
 			jsonData, _ := json.Marshal(tt.content)
 			t.Logf("Content JSON: %s", string(jsonData))
-			
+
 			_, err := validateADF(tt.content)
 			if tt.expectError {
 				assert.Error(t, err)
@@ -140,8 +140,8 @@ func TestValidateAndFallback(t *testing.T) {
 		},
 	}
 
-	validatedContent, err := validateAndFallback(validContent)
-	assert.NoError(t, err)
+	validatedContent := validateAndFallback(validContent)
+	// validateAndFallback always returns a valid payload, no error to check
 	assert.Equal(t, validContent, validatedContent)
 
 	// Test with invalid ADF content (invalid type)
@@ -160,8 +160,8 @@ func TestValidateAndFallback(t *testing.T) {
 		},
 	}
 
-	fallbackContent, err := validateAndFallback(invalidContent)
-	assert.NoError(t, err) // validateAndFallback should not return an error, it should fallback successfully
+	fallbackContent := validateAndFallback(invalidContent)
+	// validateAndFallback always returns a valid payload, no error to check
 	assert.Equal(t, "doc", fallbackContent.Body.Type)
 	assert.Equal(t, 1, fallbackContent.Body.Version)
 }

@@ -15,8 +15,8 @@ import (
 
 // EventProcessorMockJiraClient implements the jira client interface for testing
 type EventProcessorMockJiraClient struct {
-	commentsAdded map[string]int
-	connectionOk  bool
+	commentsAdded    map[string]int
+	connectionOk     bool
 	searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
 }
 
@@ -448,11 +448,11 @@ func TestEventProcessor_ShouldProcessEvent(t *testing.T) {
 	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
 	tests := []struct {
-		name          string
-		jqlFilter     string
+		name             string
+		jqlFilter        string
 		searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
-		event         *Event
-		expected      bool
+		event            *Event
+		expected         bool
 	}{
 		{
 			name:      "no JQL filter configured",

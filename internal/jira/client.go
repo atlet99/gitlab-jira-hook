@@ -129,11 +129,8 @@ func (c *Client) getAuthorizationHeader(ctx context.Context) (string, error) {
 //nolint:gocyclo // Complex retry logic is necessary for reliability
 func (c *Client) AddComment(ctx context.Context, issueID string, payload CommentPayload) error {
 	// Validate ADF content and fallback to plain text if validation fails
-	validatedPayload, err := validateAndFallback(payload)
-	if err != nil {
-		// Log the validation error but continue with the fallback content
-		fmt.Printf("ADF validation failed for issue %s: %v\n", issueID, err)
-	}
+	validatedPayload := validateAndFallback(payload)
+	// Note: validateAndFallback always returns a valid payload, no error handling needed
 
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
@@ -178,7 +175,7 @@ func (c *Client) GetTransitions(ctx context.Context, issueKey string) ([]Transit
 
 	// Create request
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -201,7 +198,7 @@ func (c *Client) GetTransitions(ctx context.Context, issueKey string) ([]Transit
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -269,7 +266,7 @@ func (c *Client) ExecuteTransition(ctx context.Context, issueKey, transitionID s
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -294,9 +291,9 @@ func (c *Client) FindTransition(ctx context.Context, issueKey, targetStatus stri
 		return nil, err
 	}
 
-	for _, t := range transitions {
-		if t.To.Name == targetStatus {
-			return &t, nil
+	for i := range transitions {
+		if transitions[i].To.Name == targetStatus {
+			return &transitions[i], nil
 		}
 	}
 
@@ -333,7 +330,7 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (*JiraIssue, err
 
 	// Create request
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -356,7 +353,7 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (*JiraIssue, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -425,15 +422,14 @@ func (c *Client) executeCommentRequest(
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			_ = closeErr // explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 		fmt.Printf("Failed to read response (attempt %d/%d): %s\n", attempt, maxAttempts, err)
 		return false, true, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Close response body
-	if closeErr := resp.Body.Close(); closeErr != nil {
-		_ = closeErr // explicitly ignore the error
+	if err := resp.Body.Close(); err != nil {
+		slog.Error("Failed to close response body", "error", err)
 	}
 
 	// Check response status
@@ -493,9 +489,8 @@ func (c *Client) TestConnection(ctx context.Context) error {
 			return fmt.Errorf("failed to send request: %w", err)
 		}
 
-		// Close response body
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			_ = closeErr // explicitly ignore the error
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("Failed to close response body", "error", err)
 		}
 
 		// Check response status
@@ -525,24 +520,18 @@ func intMin(a, b int) int {
 	return b
 }
 
-// SetAssignee updates the assignee for a Jira issue using accountId
-func (c *Client) SetAssignee(ctx context.Context, issueKey, accountId string) error {
+// executePutRequest executes a PUT request to Jira API with the given payload
+func (c *Client) executePutRequest(ctx context.Context, url string, payload map[string]interface{}) error {
 	// Wait for rate limiter
 	c.rateLimiter.Wait()
-
-	// Create payload
-	payload := map[string]interface{}{
-		"accountId": accountId,
-	}
 
 	// Marshal payload to JSON
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal assignee payload: %w", err)
+		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	// Create request
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -567,7 +556,7 @@ func (c *Client) SetAssignee(ctx context.Context, issueKey, accountId string) er
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -585,6 +574,15 @@ func (c *Client) SetAssignee(ctx context.Context, issueKey, accountId string) er
 	return nil
 }
 
+// SetAssignee updates the assignee for a Jira issue using accountId
+func (c *Client) SetAssignee(ctx context.Context, issueKey, accountID string) error {
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+	payload := map[string]interface{}{
+		"accountId": accountID,
+	}
+	return c.executePutRequest(ctx, url, payload)
+}
+
 // SearchIssues executes a JQL query and returns matching issues
 func (c *Client) SearchIssues(ctx context.Context, jql string) ([]JiraIssue, error) {
 	// Wait for rate limiter
@@ -592,12 +590,12 @@ func (c *Client) SearchIssues(ctx context.Context, jql string) ([]JiraIssue, err
 
 	// Create request
 	url := fmt.Sprintf("%s/rest/api/3/search", c.baseURL)
-	
+
 	// Create payload
 	payload := map[string]interface{}{
 		"jql": jql,
 	}
-	
+
 	// Marshal payload to JSON
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -629,7 +627,7 @@ func (c *Client) SearchIssues(ctx context.Context, jql string) ([]JiraIssue, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -657,62 +655,11 @@ func (c *Client) SearchIssues(ctx context.Context, jql string) ([]JiraIssue, err
 
 // UpdateIssue updates a Jira issue with the given fields
 func (c *Client) UpdateIssue(ctx context.Context, issueKey string, fields map[string]interface{}) error {
-	// Wait for rate limiter
-	c.rateLimiter.Wait()
-
-	// Create payload
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
 	payload := map[string]interface{}{
 		"fields": fields,
 	}
-
-	// Marshal payload to JSON
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal update payload: %w", err)
-	}
-
-	// Create request
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set headers
-	authHeader, err := c.getAuthorizationHeader(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get authorization header: %w", err)
-	}
-	req.Header.Set("Authorization", authHeader)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	// Add context
-	req = req.WithContext(ctx)
-
-	// Send request
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
-		}
-	}()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Check response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	return c.executePutRequest(ctx, url, payload)
 }
 
 // SearchUsers searches for users by email address
@@ -722,7 +669,7 @@ func (c *Client) SearchUsers(ctx context.Context, email string) ([]JiraUser, err
 
 	// Create request
 	url := fmt.Sprintf("%s/rest/api/3/user/search?query=%s", c.baseURL, email)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -745,7 +692,7 @@ func (c *Client) SearchUsers(ctx context.Context, email string) ([]JiraUser, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// explicitly ignore the error
+			slog.Error("Failed to close response body", "error", closeErr)
 		}
 	}()
 

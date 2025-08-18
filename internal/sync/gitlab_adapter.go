@@ -47,7 +47,7 @@ func (g *GitLabSyncAdapter) SearchIssuesByTitle(_ context.Context, _, _ string) 
 
 // FindUserByEmail finds a GitLab user by email
 func (g *GitLabSyncAdapter) FindUserByEmail(ctx context.Context, email string) (*GitLabUser, error) {
-	gitlabUser, err := g.client.GetUserByEmail(ctx, email)
+	gitlabUser, err := g.client.FindUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (g *GitLabSyncAdapter) SetAssignee(_ context.Context, _ string, _ int, _ in
 // TestConnection tests the GitLab API connection
 func (g *GitLabSyncAdapter) TestConnection(ctx context.Context) error {
 	// Simple test by trying to get a user (which will validate the token)
-	_, err := g.client.GetUserByEmail(ctx, "test@example.com")
+	_, err := g.client.FindUserByEmail(ctx, "test@example.com")
 	// We expect this to fail for non-existent email, but if it's an auth error, we'll catch it
 	if err != nil && err.Error() != "user not found for email: test@example.com" {
 		return err

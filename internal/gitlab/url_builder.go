@@ -39,7 +39,7 @@ func (b *URLBuilder) ConstructAuthorURLFromEmail(ctx context.Context, email stri
 	}
 
 	// Try to get user info from GitLab API
-	user, err := b.apiClient.GetUserByEmail(ctx, email)
+	user, err := b.apiClient.FindUserByEmail(ctx, email)
 	if err != nil {
 		b.logger.Debug("Failed to get user from GitLab API",
 			"email", email,
@@ -66,7 +66,7 @@ func (b *URLBuilder) GetUsernameByEmail(ctx context.Context, email string) strin
 		return ""
 	}
 
-	user, err := b.apiClient.GetUserByEmail(ctx, email)
+	user, err := b.apiClient.FindUserByEmail(ctx, email)
 	if err != nil {
 		b.logger.Debug("Failed to get username from GitLab API",
 			"email", email,

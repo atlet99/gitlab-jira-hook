@@ -51,23 +51,23 @@ func TestParseFieldMappings_JSONFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseFieldMappingsJSON(tt.jsonStr)
-			
+
 			// Compare maps
 			if len(result) != len(tt.expected) {
 				t.Errorf("Expected %d fields, got %d", len(tt.expected), len(result))
 			}
-			
+
 			for jiraField, expectedConfig := range tt.expected {
 				actualConfig, exists := result[jiraField]
 				if !exists {
 					t.Errorf("Expected field %s not found", jiraField)
 					continue
 				}
-				
+
 				if len(actualConfig) != len(expectedConfig) {
 					t.Errorf("Field %s: expected %d config items, got %d", jiraField, len(expectedConfig), len(actualConfig))
 				}
-				
+
 				for key, expectedValue := range expectedConfig {
 					actualValue, exists := actualConfig[key]
 					if !exists {
@@ -114,7 +114,7 @@ func TestParseFieldMappings_KeyValueFormat(t *testing.T) {
 			expected: map[string]map[string]string{},
 		},
 		{
-			name: "single field with single config",
+			name:  "single field with single config",
 			value: "customfield_10010:target_field=labels",
 			expected: map[string]map[string]string{
 				"customfield_10010": {
@@ -138,23 +138,23 @@ func TestParseFieldMappings_KeyValueFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseFieldMappingsKeyValue(tt.value)
-			
+
 			// Compare maps
 			if len(result) != len(tt.expected) {
 				t.Errorf("Expected %d fields, got %d", len(tt.expected), len(result))
 			}
-			
+
 			for jiraField, expectedConfig := range tt.expected {
 				actualConfig, exists := result[jiraField]
 				if !exists {
 					t.Errorf("Expected field %s not found", jiraField)
 					continue
 				}
-				
+
 				if len(actualConfig) != len(expectedConfig) {
 					t.Errorf("Field %s: expected %d config items, got %d", jiraField, len(expectedConfig), len(actualConfig))
 				}
-				
+
 				for key, expectedValue := range expectedConfig {
 					actualValue, exists := actualConfig[key]
 					if !exists {
@@ -190,7 +190,7 @@ func TestParseFieldMappings(t *testing.T) {
 			},
 		},
 		{
-			name: "key-value format",
+			name:     "key-value format",
 			envValue: "customfield_10010:target_field=labels,transform=lowercase",
 			expected: map[string]map[string]string{
 				"customfield_10010": {
@@ -221,25 +221,25 @@ func TestParseFieldMappings(t *testing.T) {
 				os.Setenv(envKey, tt.envValue)
 				defer os.Unsetenv(envKey)
 			}
-			
+
 			result := parseFieldMappings(envKey)
-			
+
 			// Compare maps
 			if len(result) != len(tt.expected) {
 				t.Errorf("Expected %d fields, got %d", len(tt.expected), len(result))
 			}
-			
+
 			for jiraField, expectedConfig := range tt.expected {
 				actualConfig, exists := result[jiraField]
 				if !exists {
 					t.Errorf("Expected field %s not found", jiraField)
 					continue
 				}
-				
+
 				if len(actualConfig) != len(expectedConfig) {
 					t.Errorf("Field %s: expected %d config items, got %d", jiraField, len(expectedConfig), len(actualConfig))
 				}
-				
+
 				for key, expectedValue := range expectedConfig {
 					actualValue, exists := actualConfig[key]
 					if !exists {

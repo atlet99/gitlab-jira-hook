@@ -50,6 +50,8 @@ const (
 	MaxJobTimeoutSeconds = 3600
 	// MaxJiraRateLimit is the maximum allowed Jira API rate limit
 	MaxJiraRateLimit = 100
+	// maxSplitParts is the maximum number of parts for string splitting operations
+	maxSplitParts = 2
 	// MaxRetryAttempts is the maximum allowed retry attempts
 	MaxRetryAttempts = 10
 	// MinRetryDelayMs is the minimum retry delay in milliseconds
@@ -206,8 +208,8 @@ type Config struct {
 	JQLFilter string // JQL filter to determine which events to process
 
 	// JWT Configuration for Connect Apps
-	JWTEnabled           bool   // enable JWT validation for Connect apps
-	JWTExpectedAudience string // expected JWT audience (usually your app URL)
+	JWTEnabled          bool     // enable JWT validation for Connect apps
+	JWTExpectedAudience string   // expected JWT audience (usually your app URL)
 	JWTAllowedIssuers   []string // allowed JWT issuers (client keys)
 
 	// Dynamic Field Mapping Configuration
@@ -402,24 +404,23 @@ func NewConfigFromEnv(logger *slog.Logger) *Config {
 	cfg.UserMapping = parseKeyValueMapping("USER_MAPPING")
 	cfg.DefaultGitLabAssignee = getEnv("DEFAULT_GITLAB_ASSIGNEE", "")
 
-	
-		// JQL Filter Configuration
-		cfg.JQLFilter = getEnv("JQL_FILTER", "")
+	// JQL Filter Configuration
+	cfg.JQLFilter = getEnv("JQL_FILTER", "")
 
-		// JWT Configuration for Connect Apps
-		cfg.JWTEnabled = parseBoolEnv("JWT_ENABLED", false)
-		cfg.JWTExpectedAudience = getEnv("JWT_EXPECTED_AUDIENCE", "")
-		cfg.JWTAllowedIssuers = parseCSVEnv("JWT_ALLOWED_ISSUERS")
+	// JWT Configuration for Connect Apps
+	cfg.JWTEnabled = parseBoolEnv("JWT_ENABLED", false)
+	cfg.JWTExpectedAudience = getEnv("JWT_EXPECTED_AUDIENCE", "")
+	cfg.JWTAllowedIssuers = parseCSVEnv("JWT_ALLOWED_ISSUERS")
 
-		// Dynamic Field Mapping Configuration
-		cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
-	
-		// Sync Limits and Safety
-		cfg.SyncBatchSize = parseIntEnv("SYNC_BATCH_SIZE", defaultSyncBatchSize)
-		cfg.SyncRateLimit = parseIntEnv("SYNC_RATE_LIMIT", defaultSyncRateLimit)
-		cfg.SyncRetryAttempts = parseIntEnv("SYNC_RETRY_ATTEMPTS", defaultSyncRetryAttempts)
-		cfg.SkipOldEvents = parseBoolEnv("SKIP_OLD_EVENTS", true)
-		cfg.MaxEventAge = parseIntEnv("MAX_EVENT_AGE", defaultMaxEventAge)
+	// Dynamic Field Mapping Configuration
+	cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
+
+	// Sync Limits and Safety
+	cfg.SyncBatchSize = parseIntEnv("SYNC_BATCH_SIZE", defaultSyncBatchSize)
+	cfg.SyncRateLimit = parseIntEnv("SYNC_RATE_LIMIT", defaultSyncRateLimit)
+	cfg.SyncRetryAttempts = parseIntEnv("SYNC_RETRY_ATTEMPTS", defaultSyncRetryAttempts)
+	cfg.SkipOldEvents = parseBoolEnv("SKIP_OLD_EVENTS", true)
+	cfg.MaxEventAge = parseIntEnv("MAX_EVENT_AGE", defaultMaxEventAge)
 	// Auto-detect worker/queue params if not set
 	cpuCount := runtime.NumCPU()
 	memLimitMB := detectMemoryLimitMB()
@@ -699,7 +700,8 @@ func parseKeyValueMapping(key string) map[string]string {
 }
 
 // parseFieldMappings parses field mappings from environment variable
-// Format: 'jira_field1:target_field=gitlab_field1,transform=rule1,prefix=value1;jira_field2:target_field=gitlab_field2,transform=rule2'
+// Format: 'jira_field1:target_field=gitlab_field1,transform=rule1,prefix=value1;
+// jira_field2:target_field=gitlab_field2,transform=rule2'
 // or JSON format: '{"jira_field1":{"target_field":"gitlab_field1","transform":"rule1","prefix":"value1"}}'
 func parseFieldMappings(key string) map[string]map[string]string {
 	value := getEnv(key, "")
@@ -719,13 +721,13 @@ func parseFieldMappings(key string) map[string]map[string]string {
 // parseFieldMappingsJSON parses field mappings from JSON format
 func parseFieldMappingsJSON(jsonStr string) map[string]map[string]string {
 	result := make(map[string]map[string]string)
-	
+
 	// Parse JSON string into a generic map
 	var rawMap map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &rawMap); err != nil {
 		return result
 	}
-	
+
 	// Convert to the desired format
 	for jiraField, fieldConfig := range rawMap {
 		if configMap, ok := fieldConfig.(map[string]interface{}); ok {
@@ -737,14 +739,14 @@ func parseFieldMappingsJSON(jsonStr string) map[string]map[string]string {
 			}
 		}
 	}
-	
+
 	return result
 }
 
 // parseFieldMappingsKeyValue parses field mappings from key-value format
 func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
 	result := make(map[string]map[string]string)
-	
+
 	// Split by semicolon to get individual field mappings
 	fieldMappings := strings.Split(value, ";")
 	for _, fieldMapping := range fieldMappings {
@@ -752,20 +754,20 @@ func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
 		if fieldMapping == "" {
 			continue
 		}
-		
+
 		// Split by colon to separate Jira field from configuration
-		parts := strings.SplitN(fieldMapping, ":", 2)
-		if len(parts) != 2 {
+		parts := strings.SplitN(fieldMapping, ":", maxSplitParts)
+		if len(parts) != maxSplitParts {
 			continue
 		}
-		
+
 		jiraField := strings.TrimSpace(parts[0])
 		configStr := strings.TrimSpace(parts[1])
-		
+
 		if jiraField == "" || configStr == "" {
 			continue
 		}
-		
+
 		// Parse configuration key-value pairs
 		result[jiraField] = make(map[string]string)
 		configPairs := strings.Split(configStr, ",")
@@ -774,22 +776,22 @@ func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
 			if configPair == "" {
 				continue
 			}
-			
+
 			// Split by equals to get key-value pair
-			configParts := strings.SplitN(configPair, "=", 2)
-			if len(configParts) != 2 {
+			configParts := strings.SplitN(configPair, "=", maxSplitParts)
+			if len(configParts) != maxSplitParts {
 				continue
 			}
-			
+
 			configKey := strings.TrimSpace(configParts[0])
 			configValue := strings.TrimSpace(configParts[1])
-			
+
 			if configKey != "" && configValue != "" {
 				result[jiraField][configKey] = configValue
 			}
 		}
 	}
-	
+
 	return result
 }
 

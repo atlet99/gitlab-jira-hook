@@ -4,8 +4,8 @@ package jira
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,10 +21,17 @@ import (
 // Context keys for user information
 type contextKey string
 
+// HTTP status constants
 const (
-	jiraUserIDKey   contextKey = "jira_user_id"
-	jiraUsernameKey contextKey = "jira_username"
+	successStatusCode = 400
+	requestIDLength   = 16
+)
+
+const (
+	jiraUserIDKey    contextKey = "jira_user_id"
+	jiraUsernameKey  contextKey = "jira_username"
 	jiraClientKeyKey contextKey = "jira_client_key"
+	requestIDKey     contextKey = "request_id"
 )
 
 // responseWriterWrapper captures the status code for audit logging
@@ -51,40 +58,55 @@ func (rw *responseWriterWrapper) Write(b []byte) (int, error) {
 type AuditEventType string
 
 const (
-	AuditEventTypeAPIRequest      AuditEventType = "api_request"
-	AuditEventTypeAPIResponse     AuditEventType = "api_response"
+	// AuditEventTypeAPIRequest represents API request events
+	AuditEventTypeAPIRequest AuditEventType = "api_request"
+	// AuditEventTypeAPIResponse represents API response events
+	AuditEventTypeAPIResponse AuditEventType = "api_response"
+	// AuditEventTypeAuthentication represents authentication events
 	AuditEventTypeAuthentication AuditEventType = "authentication"
-	AuditEventTypeAuthorization   AuditEventType = "authorization"
-	AuditEventTypeDataChange      AuditEventType = "data_change"
+	// AuditEventTypeAuthorization represents authorization events
+	AuditEventTypeAuthorization AuditEventType = "authorization"
+	// AuditEventTypeDataChange represents data change events
+	AuditEventTypeDataChange AuditEventType = "data_change"
+	// AuditEventTypeSystemOperation represents system operation events
 	AuditEventTypeSystemOperation AuditEventType = "system_operation"
-	AuditEventTypeError           AuditEventType = "error"
+	// AuditEventTypeError represents error events
+	AuditEventTypeError AuditEventType = "error"
+)
+
+// String constants for audit logging
+const (
+	StatusSuccess = "success"
+	StatusFailed  = "failed"
+	RedactedText  = "***REDACTED***"
+	ActionReopen  = "reopen"
 )
 
 // AuditEvent represents an audit log entry
 type AuditEvent struct {
-	ID            string                 `json:"id"`
-	Timestamp     time.Time              `json:"timestamp"`
-	EventType     AuditEventType         `json:"event_type"`
-	Category      string                 `json:"category"`
-	Action        string                 `json:"action"`
-	Status        string                 `json:"status"`
-	StatusCode    int                    `json:"status_code,omitempty"`
-	UserID        string                 `json:"user_id,omitempty"`
-	Username      string                 `json:"username,omitempty"`
-	ClientIP      string                 `json:"client_ip,omitempty"`
-	UserAgent     string                 `json:"user_agent,omitempty"`
-	RequestID     string                 `json:"request_id,omitempty"`
-	ResourceType  string                 `json:"resource_type,omitempty"`
-	ResourceID    string                 `json:"resource_id,omitempty"`
-	Method        string                 `json:"method,omitempty"`
-	Path          string                 `json:"path,omitempty"`
-	QueryParams   map[string]interface{} `json:"query_params,omitempty"`
-	RequestData   map[string]interface{} `json:"request_data,omitempty"`
-	ResponseData  map[string]interface{} `json:"response_data,omitempty"`
-	Error         string                 `json:"error,omitempty"`
-	Duration      int64                  `json:"duration_ms,omitempty"`
-	Tags          []string               `json:"tags,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	ID           string                 `json:"id"`
+	Timestamp    time.Time              `json:"timestamp"`
+	EventType    AuditEventType         `json:"event_type"`
+	Category     string                 `json:"category"`
+	Action       string                 `json:"action"`
+	Status       string                 `json:"status"`
+	StatusCode   int                    `json:"status_code,omitempty"`
+	UserID       string                 `json:"user_id,omitempty"`
+	Username     string                 `json:"username,omitempty"`
+	ClientIP     string                 `json:"client_ip,omitempty"`
+	UserAgent    string                 `json:"user_agent,omitempty"`
+	RequestID    string                 `json:"request_id,omitempty"`
+	ResourceType string                 `json:"resource_type,omitempty"`
+	ResourceID   string                 `json:"resource_id,omitempty"`
+	Method       string                 `json:"method,omitempty"`
+	Path         string                 `json:"path,omitempty"`
+	QueryParams  map[string]interface{} `json:"query_params,omitempty"`
+	RequestData  map[string]interface{} `json:"request_data,omitempty"`
+	ResponseData map[string]interface{} `json:"response_data,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+	Duration     int64                  `json:"duration_ms,omitempty"`
+	Tags         []string               `json:"tags,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // AuditLogger handles audit logging operations
@@ -103,24 +125,26 @@ func NewAuditLogger(logger *slog.Logger) *AuditLogger {
 func (al *AuditLogger) LogEvent(event *AuditEvent) {
 	// Convert event to structured log fields
 	fields := make([]interface{}, 0)
-	fields = append(fields, "audit_event", event.EventType)
-	fields = append(fields, "audit_category", event.Category)
-	fields = append(fields, "audit_action", event.Action)
-	fields = append(fields, "audit_status", event.Status)
-	fields = append(fields, "audit_timestamp", event.Timestamp)
-	fields = append(fields, "audit_user_id", event.UserID)
-	fields = append(fields, "audit_username", event.Username)
-	fields = append(fields, "audit_client_ip", event.ClientIP)
-	fields = append(fields, "audit_user_agent", event.UserAgent)
-	fields = append(fields, "audit_request_id", event.RequestID)
-	fields = append(fields, "audit_resource_type", event.ResourceType)
-	fields = append(fields, "audit_resource_id", event.ResourceID)
-	fields = append(fields, "audit_method", event.Method)
-	fields = append(fields, "audit_path", event.Path)
-	fields = append(fields, "audit_status_code", event.StatusCode)
-	fields = append(fields, "audit_error", event.Error)
-	fields = append(fields, "audit_duration_ms", event.Duration)
-	fields = append(fields, "audit_tags", event.Tags)
+	fields = append(fields,
+		"audit_event", event.EventType,
+		"audit_category", event.Category,
+		"audit_action", event.Action,
+		"audit_status", event.Status,
+		"audit_timestamp", event.Timestamp,
+		"audit_user_id", event.UserID,
+		"audit_username", event.Username,
+		"audit_client_ip", event.ClientIP,
+		"audit_user_agent", event.UserAgent,
+		"audit_request_id", event.RequestID,
+		"audit_resource_type", event.ResourceType,
+		"audit_resource_id", event.ResourceID,
+		"audit_method", event.Method,
+		"audit_path", event.Path,
+		"audit_status_code", event.StatusCode,
+		"audit_error", event.Error,
+		"audit_duration_ms", event.Duration,
+		"audit_tags", event.Tags,
+	)
 
 	// Add metadata as key-value pairs
 	for k, v := range event.Metadata {
@@ -129,9 +153,9 @@ func (al *AuditLogger) LogEvent(event *AuditEvent) {
 
 	// Log the event
 	switch event.Status {
-	case "success":
+	case StatusSuccess:
 		al.logger.Info("Audit event", fields...)
-	case "failed":
+	case StatusFailed:
 		al.logger.Error("Audit event", fields...)
 	default:
 		al.logger.Info("Audit event", fields...)
@@ -139,33 +163,45 @@ func (al *AuditLogger) LogEvent(event *AuditEvent) {
 }
 
 // LogAPIRequest logs an API request
-func (al *AuditLogger) LogAPIRequest(r *http.Request, requestID string, userID, username string, startTime time.Time, tags ...string) {
+func (al *AuditLogger) LogAPIRequest(
+	r *http.Request,
+	requestID, userID, username string,
+	startTime time.Time,
+	tags ...string,
+) {
 	event := &AuditEvent{
-		ID:        generateRequestID(),
-		Timestamp: startTime,
-		EventType: AuditEventTypeAPIRequest,
-		Category:  "api",
-		Action:    "request",
-		Status:    "success",
-		UserID:    userID,
-		Username:  username,
-		ClientIP:  getClientIP(r),
-		UserAgent: r.UserAgent(),
-		RequestID: requestID,
-		Method:    r.Method,
-		Path:      r.URL.Path,
+		ID:          generateRequestID(),
+		Timestamp:   startTime,
+		EventType:   AuditEventTypeAPIRequest,
+		Category:    "api",
+		Action:      "request",
+		Status:      "success",
+		UserID:      userID,
+		Username:    username,
+		ClientIP:    getClientIP(r),
+		UserAgent:   r.UserAgent(),
+		RequestID:   requestID,
+		Method:      r.Method,
+		Path:        r.URL.Path,
 		QueryParams: extractQueryParams(r),
-		Tags:      tags,
-		Metadata:  make(map[string]interface{}),
+		Tags:        tags,
+		Metadata:    make(map[string]interface{}),
 	}
 
 	al.LogEvent(event)
 }
 
 // LogAPIResponse logs an API response
-func (al *AuditLogger) LogAPIResponse(r *http.Request, requestID string, userID, username string, startTime time.Time, statusCode int, responseData interface{}, tags ...string) {
+func (al *AuditLogger) LogAPIResponse(
+	r *http.Request,
+	requestID, userID, username string,
+	startTime time.Time,
+	statusCode int,
+	responseData interface{},
+	tags ...string,
+) {
 	duration := time.Since(startTime).Milliseconds()
-	
+
 	event := &AuditEvent{
 		ID:         generateRequestID(),
 		Timestamp:  time.Now(),
@@ -194,7 +230,12 @@ func (al *AuditLogger) LogAPIResponse(r *http.Request, requestID string, userID,
 }
 
 // LogAuthentication logs authentication events
-func (al *AuditLogger) LogAuthentication(r *http.Request, requestID string, authType, userID, username string, success bool, errorDetails string) {
+func (al *AuditLogger) LogAuthentication(
+	r *http.Request,
+	requestID, authType, userID, username string,
+	success bool,
+	errorDetails string,
+) {
 	event := &AuditEvent{
 		ID:        generateRequestID(),
 		Timestamp: time.Now(),
@@ -217,18 +258,23 @@ func (al *AuditLogger) LogAuthentication(r *http.Request, requestID string, auth
 }
 
 // LogAuthorization logs authorization events
-func (al *AuditLogger) LogAuthorization(r *http.Request, requestID string, resourceType, resourceID, action string, success bool, errorDetails string) {
+func (al *AuditLogger) LogAuthorization(
+	r *http.Request,
+	requestID, resourceType, resourceID, action string,
+	success bool,
+	errorDetails string,
+) {
 	event := &AuditEvent{
-		ID:         generateRequestID(),
-		Timestamp:  time.Now(),
-		EventType:  AuditEventTypeAuthorization,
-		Category:   "security",
-		Action:     action,
-		Status:     getAuthStatus(success),
-		UserID:     getUserIDFromContext(r.Context()),
-		ClientIP:   getClientIP(r),
-		UserAgent:  r.UserAgent(),
-		RequestID:  requestID,
+		ID:           generateRequestID(),
+		Timestamp:    time.Now(),
+		EventType:    AuditEventTypeAuthorization,
+		Category:     "security",
+		Action:       action,
+		Status:       getAuthStatus(success),
+		UserID:       getUserIDFromContext(r.Context()),
+		ClientIP:     getClientIP(r),
+		UserAgent:    r.UserAgent(),
+		RequestID:    requestID,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
 		Error:        errorDetails,
@@ -243,19 +289,24 @@ func (al *AuditLogger) LogAuthorization(r *http.Request, requestID string, resou
 }
 
 // LogDataChange logs data change events
-func (al *AuditLogger) LogDataChange(r *http.Request, requestID string, resourceType, resourceID, action string, changes map[string]interface{}, userID, username string) {
+func (al *AuditLogger) LogDataChange(
+	r *http.Request,
+	requestID, resourceType, resourceID, action string,
+	changes map[string]interface{},
+	userID, username string,
+) {
 	event := &AuditEvent{
-		ID:         generateRequestID(),
-		Timestamp:  time.Now(),
-		EventType:  AuditEventTypeDataChange,
-		Category:   "data",
-		Action:     action,
-		Status:     "success",
-		UserID:     userID,
-		Username:   username,
-		ClientIP:   getClientIP(r),
-		UserAgent:  r.UserAgent(),
-		RequestID:  requestID,
+		ID:           generateRequestID(),
+		Timestamp:    time.Now(),
+		EventType:    AuditEventTypeDataChange,
+		Category:     "data",
+		Action:       action,
+		Status:       "success",
+		UserID:       userID,
+		Username:     username,
+		ClientIP:     getClientIP(r),
+		UserAgent:    r.UserAgent(),
+		RequestID:    requestID,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
 		RequestData:  sanitizeSensitiveData(changes).(map[string]interface{}),
@@ -270,7 +321,12 @@ func (al *AuditLogger) LogDataChange(r *http.Request, requestID string, resource
 }
 
 // LogSystemOperation logs system operation events
-func (al *AuditLogger) LogSystemOperation(operation string, success bool, errorDetails string, metadata map[string]interface{}) {
+func (al *AuditLogger) LogSystemOperation(
+	operation string,
+	success bool,
+	errorDetails string,
+	metadata map[string]interface{},
+) {
 	event := &AuditEvent{
 		ID:        generateRequestID(),
 		Timestamp: time.Now(),
@@ -286,7 +342,7 @@ func (al *AuditLogger) LogSystemOperation(operation string, success bool, errorD
 }
 
 // LogError logs error events
-func (al *AuditLogger) LogError(r *http.Request, requestID string, errorType, errorDetails string, tags ...string) {
+func (al *AuditLogger) LogError(r *http.Request, requestID, errorType, errorDetails string, tags ...string) {
 	event := &AuditEvent{
 		ID:        generateRequestID(),
 		Timestamp: time.Now(),
@@ -312,9 +368,9 @@ func (al *AuditLogger) LogError(r *http.Request, requestID string, errorType, er
 
 func getResponseStatus(statusCode int) string {
 	if statusCode >= 200 && statusCode < 300 {
-		return "success"
+		return StatusSuccess
 	}
-	return "failed"
+	return StatusFailed
 }
 
 func getAuthStatus(success bool) string {
@@ -352,7 +408,7 @@ func getClientIP(r *http.Request) string {
 
 func extractQueryParams(r *http.Request) map[string]interface{} {
 	params := make(map[string]interface{})
-	
+
 	for key, values := range r.URL.Query() {
 		if len(values) == 1 {
 			params[key] = values[0]
@@ -360,20 +416,20 @@ func extractQueryParams(r *http.Request) map[string]interface{} {
 			params[key] = values
 		}
 	}
-	
+
 	return params
 }
 
 func sanitizeResponseData(data interface{}) map[string]interface{} {
 	// This is a basic implementation - in production, you'd want more sophisticated sanitization
 	result := make(map[string]interface{})
-	
+
 	switch v := data.(type) {
 	case map[string]interface{}:
 		for key, value := range v {
 			// Mask sensitive fields
 			if isSensitiveField(key) {
-				result[key] = "***REDACTED***"
+				result[key] = RedactedText
 			} else {
 				result[key] = value
 			}
@@ -388,7 +444,7 @@ func sanitizeResponseData(data interface{}) map[string]interface{} {
 	default:
 		result["data"] = fmt.Sprintf("%v", v)
 	}
-	
+
 	return result
 }
 
@@ -399,7 +455,7 @@ func sanitizeSensitiveData(data interface{}) interface{} {
 		result := make(map[string]interface{})
 		for key, value := range v {
 			if isSensitiveField(key) {
-				result[key] = "***REDACTED***"
+				result[key] = RedactedText
 			} else {
 				result[key] = sanitizeSensitiveData(value)
 			}
@@ -421,14 +477,14 @@ func isSensitiveField(field string) bool {
 		"password", "token", "secret", "key", "auth", "credential",
 		"email", "phone", "address", "ssn", "credit_card",
 	}
-	
+
 	fieldLower := strings.ToLower(field)
 	for _, sensitiveField := range sensitiveFields {
 		if strings.Contains(fieldLower, sensitiveField) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -437,14 +493,14 @@ func containsSensitiveData(data string) bool {
 		"password=", "token=", "secret=", "key=",
 		"@", "phone:", "address:",
 	}
-	
+
 	dataLower := strings.ToLower(data)
 	for _, pattern := range sensitivePatterns {
 		if strings.Contains(dataLower, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -470,15 +526,24 @@ type APIErrorResponse struct {
 type ErrorType string
 
 const (
-	ErrorTypeValidation    ErrorType = "validation"
+	// ErrorTypeValidation represents validation errors
+	ErrorTypeValidation ErrorType = "validation"
+	// ErrorTypeAuthentication represents authentication errors
 	ErrorTypeAuthentication ErrorType = "authentication"
-	ErrorTypeAuthorization  ErrorType = "authorization"
-	ErrorTypeNotFound      ErrorType = "not_found"
-	ErrorTypeConflict      ErrorType = "conflict"
-	ErrorTypeRateLimit     ErrorType = "rate_limit"
-	ErrorTypeServer        ErrorType = "server"
-	ErrorTypeClient        ErrorType = "client"
-	ErrorTypeTimeout       ErrorType = "timeout"
+	// ErrorTypeAuthorization represents authorization errors
+	ErrorTypeAuthorization ErrorType = "authorization"
+	// ErrorTypeNotFound represents not found errors
+	ErrorTypeNotFound ErrorType = "not_found"
+	// ErrorTypeConflict represents conflict errors
+	ErrorTypeConflict ErrorType = "conflict"
+	// ErrorTypeRateLimit represents rate limit errors
+	ErrorTypeRateLimit ErrorType = "rate_limit"
+	// ErrorTypeServer represents server errors
+	ErrorTypeServer ErrorType = "server"
+	// ErrorTypeClient represents client errors
+	ErrorTypeClient ErrorType = "client"
+	// ErrorTypeTimeout represents timeout errors
+	ErrorTypeTimeout ErrorType = "timeout"
 )
 
 // APIError represents a detailed API error
@@ -581,7 +646,6 @@ func WriteSuccessResponse(w http.ResponseWriter, r *http.Request, data interface
 	}
 }
 
-
 // HandleErrorWithMetrics handles an error and records metrics
 func HandleErrorWithMetrics(r *http.Request, apiError *APIError, start time.Time, monitor *monitoring.WebhookMonitor) {
 	requestPath := r.URL.Path
@@ -590,7 +654,6 @@ func HandleErrorWithMetrics(r *http.Request, apiError *APIError, start time.Time
 	// Record error metrics
 	if monitor != nil {
 		monitor.RecordRequest(requestPath, false, time.Since(start))
-		
 	}
 
 	slog.Error("API request failed",
@@ -612,9 +675,9 @@ func WrapHandler(handler http.HandlerFunc, monitor *monitoring.WebhookMonitor) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		requestID := generateRequestID()
-		
+
 		// Add request ID to context
-		ctx := context.WithValue(r.Context(), "request_id", requestID)
+		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 		r = r.WithContext(ctx)
 
 		// Add request ID to response headers
@@ -628,7 +691,7 @@ func WrapHandler(handler http.HandlerFunc, monitor *monitoring.WebhookMonitor) h
 
 		// Record metrics if monitor is available
 		if monitor != nil {
-			monitor.RecordRequest(r.URL.Path, rw.statusCode < 400, time.Since(start))
+			monitor.RecordRequest(r.URL.Path, rw.statusCode < successStatusCode, time.Since(start))
 		}
 
 		// Log request completion
@@ -656,9 +719,14 @@ func RecoverPanic(r *http.Request) *APIError {
 		} else {
 			requestID = generateRequestID()
 		}
-		
+
 		slog.Error("Recovered from panic", "panic", panicValue, "request_id", requestID)
-		return NewAPIError(ErrorTypeServer, "internal_server_error", "An unexpected error occurred", http.StatusInternalServerError)
+		return NewAPIError(
+			ErrorTypeServer,
+			"internal_server_error",
+			"an unexpected error occurred",
+			http.StatusInternalServerError,
+		)
 	}
 	return nil
 }
@@ -751,40 +819,41 @@ type GitLabComment struct {
 
 // GitLabMilestone represents a GitLab milestone
 type GitLabMilestone struct {
-	ID          int       `json:"id"`
-	IID         int       `json:"iid"`
-	ProjectID   int       `json:"project_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
+	ID          int        `json:"id"`
+	IID         int        `json:"iid"`
+	ProjectID   int        `json:"project_id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
 	DueDate     *time.Time `json:"due_date"`
 	StartDate   *time.Time `json:"start_date"`
-	State       string    `json:"state"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	WebURL      string    `json:"web_url"`
+	State       string     `json:"state"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	WebURL      string     `json:"web_url"`
 }
 
 // GitLabMilestoneCreateRequest represents a request to create a milestone
 type GitLabMilestoneCreateRequest struct {
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
 	DueDate     *time.Time `json:"due_date"`
 	StartDate   *time.Time `json:"start_date"`
 }
 
 // GitLabMilestoneUpdateRequest represents a request to update a milestone
 type GitLabMilestoneUpdateRequest struct {
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
 	DueDate     *time.Time `json:"due_date"`
 	StartDate   *time.Time `json:"start_date"`
-	StateEvent  string    `json:"state_event"`
+	StateEvent  string     `json:"state_event"`
 }
 
 // WebhookHandler handles incoming Jira webhook requests
 type WebhookHandler struct {
 	config        *config.Config
 	logger        *slog.Logger
+	jiraClient    *Client
 	gitlabClient  GitLabAPIClient
 	monitor       *monitoring.WebhookMonitor
 	workerPool    webhook.WorkerPoolInterface
@@ -809,6 +878,11 @@ func NewWebhookHandler(cfg *config.Config, logger *slog.Logger) *WebhookHandler 
 		authValidator: authValidator,
 		auditLogger:   auditLogger,
 	}
+}
+
+// SetJiraClient sets the Jira API client
+func (h *WebhookHandler) SetJiraClient(client *Client) {
+	h.jiraClient = client
 }
 
 // SetAuditLogger sets the audit logger for the webhook handler
@@ -886,70 +960,30 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if r.Method != http.MethodPost {
-			apiError := NewAPIError(ErrorTypeClient, "method_not_allowed", "Only POST method is allowed", http.StatusMethodNotAllowed)
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "method_not_allowed", apiError.Error(), "webhook")
+		// Validate request method
+		if err := h.validateRequestMethod(w, r, start, requestID); err != nil {
 			return
 		}
 
-		// Read request body
-		body, err := io.ReadAll(r.Body)
+		// Read and validate request body
+		body, err := h.readAndValidateRequestBody(w, r, start, requestID)
 		if err != nil {
-			apiError := NewAPIErrorWithDetails(ErrorTypeClient, "read_failed", "Failed to read request body", err.Error(), http.StatusBadRequest)
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "read_failed", apiError.Error(), "webhook")
-			return
-		}
-		if closeErr := r.Body.Close(); closeErr != nil {
-			h.logger.Warn("Failed to close request body", "error", closeErr)
-		}
-
-		// Validate authentication (HMAC signature or JWT)
-		authResult := h.authValidator.ValidateRequest(r.Context(), r, body)
-		h.authValidator.LogAuthenticationAttempt(r, authResult)
-
-		// Log authentication event
-		authType := "unknown"
-		if authResult.AuthType != AuthTypeNone {
-			authType = string(authResult.AuthType)
-		}
-		h.auditLogger.LogAuthentication(r, requestID, authType, authResult.UserID, "", authResult.Valid, "")
-
-		if !authResult.Valid {
-			authError := h.authValidator.CreateAuthError(authResult, "webhook processing")
-			apiError := NewAPIErrorWithDetails(ErrorTypeAuthentication, "auth_failed", "Authentication failed", authError.Error(), http.StatusUnauthorized)
-			apiError.Suggestion = "Please check your webhook secret configuration and ensure the request is properly signed."
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "authentication_failed", apiError.Error(), "webhook")
 			return
 		}
 
-		// Add authentication context for processing
-		authContext := h.authValidator.GetUserContext(authResult)
-		if authResult.UserID != "" {
-			r = r.WithContext(context.WithValue(r.Context(), jiraUserIDKey, authResult.UserID))
-		}
-		if authResult.IssuerClientKey != "" {
-			r = r.WithContext(context.WithValue(r.Context(), jiraClientKeyKey, authResult.IssuerClientKey))
+		// Validate authentication
+		authResult, err := h.validateAuthentication(w, r, body, start, requestID)
+		if err != nil {
+			return
 		}
 
-		h.logger.Info("Authentication successful",
-			"auth_type", authResult.AuthType,
-			"auth_context", authContext,
-			"request_id", requestID)
+		// Add authentication context
+		h.addAuthenticationContext(r, authResult)
 
 		// Parse webhook event
 		event, err := h.parseWebhookEvent(body)
 		if err != nil {
-			apiError := NewAPIErrorWithDetails(ErrorTypeValidation, "parse_failed", "Failed to parse Jira webhook event", err.Error(), http.StatusBadRequest)
-			apiError.Suggestion = "Please ensure the webhook event payload is valid JSON and matches the expected Jira webhook format."
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "parse_failed", apiError.Error(), "webhook")
+			h.handleParseError(w, err, start, requestID)
 			return
 		}
 
@@ -958,33 +992,11 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			h.logWebhookEvent(r, event)
 		}
 
-		// Log data change event for webhook processing
-		webhookData := map[string]interface{}{
-			"event_type": event.WebhookEvent,
-			"issue_key":  getIssueKey(event),
-			"timestamp":  event.Timestamp,
-		}
-		h.auditLogger.LogDataChange(r, requestID, "webhook", getIssueKey(event), "process", webhookData, authResult.UserID, "")
-
-		// Convert to interface event for async processing
-		interfaceEvent := h.convertToInterfaceEvent(event)
+		// Log data change event
+		h.logWebhookProcessing(r, event, requestID, authResult)
 
 		// Submit job for async processing
-		if h.workerPool == nil {
-			apiError := NewAPIError(ErrorTypeServer, "worker_pool_unavailable", "Worker pool not initialized", http.StatusServiceUnavailable)
-			apiError.Suggestion = "The service is currently unavailable. Please try again later."
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "worker_pool_unavailable", apiError.Error(), "webhook")
-			return
-		}
-
-		if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
-			apiError := NewAPIErrorWithDetails(ErrorTypeServer, "job_submission_failed", "Failed to submit job to worker pool", err.Error(), http.StatusInternalServerError)
-			apiError.Suggestion = "The webhook could not be processed. Please try again later."
-			HandleErrorWithMetrics(r, apiError, start, h.monitor)
-			WriteErrorResponse(w, r, apiError)
-			h.auditLogger.LogError(r, requestID, "job_submission_failed", apiError.Error(), "webhook")
+		if err := h.submitAsyncJob(w, event, requestID); err != nil {
 			return
 		}
 
@@ -1006,6 +1018,186 @@ func (h *WebhookHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	WrapHandler(handler, h.monitor).ServeHTTP(w, r)
 }
 
+// validateRequestMethod validates the HTTP request method
+func (h *WebhookHandler) validateRequestMethod(
+	w http.ResponseWriter,
+	r *http.Request,
+	start time.Time,
+	requestID string,
+) error {
+	if r.Method != http.MethodPost {
+		apiError := NewAPIError(
+			ErrorTypeClient,
+			"method_not_allowed",
+			"only post method is allowed",
+			http.StatusMethodNotAllowed,
+		)
+		HandleErrorWithMetrics(r, apiError, start, h.monitor)
+		WriteErrorResponse(w, r, apiError)
+		h.auditLogger.LogError(r, requestID, "method_not_allowed", apiError.Error(), "webhook")
+		return apiError
+	}
+	return nil
+}
+
+// readAndValidateRequestBody reads and validates the request body
+func (h *WebhookHandler) readAndValidateRequestBody(
+	w http.ResponseWriter,
+	r *http.Request,
+	start time.Time,
+	requestID string,
+) ([]byte, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		apiError := NewAPIErrorWithDetails(
+			ErrorTypeClient,
+			"read_failed",
+			"failed to read request body",
+			err.Error(),
+			http.StatusBadRequest,
+		)
+		HandleErrorWithMetrics(r, apiError, start, h.monitor)
+		WriteErrorResponse(w, r, apiError)
+		h.auditLogger.LogError(r, requestID, "read_failed", apiError.Error(), "webhook")
+		return nil, apiError
+	}
+	if closeErr := r.Body.Close(); closeErr != nil {
+		h.logger.Warn("Failed to close request body", "error", closeErr)
+	}
+	return body, nil
+}
+
+// validateAuthentication validates the request authentication
+func (h *WebhookHandler) validateAuthentication(
+	w http.ResponseWriter,
+	r *http.Request,
+	body []byte,
+	start time.Time,
+	requestID string,
+) (*AuthValidationResult, error) {
+	// Validate authentication (HMAC signature or JWT)
+	authResult := h.authValidator.ValidateRequest(r.Context(), r, body)
+	h.authValidator.LogAuthenticationAttempt(r, authResult)
+
+	// Log authentication event
+	authType := "unknown"
+	if authResult.AuthType != AuthTypeNone {
+		authType = string(authResult.AuthType)
+	}
+	h.auditLogger.LogAuthentication(r, requestID, authType, authResult.UserID, "", authResult.Valid, "")
+
+	if !authResult.Valid {
+		authError := h.authValidator.CreateAuthError(authResult, "webhook processing")
+		apiError := NewAPIErrorWithDetails(
+			ErrorTypeAuthentication,
+			"auth_failed",
+			"authentication failed",
+			authError.Error(),
+			http.StatusUnauthorized,
+		)
+		apiError.Suggestion = "Please check your webhook secret configuration and ensure the request is properly signed."
+		HandleErrorWithMetrics(r, apiError, start, h.monitor)
+		WriteErrorResponse(w, r, apiError)
+		h.auditLogger.LogError(r, requestID, "authentication_failed", apiError.Error(), "webhook")
+		return nil, apiError
+	}
+
+	return authResult, nil
+}
+
+// addAuthenticationContext adds authentication context to the request
+func (h *WebhookHandler) addAuthenticationContext(r *http.Request, authResult *AuthValidationResult) {
+	authContext := h.authValidator.GetUserContext(authResult)
+	if authResult.UserID != "" {
+		r = r.WithContext(context.WithValue(r.Context(), jiraUserIDKey, authResult.UserID))
+	}
+	if authResult.IssuerClientKey != "" {
+		_ = r.WithContext(context.WithValue(r.Context(), jiraClientKeyKey, authResult.IssuerClientKey))
+	}
+
+	h.logger.Info("Authentication successful",
+		"auth_type", authResult.AuthType,
+		"auth_context", authContext)
+}
+
+// handleParseError handles webhook event parsing errors
+func (h *WebhookHandler) handleParseError(w http.ResponseWriter, err error, start time.Time, requestID string) {
+	apiError := NewAPIErrorWithDetails(
+		ErrorTypeValidation,
+		"parse_failed",
+		"failed to parse jira webhook event",
+		err.Error(),
+		http.StatusBadRequest,
+	)
+	apiError.Suggestion = "please ensure the webhook event payload is valid json " +
+		"and matches the expected jira webhook format."
+	HandleErrorWithMetrics(nil, apiError, start, h.monitor)
+	WriteErrorResponse(w, nil, apiError)
+	h.auditLogger.LogError(nil, requestID, "parse_failed", apiError.Error(), "webhook")
+}
+
+// logWebhookProcessing logs webhook processing data change event
+func (h *WebhookHandler) logWebhookProcessing(
+	r *http.Request,
+	event *WebhookEvent,
+	requestID string,
+	authResult *AuthValidationResult,
+) {
+	webhookData := map[string]interface{}{
+		"event_type": event.WebhookEvent,
+		"issue_key":  getIssueKey(event),
+		"timestamp":  event.Timestamp,
+	}
+	h.auditLogger.LogDataChange(
+		r,
+		requestID,
+		"webhook",
+		getIssueKey(event),
+		"process",
+		webhookData,
+		authResult.UserID,
+		"",
+	)
+}
+
+// submitAsyncJob submits the webhook job for async processing
+func (h *WebhookHandler) submitAsyncJob(w http.ResponseWriter, event *WebhookEvent, requestID string) error {
+	// Convert to interface event for async processing
+	interfaceEvent := h.convertToInterfaceEvent(event)
+
+	// Submit job for async processing
+	if h.workerPool == nil {
+		apiError := NewAPIError(
+			ErrorTypeServer,
+			"worker_pool_unavailable",
+			"worker pool not initialized",
+			http.StatusServiceUnavailable,
+		)
+		apiError.Suggestion = "The service is currently unavailable. Please try again later."
+		HandleErrorWithMetrics(nil, apiError, time.Now(), h.monitor)
+		WriteErrorResponse(w, nil, apiError)
+		h.auditLogger.LogError(nil, requestID, "worker_pool_unavailable", apiError.Error(), "webhook")
+		return apiError
+	}
+
+	if err := h.workerPool.SubmitJob(interfaceEvent, h); err != nil {
+		apiError := NewAPIErrorWithDetails(
+			ErrorTypeServer,
+			"job_submission_failed",
+			"failed to submit job to worker pool",
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		apiError.Suggestion = "The webhook could not be processed. Please try again later."
+		HandleErrorWithMetrics(nil, apiError, time.Now(), h.monitor)
+		WriteErrorResponse(w, nil, apiError)
+		h.auditLogger.LogError(nil, requestID, "job_submission_failed", apiError.Error(), "webhook")
+		return apiError
+	}
+
+	return nil
+}
+
 // Helper functions for audit logging
 
 func getStatusCodeFromResponseWriter(w http.ResponseWriter) int {
@@ -1024,14 +1216,13 @@ func getUsernameFromContext(ctx context.Context) string {
 
 // generateRequestID generates a unique request ID for audit logging
 func generateRequestID() string {
-	bytes := make([]byte, 16)
+	bytes := make([]byte, requestIDLength)
 	if _, err := rand.Read(bytes); err != nil {
 		// Fallback to timestamp-based ID if random generation fails
 		return fmt.Sprintf("req_%d", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("req_%s", hex.EncodeToString(bytes))
 }
-
 
 // HandleGitLabWebhook handles incoming GitLab webhook requests for bidirectional sync
 func (h *WebhookHandler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
@@ -1046,15 +1237,15 @@ func (h *WebhookHandler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Requ
 	}()
 
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.logger.Error("Failed to read GitLab webhook body", "error", err)
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		h.logger.Error("failed to read GitLab webhook body", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 	if closeErr := r.Body.Close(); closeErr != nil {
@@ -1064,8 +1255,8 @@ func (h *WebhookHandler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Requ
 	// Parse GitLab webhook event
 	var gitlabEvent GitLabWebhookEvent
 	if err := json.Unmarshal(body, &gitlabEvent); err != nil {
-		h.logger.Error("Failed to parse GitLab webhook event", "error", err)
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		h.logger.Error("failed to parse GitLab webhook event", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
@@ -1082,8 +1273,8 @@ func (h *WebhookHandler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Requ
 
 	// Process the GitLab issue event
 	if err := h.processGitLabIssueEvent(r.Context(), &gitlabEvent); err != nil {
-		h.logger.Error("Failed to process GitLab issue event", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		h.logger.Error("failed to process GitLab issue event", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -1098,38 +1289,38 @@ func (h *WebhookHandler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Requ
 
 // GitLabWebhookEvent represents a GitLab webhook event
 type GitLabWebhookEvent struct {
-	ObjectKind string                 `json:"object_kind"`
+	ObjectKind       string           `json:"object_kind"`
 	ObjectAttributes GitLabIssueEvent `json:"object_attributes"`
-	User       GitLabUser            `json:"user"`
-	Project    GitLabProject         `json:"project"`
+	User             GitLabUser       `json:"user"`
+	Project          GitLabProject    `json:"project"`
 }
 
 // GitLabIssueEvent represents GitLab issue event attributes
 type GitLabIssueEvent struct {
-	ID        int    `json:"id"`
-	IID       int    `json:"iid"`
-	Title     string `json:"title"`
+	ID          int    `json:"id"`
+	IID         int    `json:"iid"`
+	Title       string `json:"title"`
 	Description string `json:"description"`
-	State     string `json:"state"`
-	Action    string `json:"action"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	State       string `json:"state"`
+	Action      string `json:"action"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // GitLabProject represents GitLab project information
 type GitLabProject struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
 	NameWithNamespace string `json:"name_with_namespace"`
-	WebURL    string `json:"web_url"`
+	WebURL            string `json:"web_url"`
 }
 
 // processGitLabIssueEvent processes GitLab issue events for bidirectional sync
 func (h *WebhookHandler) processGitLabIssueEvent(ctx context.Context, event *GitLabWebhookEvent) error {
 	// Only process issue update/close/reopen events
 	if event.ObjectAttributes.Action != "update" &&
-	   event.ObjectAttributes.Action != "close" &&
-	   event.ObjectAttributes.Action != "reopen" {
+		event.ObjectAttributes.Action != ActionClose &&
+		event.ObjectAttributes.Action != ActionReopen {
 		return nil
 	}
 
@@ -1149,7 +1340,7 @@ func (h *WebhookHandler) processGitLabIssueEvent(ctx context.Context, event *Git
 	// Get the corresponding Jira issue
 	jiraClient := h.getJiraClient()
 	if jiraClient == nil {
-		return fmt.Errorf("Jira client not available")
+		return fmt.Errorf("jira client not available")
 	}
 
 	jiraIssue, err := h.getJiraClient().GetIssue(ctx, jiraKey)
@@ -1394,16 +1585,47 @@ func (h *WebhookHandler) processIssueUpdated(ctx context.Context, event *Webhook
 		"summary", issue.Fields.Summary)
 
 	// Find the corresponding GitLab project and issue
+	gitlabProjectID, gitlabIssue, err := h.findExistingGitLabIssue(ctx, issue)
+	if err != nil {
+		return err
+	}
+	if gitlabIssue == nil {
+		return nil
+	}
+
+	// Build update request
+	updateRequest := h.buildIssueUpdateRequest(issue, gitlabProjectID, gitlabIssue, event)
+	if err != nil {
+		return err
+	}
+
+	// Update GitLab issue
+	updatedIssue, err := h.gitlabClient.UpdateIssue(ctx, gitlabProjectID, gitlabIssue.IID, updateRequest)
+	if err != nil {
+		return fmt.Errorf("failed to update GitLab issue: %w", err)
+	}
+
+	h.logger.Info("Updated GitLab issue",
+		"jiraIssueKey", issue.Key,
+		"gitlabIssueIID", updatedIssue.IID,
+		"url", updatedIssue.WebURL)
+
+	return nil
+}
+
+// findExistingGitLabIssue finds an existing GitLab issue for a Jira issue
+func (h *WebhookHandler) findExistingGitLabIssue(ctx context.Context, issue *JiraIssue) (string, *GitLabIssue, error) {
+	// Find the corresponding GitLab project
 	gitlabProjectID := h.findGitLabProject(issue.Fields.Project.Key)
 	if gitlabProjectID == "" {
 		h.logger.Debug("No GitLab project mapping found", "jiraProjectKey", issue.Fields.Project.Key)
-		return nil
+		return "", nil, nil
 	}
 
 	// Search for existing GitLab issue by title pattern
 	existingIssues, err := h.gitlabClient.SearchIssuesByTitle(ctx, gitlabProjectID, fmt.Sprintf("[%s]", issue.Key))
 	if err != nil {
-		return fmt.Errorf("failed to search GitLab issues: %w", err)
+		return "", nil, fmt.Errorf("failed to search GitLab issues: %w", err)
 	}
 
 	var gitlabIssue *GitLabIssue
@@ -1416,20 +1638,56 @@ func (h *WebhookHandler) processIssueUpdated(ctx context.Context, event *Webhook
 
 	if gitlabIssue == nil {
 		h.logger.Debug("No corresponding GitLab issue found", "jiraIssueKey", issue.Key)
-		return nil
+		return "", nil, nil
 	}
 
-	// Update GitLab issue
+	return gitlabProjectID, gitlabIssue, nil
+}
+
+// buildIssueUpdateRequest builds an update request for a GitLab issue
+func (h *WebhookHandler) buildIssueUpdateRequest(
+	issue *JiraIssue,
+	gitlabProjectID string,
+	gitlabIssue *GitLabIssue,
+	event *WebhookEvent,
+) *GitLabIssueUpdateRequest {
 	updateRequest := &GitLabIssueUpdateRequest{
 		Title:  fmt.Sprintf("[%s] %s", issue.Key, issue.Fields.Summary),
 		Labels: h.buildLabels(issue),
 	}
 
 	// Update state based on Jira status change
+	h.updateIssueState(issue, gitlabIssue, updateRequest, event)
+
+	// Set assignee if available
+	if assigneeID := h.findGitLabUser(context.Background(), issue.Fields.Assignee); assigneeID > 0 {
+		updateRequest.AssigneeID = &assigneeID
+	}
+
+	// Update milestone if available
+	if milestoneID := h.findGitLabMilestone(context.Background(), gitlabProjectID, issue); milestoneID > 0 {
+		updateRequest.MilestoneID = &milestoneID
+	} else if len(issue.Fields.FixVersions) == 0 {
+		// If no fix versions in Jira, clear the milestone in GitLab
+		clearMilestoneID := 0
+		updateRequest.MilestoneID = &clearMilestoneID
+	}
+
+	return updateRequest
+}
+
+// updateIssueState updates the state of a GitLab issue based on Jira status change
+func (h *WebhookHandler) updateIssueState(
+	issue *JiraIssue,
+	gitlabIssue *GitLabIssue,
+	updateRequest *GitLabIssueUpdateRequest,
+	event *WebhookEvent,
+) {
 	var oldStatus string
 	if event.Changelog != nil && len(event.Changelog.Items) > 0 {
 		// Find status change in the changelog
-		for _, item := range event.Changelog.Items {
+		for i := range event.Changelog.Items {
+			item := &event.Changelog.Items[i]
 			if item.Field == "status" {
 				oldStatus = item.ToString
 				break
@@ -1450,32 +1708,6 @@ func (h *WebhookHandler) processIssueUpdated(ctx context.Context, event *Webhook
 				"transition", stateTransition)
 		}
 	}
-
-	// Set assignee if available
-	if assigneeID := h.findGitLabUser(ctx, issue.Fields.Assignee); assigneeID > 0 {
-		updateRequest.AssigneeID = &assigneeID
-	}
-
-	// Update milestone if available
-	if milestoneID := h.findGitLabMilestone(ctx, gitlabProjectID, issue); milestoneID > 0 {
-		updateRequest.MilestoneID = &milestoneID
-	} else if len(issue.Fields.FixVersions) == 0 {
-		// If no fix versions in Jira, clear the milestone in GitLab
-		clearMilestoneID := 0
-		updateRequest.MilestoneID = &clearMilestoneID
-	}
-
-	updatedIssue, err := h.gitlabClient.UpdateIssue(ctx, gitlabProjectID, gitlabIssue.IID, updateRequest)
-	if err != nil {
-		return fmt.Errorf("failed to update GitLab issue: %w", err)
-	}
-
-	h.logger.Info("Updated GitLab issue",
-		"jiraIssueKey", issue.Key,
-		"gitlabIssueIID", updatedIssue.IID,
-		"url", updatedIssue.WebURL)
-
-	return nil
 }
 
 // processIssueDeleted handles Jira issue deletion events
@@ -1685,43 +1917,6 @@ func (h *WebhookHandler) findGitLabUser(ctx context.Context, jiraUser *JiraUser)
 	return 0
 }
 
-// findJiraUser finds the Jira user for a GitLab user (for bidirectional sync)
-func (h *WebhookHandler) findJiraUser(ctx context.Context, gitlabUser *GitLabUser) (*JiraUser, error) {
-	if gitlabUser == nil || gitlabUser.Email == "" {
-		return nil, fmt.Errorf("GitLab user has no email address")
-	}
-
-	// Get Jira client
-	jiraClient := h.getJiraClient()
-	if jiraClient == nil {
-		return nil, fmt.Errorf("Jira client not available")
-	}
-
-	// Search for Jira user by email
-	jiraUsers, err := jiraClient.SearchUsers(ctx, gitlabUser.Email)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search Jira users: %w", err)
-	}
-
-	// Find matching user
-	for _, jiraUser := range jiraUsers {
-		if jiraUser.EmailAddress == gitlabUser.Email {
-			h.logger.Info("Found Jira user for GitLab user",
-				"gitlabEmail", gitlabUser.Email,
-				"gitlabUsername", gitlabUser.Username,
-				"jiraAccountID", jiraUser.AccountID,
-				"jiraDisplayName", jiraUser.DisplayName)
-			return &jiraUser, nil
-		}
-	}
-
-	h.logger.Debug("No Jira user found for GitLab user",
-		"gitlabEmail", gitlabUser.Email,
-		"gitlabUsername", gitlabUser.Username)
-
-	return nil, nil // Not an error, just no match found
-}
-
 // isSpecialAssignee checks if the Jira user represents a special assignee case
 func (h *WebhookHandler) isSpecialAssignee(jiraUser *JiraUser) bool {
 	if jiraUser == nil {
@@ -1742,7 +1937,7 @@ func (h *WebhookHandler) isSpecialAssignee(jiraUser *JiraUser) bool {
 	systemAccounts := []string{"-1", "null", "system", "automation", "bot"}
 	for _, systemAccount := range systemAccounts {
 		if strings.EqualFold(jiraUser.AccountID, systemAccount) ||
-		   strings.EqualFold(jiraUser.DisplayName, systemAccount) {
+			strings.EqualFold(jiraUser.DisplayName, systemAccount) {
 			return true
 		}
 	}
@@ -1751,111 +1946,11 @@ func (h *WebhookHandler) isSpecialAssignee(jiraUser *JiraUser) bool {
 }
 
 // searchGitLabUsersByUsername searches GitLab users by username
-func (h *WebhookHandler) searchGitLabUsersByUsername(ctx context.Context, username string) ([]*GitLabUser, error) {
+func (h *WebhookHandler) searchGitLabUsersByUsername(_ context.Context, _ string) ([]*GitLabUser, error) {
 	// This is a simplified implementation
 	// In a real implementation, you might need to call GitLab API with search functionality
 	// For now, return empty slice to indicate not implemented
 	return []*GitLabUser{}, nil
-}
-
-// syncGitLabAssigneeToJira syncs GitLab assignee to Jira
-func (h *WebhookHandler) syncGitLabAssigneeToJira(ctx context.Context, gitlabProjectID string, gitlabIssue *GitLabIssue) error {
-	if !h.config.BidirectionalEnabled {
-		return nil
-	}
-
-	// Extract Jira issue key from GitLab issue title
-	jiraKey := h.extractJiraKeyFromTitle(gitlabIssue.Title)
-	if jiraKey == "" {
-		return nil
-	}
-
-	// Get the corresponding Jira issue
-	jiraClient := h.getJiraClient()
-	if jiraClient == nil {
-		return fmt.Errorf("Jira client not available")
-	}
-
-	jiraIssue, err := jiraClient.GetIssue(ctx, jiraKey)
-	if err != nil {
-		return fmt.Errorf("failed to get Jira issue: %w", err)
-	}
-
-	// Determine target assignee based on GitLab assignee
-	var targetAssignee interface{}
-	if gitlabIssue.Assignee != nil && gitlabIssue.Assignee.Email != "" {
-		// Find corresponding Jira user
-		jiraUser, err := h.findJiraUser(ctx, gitlabIssue.Assignee)
-		if err != nil {
-			return fmt.Errorf("failed to find Jira user: %w", err)
-		}
-		
-		if jiraUser != nil {
-			targetAssignee = map[string]interface{}{
-				"accountId": jiraUser.AccountID,
-			}
-		} else {
-			// No matching Jira user found, set to unassigned
-			targetAssignee = nil
-		}
-	} else {
-		// GitLab issue has no assignee, set Jira to unassigned
-		targetAssignee = nil
-	}
-
-	// Check if assignee actually changed
-	currentAssignee := jiraIssue.Fields.Assignee
-	if h.assigneesEqual(currentAssignee, targetAssignee) {
-		return nil // Assignee already matches
-	}
-
-	// Update Jira issue assignee
-	updateFields := map[string]interface{}{
-		"assignee": targetAssignee,
-	}
-
-	if err := jiraClient.UpdateIssue(ctx, jiraKey, updateFields); err != nil {
-		return fmt.Errorf("failed to update Jira issue assignee: %w", err)
-	}
-
-	h.logger.Info("Synced GitLab assignee to Jira",
-		"jiraIssueKey", jiraKey,
-		"gitlabAssigneeEmail", gitlabIssue.Assignee.Email,
-		"gitlabAssigneeName", gitlabIssue.Assignee.Name,
-		"jiraTargetAssignee", targetAssignee)
-
-	return nil
-}
-
-// assigneesEqual checks if two Jira assignees are equal
-func (h *WebhookHandler) assigneesEqual(assignee1, assignee2 interface{}) bool {
-	if assignee1 == nil && assignee2 == nil {
-		return true
-	}
-	if assignee1 == nil || assignee2 == nil {
-		return false
-	}
-
-	// Handle map[string]interface{} format (Jira API response)
-	if assignee1Map, ok1 := assignee1.(map[string]interface{}); ok1 {
-		if assignee2Map, ok2 := assignee2.(map[string]interface{}); ok2 {
-			return assignee1Map["accountId"] == assignee2Map["accountId"]
-		}
-	}
-
-	// Handle *JiraUser format
-	if assignee1User, ok1 := assignee1.(*JiraUser); ok1 {
-		if assignee2User, ok2 := assignee2.(*JiraUser); ok2 {
-			return assignee1User.AccountID == assignee2User.AccountID
-		}
-	}
-
-	// Handle nil assignee case
-	if assignee2 == nil {
-		return assignee1 == nil
-	}
-
-	return false
 }
 
 // findGitLabMilestone finds the GitLab milestone ID for a Jira issue's fix versions
@@ -1869,7 +1964,7 @@ func (h *WebhookHandler) findGitLabMilestone(ctx context.Context, gitlabProjectI
 	// 1. Search for existing milestones by name
 	// 2. Create new milestones if they don't exist
 	// 3. Handle multiple fix versions more intelligently
-	
+
 	targetVersion := issue.Fields.FixVersions[0]
 	h.logger.Debug("Looking for GitLab milestone for Jira version",
 		"jiraVersion", targetVersion.Name,
@@ -1879,7 +1974,7 @@ func (h *WebhookHandler) findGitLabMilestone(ctx context.Context, gitlabProjectI
 	if h.gitlabClient != nil {
 		milestones, err := h.gitlabClient.GetMilestones(ctx, gitlabProjectID)
 		if err != nil {
-			h.logger.Warn("Failed to get GitLab milestones", "error", err)
+			h.logger.Warn("failed to get GitLab milestones", "error", err)
 		} else {
 			for _, milestone := range milestones {
 				if milestone.Title == targetVersion.Name {
@@ -1900,7 +1995,7 @@ func (h *WebhookHandler) findGitLabMilestone(ctx context.Context, gitlabProjectI
 				Title:       targetVersion.Name,
 				Description: fmt.Sprintf("Jira version: %s\n%s", targetVersion.Name, targetVersion.Description),
 			}
-			
+
 			// Parse release date if available
 			if targetVersion.ReleaseDate != "" {
 				if releaseDate, err := time.Parse("2006-01-02", targetVersion.ReleaseDate); err == nil {
@@ -1910,7 +2005,7 @@ func (h *WebhookHandler) findGitLabMilestone(ctx context.Context, gitlabProjectI
 
 			milestone, err := h.gitlabClient.CreateMilestone(ctx, gitlabProjectID, createRequest)
 			if err != nil {
-				h.logger.Warn("Failed to create GitLab milestone", "error", err, "version", targetVersion.Name)
+				h.logger.Warn("failed to create GitLab milestone", "error", err, "version", targetVersion.Name)
 			} else {
 				h.logger.Info("Created new GitLab milestone",
 					"milestoneID", milestone.ID,
@@ -2035,7 +2130,7 @@ func (h *WebhookHandler) isClosedStatus(statusName string) bool {
 }
 
 // getStatusTransition determines the appropriate GitLab state event for a Jira status change
-func (h *WebhookHandler) getStatusTransition(oldStatus, newStatus string, currentGitLabState string) string {
+func (h *WebhookHandler) getStatusTransition(oldStatus, newStatus, _ string) string {
 	// If status mapping is enabled, check for specific transitions
 	if h.config.StatusMappingEnabled {
 		// Check if new status maps to a closed state
@@ -2069,83 +2164,6 @@ func (h *WebhookHandler) getStatusTransition(oldStatus, newStatus string, curren
 	return ""
 }
 
-// getGitLabStateFromJiraStatus determines the GitLab state based on Jira status
-func (h *WebhookHandler) getGitLabStateFromJiraStatus(statusName string) string {
-	if statusName == "" {
-		return "opened"
-	}
-
-	// Check custom status mapping first
-	if h.config.StatusMappingEnabled {
-		if gitlabLabel, exists := h.config.StatusMapping[statusName]; exists {
-			// Map label to state
-			if strings.Contains(strings.ToLower(gitlabLabel), "closed") ||
-			   strings.Contains(strings.ToLower(gitlabLabel), "done") ||
-			   strings.Contains(strings.ToLower(gitlabLabel), "completed") {
-				return "closed"
-			}
-		}
-	}
-
-	// Default mapping
-	if h.isClosedStatus(statusName) {
-		return "closed"
-	}
-
-	return "opened"
-}
-
-// syncGitLabStatusToJira syncs GitLab issue state changes to Jira
-func (h *WebhookHandler) syncGitLabStatusToJira(ctx context.Context, gitlabProjectID string, gitlabIssue *GitLabIssue) error {
-	if !h.config.BidirectionalEnabled {
-		return nil
-	}
-
-	// Extract Jira issue key from GitLab issue title
-	jiraKey := h.extractJiraKeyFromTitle(gitlabIssue.Title)
-	if jiraKey == "" {
-		return nil
-	}
-
-	// Get the corresponding Jira issue
-	jiraClient := h.getJiraClient()
-	if jiraClient == nil {
-		return fmt.Errorf("Jira client not available")
-	}
-
-	jiraIssue, err := jiraClient.GetIssue(ctx, jiraKey)
-	if err != nil {
-		return fmt.Errorf("failed to get Jira issue: %w", err)
-	}
-
-	// Determine target Jira status based on GitLab state
-	targetJiraStatus := h.getJiraStatusFromGitLabState(gitlabIssue.State, jiraIssue)
-	if targetJiraStatus == "" {
-		return nil // No status change needed
-	}
-
-	// Check if status actually changed
-	if jiraIssue.Fields.Status != nil && jiraIssue.Fields.Status.Name == targetJiraStatus {
-		return nil // Status already matches
-	}
-
-	// Update Jira issue status
-	updateFields := map[string]interface{}{
-		"status": map[string]string{"name": targetJiraStatus},
-	}
-
-	if err := jiraClient.UpdateIssue(ctx, jiraKey, updateFields); err != nil {
-		return fmt.Errorf("failed to update Jira issue status: %w", err)
-	}
-
-	h.logger.Info("Synced GitLab status to Jira",
-		"jiraIssueKey", jiraKey,
-		"gitlabState", gitlabIssue.State,
-		"jiraTargetStatus", targetJiraStatus)
-
-	return nil
-}
-
 // extractJiraKeyFromTitle extracts Jira issue key from GitLab issue title
 func (h *WebhookHandler) extractJiraKeyFromTitle(title string) string {
 	// Look for pattern like "[PROJ-123] Title"
@@ -2167,71 +2185,97 @@ func (h *WebhookHandler) extractJiraKeyFromTitle(title string) string {
 func (h *WebhookHandler) getJiraStatusFromGitLabState(gitlabState string, jiraIssue *JiraIssue) string {
 	switch gitlabState {
 	case "closed":
-		// Find a closed status in the workflow
-		if jiraIssue.Fields.Status != nil {
-			// Get available transitions
-			jiraClient := h.getJiraClient()
-			if jiraClient != nil {
-				transitions, err := jiraClient.GetTransitions(context.Background(), jiraIssue.Key)
-				if err == nil {
-					for _, transition := range transitions {
-						if strings.Contains(strings.ToLower(transition.Name), "close") ||
-						   strings.Contains(strings.ToLower(transition.Name), "done") ||
-						   strings.Contains(strings.ToLower(transition.Name), "resolve") {
-							return transition.To.Name
-						}
-					}
-				}
-			}
-			
-			// Fallback to known closed statuses
-			closedStatuses := []string{"Closed", "Done", "Resolved", "Fixed", "Completed"}
-			for _, closedStatus := range closedStatuses {
-				if jiraIssue.Fields.Status.Name != closedStatus {
-					return closedStatus
-				}
-			}
-		}
-		return "Closed" // Default closed status
-		
+		return h.getClosedJiraStatus(jiraIssue)
 	case "opened":
-		// Find an open status in the workflow
-		if jiraIssue.Fields.Status != nil {
-			// Get available transitions
-			jiraClient := h.getJiraClient()
-			if jiraClient != nil {
-				transitions, err := jiraClient.GetTransitions(context.Background(), jiraIssue.Key)
-				if err == nil {
-					for _, transition := range transitions {
-						if strings.Contains(strings.ToLower(transition.Name), "open") ||
-						   strings.Contains(strings.ToLower(transition.Name), "reopen") ||
-						   strings.Contains(strings.ToLower(transition.Name), "start") {
-							return transition.To.Name
-						}
-					}
-				}
-			}
-			
-			// Fallback to known open statuses
-			openStatuses := []string{"Open", "To Do", "In Progress", "Backlog"}
-			for _, openStatus := range openStatuses {
-				if jiraIssue.Fields.Status.Name != openStatus {
-					return openStatus
-				}
-			}
-		}
-		return "Open" // Default open status
-		
+		return h.getOpenJiraStatus(jiraIssue)
 	default:
 		return "" // Unknown state, no change
 	}
 }
 
+// getClosedJiraStatus determines appropriate closed Jira status
+func (h *WebhookHandler) getClosedJiraStatus(jiraIssue *JiraIssue) string {
+	if jiraIssue.Fields.Status == nil {
+		return "Closed" // Default closed status
+	}
+
+	// Try to find a closed status through transitions
+	if closedStatus := h.findClosedStatusViaTransitions(jiraIssue); closedStatus != "" {
+		return closedStatus
+	}
+
+	// Fallback to known closed statuses
+	closedStatuses := []string{"Closed", "Done", "Resolved", "Fixed", "Completed"}
+	for _, closedStatus := range closedStatuses {
+		if jiraIssue.Fields.Status.Name != closedStatus {
+			return closedStatus
+		}
+	}
+
+	return "Closed" // Default closed status
+}
+
+// getOpenJiraStatus determines appropriate open Jira status
+func (h *WebhookHandler) getOpenJiraStatus(jiraIssue *JiraIssue) string {
+	if jiraIssue.Fields.Status == nil {
+		return "Open" // Default open status
+	}
+
+	// Try to find an open status through transitions
+	if openStatus := h.findOpenStatusViaTransitions(jiraIssue); openStatus != "" {
+		return openStatus
+	}
+
+	// Fallback to known open statuses
+	openStatuses := []string{"Open", "To Do", "In Progress", "Backlog"}
+	for _, openStatus := range openStatuses {
+		if jiraIssue.Fields.Status.Name != openStatus {
+			return openStatus
+		}
+	}
+
+	return "Open" // Default open status
+}
+
+// findStatusViaTransitions finds a status through Jira transitions based on keywords
+func (h *WebhookHandler) findStatusViaTransitions(jiraIssue *JiraIssue, keywords []string) string {
+	jiraClient := h.getJiraClient()
+	if jiraClient == nil {
+		return ""
+	}
+
+	transitions, err := jiraClient.GetTransitions(context.Background(), jiraIssue.Key)
+	if err != nil {
+		return ""
+	}
+
+	for i := range transitions {
+		transition := &transitions[i]
+		for _, keyword := range keywords {
+			if strings.Contains(strings.ToLower(transition.Name), keyword) {
+				return transition.To.Name
+			}
+		}
+	}
+
+	return ""
+}
+
+// findClosedStatusViaTransitions finds a closed status through Jira transitions
+func (h *WebhookHandler) findClosedStatusViaTransitions(jiraIssue *JiraIssue) string {
+	keywords := []string{"close", "done", "resolve"}
+	return h.findStatusViaTransitions(jiraIssue, keywords)
+}
+
+// findOpenStatusViaTransitions finds an open status through Jira transitions
+func (h *WebhookHandler) findOpenStatusViaTransitions(jiraIssue *JiraIssue) string {
+	keywords := []string{"open", "reopen", "start"}
+	return h.findStatusViaTransitions(jiraIssue, keywords)
+}
+
 // getJiraClient returns a Jira client instance
 func (h *WebhookHandler) getJiraClient() *Client {
-	// This would typically return a properly configured Jira client
-	// For now, return nil to indicate not implemented
-	return nil
+	return h.jiraClient
 }
 
 // syncCommentToGitLab syncs a Jira comment to GitLab with ADF validation
@@ -2390,17 +2434,13 @@ func (h *WebhookHandler) extractCommentTextWithValidation(body interface{}) stri
 					},
 				},
 			}
-			
+
 			// Use ADF validation with fallback
-			validatedContent, err := validateAndFallback(commentPayload)
-			if err == nil {
-				// Extract text from validated ADF
-				return h.extractTextFromADF(validatedContent)
-			}
-			
-			h.logger.Debug("ADF validation failed, using fallback", "error", err)
+			validatedContent := validateAndFallback(commentPayload)
+			// Extract text from validated ADF
+			return h.extractTextFromADF(validatedContent)
 		}
-		
+
 		// Fallback to simple text indication
 		return "*Rich content from Jira*"
 	}
@@ -2427,7 +2467,7 @@ func (h *WebhookHandler) extractTextFromADF(content CommentPayload) string {
 			result.WriteString("\n")
 		}
 	}
-	
+
 	return result.String()
 }
 

@@ -345,7 +345,7 @@ func TestAddCommentWithADFValidation(t *testing.T) {
 		}
 
 		client := NewClient(cfg)
-		
+
 		// Create invalid ADF content (invalid type)
 		invalidPayload := CommentPayload{
 			Body: CommentBody{
@@ -988,7 +988,7 @@ func TestClientEdgeCases(t *testing.T) {
 				},
 			},
 		}
-		
+
 		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		if err != nil {
