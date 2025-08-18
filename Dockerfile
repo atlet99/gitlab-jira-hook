@@ -36,8 +36,8 @@ RUN CGO_ENABLED=0 go build \
 # Final stage
 FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
 
-# Install ca-certificates and timezone data for HTTPS requests and timezone support
-RUN apk --no-cache add ca-certificates tzdata
+# Install ca-certificates, timezone data, and curl for health checks
+RUN apk --no-cache add ca-certificates tzdata curl
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
@@ -63,7 +63,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application
 CMD ["./gitlab-jira-hook"] 

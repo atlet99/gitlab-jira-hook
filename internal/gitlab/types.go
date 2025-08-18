@@ -102,8 +102,9 @@ type Event struct {
 	// Tag events
 	TagPush bool `json:"tag_push"`
 	// Repository update event specific fields
-	Changes []Change `json:"changes"`
-	Refs    []string `json:"refs"`
+	// Changes is a map for merge request events or an array for repository update events
+	Changes interface{} `json:"changes"`
+	Refs    []string    `json:"refs"`
 }
 
 // Commit represents a Git commit
@@ -136,14 +137,15 @@ type ObjectAttributes struct {
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 	// Additional fields for project hooks
-	Note        string `json:"note"`
-	Content     string `json:"content"`
-	Ref         string `json:"ref"`
-	Status      string `json:"status"`
-	Name        string `json:"name"`
-	Stage       string `json:"stage"`
-	Environment string `json:"environment"`
-	Description string `json:"description"`
+	Note         string `json:"note"`
+	NoteableType string `json:"noteable_type"`
+	Content      string `json:"content"`
+	Ref          string `json:"ref"`
+	Status       string `json:"status"`
+	Name         string `json:"name"`
+	Stage        string `json:"stage"`
+	Environment  string `json:"environment"`
+	Description  string `json:"description"`
 	// Merge Request specific fields
 	SourceBranch string `json:"source_branch"`
 	TargetBranch string `json:"target_branch"`
@@ -185,6 +187,7 @@ type MergeRequest struct {
 	Description string `json:"description"`
 	State       string `json:"state"`
 	URL         string `json:"url"`
+	WebURL      string `json:"web_url"`
 	// Additional merge request fields
 	SourceBranch string   `json:"source_branch"`
 	TargetBranch string   `json:"target_branch"`

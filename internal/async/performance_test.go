@@ -29,7 +29,7 @@ func BenchmarkPriorityQueue(b *testing.B) {
 	}
 
 	decider := &DefaultPriorityDecider{}
-	queue := NewPriorityQueue(cfg, decider)
+	queue := NewPriorityQueue(cfg, decider, slog.Default())
 
 	b.ResetTimer()
 	b.Run("submit_jobs", func(b *testing.B) {
@@ -80,7 +80,7 @@ func BenchmarkDelayedQueue(b *testing.B) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	decider := &DefaultPriorityDecider{}
-	mainQueue := NewPriorityQueue(cfg, decider)
+	mainQueue := NewPriorityQueue(cfg, decider, slog.Default())
 	delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
 
 	b.ResetTimer()

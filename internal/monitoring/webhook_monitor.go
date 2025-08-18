@@ -19,12 +19,15 @@ const (
 	DefaultCheckInterval = 30 * time.Second
 	// AverageResponseTimeDivisor is used for calculating average response time
 	AverageResponseTimeDivisor = 2
+
+	// StatusUnknown represents an unknown endpoint status
+	StatusUnknown = "unknown"
 )
 
 // WebhookStatus represents the status of a webhook endpoint
 type WebhookStatus struct {
 	Endpoint     string        `json:"endpoint"`
-	Status       string        `json:"status"` // "healthy", "unhealthy", "unknown"
+	Status       string        `json:"status"` // StatusHealthy, StatusUnhealthy, StatusUnknown
 	LastCheck    time.Time     `json:"last_check"`
 	LastSuccess  time.Time     `json:"last_success,omitempty"`
 	LastFailure  time.Time     `json:"last_failure,omitempty"`
@@ -97,21 +100,21 @@ func (m *WebhookMonitor) initializeEndpoints() {
 	// System hook endpoint
 	m.statuses["/gitlab-hook"] = &WebhookStatus{
 		Endpoint:  "/gitlab-hook",
-		Status:    "unknown",
+		Status:    StatusUnknown,
 		LastCheck: time.Now(),
 	}
 
 	// Project hook endpoint
 	m.statuses["/gitlab-project-hook"] = &WebhookStatus{
 		Endpoint:  "/gitlab-project-hook",
-		Status:    "unknown",
+		Status:    StatusUnknown,
 		LastCheck: time.Now(),
 	}
 
 	// Health check endpoint
 	m.statuses["/health"] = &WebhookStatus{
 		Endpoint:  "/health",
-		Status:    "unknown",
+		Status:    StatusUnknown,
 		LastCheck: time.Now(),
 	}
 
@@ -208,7 +211,7 @@ func (m *WebhookMonitor) updateStatus(endpoint, status string, responseTime time
 	webhookStatus.LastCheck = time.Now()
 	webhookStatus.ResponseTime = responseTime
 
-	if status == "healthy" {
+	if status == StatusHealthy {
 		webhookStatus.LastSuccess = time.Now()
 		webhookStatus.Error = ""
 	} else {
@@ -227,7 +230,7 @@ func (m *WebhookMonitor) updateStatus(endpoint, status string, responseTime time
 	metrics.TotalRequests++
 	metrics.LastRequestTime = time.Now()
 
-	if status == "healthy" {
+	if status == StatusHealthy {
 		metrics.SuccessfulRequests++
 	} else {
 		metrics.FailedRequests++
@@ -312,7 +315,7 @@ func (m *WebhookMonitor) IsHealthy() bool {
 	defer m.mu.RUnlock()
 
 	for _, status := range m.statuses {
-		if status.Status != "healthy" {
+		if status.Status != StatusHealthy {
 			return false
 		}
 	}
@@ -327,7 +330,7 @@ func (m *WebhookMonitor) GetUnhealthyEndpoints() []string {
 
 	var unhealthy []string
 	for endpoint, status := range m.statuses {
-		if status.Status != "healthy" {
+		if status.Status != StatusHealthy {
 			unhealthy = append(unhealthy, endpoint)
 		}
 	}

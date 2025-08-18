@@ -4,6 +4,7 @@
 package gitlab
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -78,15 +79,26 @@ func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Limit request body size to prevent DoS attacks
+	maxBodySize := int64(1 << 20) // 1 MB
+	limitedBody := http.MaxBytesReader(w, r.Body, maxBodySize)
+	defer func() {
+		if err := limitedBody.Close(); err != nil {
+			h.logger.Warn("Failed to close request body", "error", err)
+		}
+	}()
+
 	// Read request body
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(limitedBody)
 	if err != nil {
+		if err != nil && err.Error() == "http: request body too large" {
+			h.logger.Warn("Request body too large", "maxSize", maxBodySize)
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		h.logger.Error("Failed to read request body", "error", err)
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
-	}
-	if err := r.Body.Close(); err != nil {
-		h.logger.Warn("Failed to close request body", "error", err)
 	}
 
 	// Parse webhook event
@@ -105,7 +117,7 @@ func (h *ProjectHookHandler) HandleProjectHook(w http.ResponseWriter, r *http.Re
 	}
 
 	// Process the event
-	if err := h.processProjectEvent(event); err != nil {
+	if err := h.processProjectEvent(r.Context(), event); err != nil {
 		h.logger.Error("Failed to process project event", "error", err, "eventType", event.Type)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -145,32 +157,32 @@ func (h *ProjectHookHandler) parseProjectEvent(body []byte) (*Event, error) {
 }
 
 // processProjectEvent processes the project webhook event
-func (h *ProjectHookHandler) processProjectEvent(event *Event) error {
+func (h *ProjectHookHandler) processProjectEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Processing project webhook event", "type", event.Type)
 
 	switch event.Type {
 	case "push":
-		return h.processPushEvent(event)
+		return h.processPushEvent(ctx, event)
 	case "merge_request":
-		return h.processMergeRequestEvent(event)
+		return h.processMergeRequestEvent(ctx, event)
 	case "issue":
-		return h.processIssueEvent(event)
+		return h.processIssueEvent(ctx, event)
 	case "note":
-		return h.processNoteEvent(event)
+		return h.processNoteEvent(ctx, event)
 	case "wiki_page":
-		return h.processWikiPageEvent(event)
+		return h.processWikiPageEvent(ctx, event)
 	case "pipeline":
-		return h.processPipelineEvent(event)
+		return h.processPipelineEvent(ctx, event)
 	case "build":
-		return h.processBuildEvent(event)
+		return h.processBuildEvent(ctx, event)
 	case "tag_push":
-		return h.processTagPushEvent(event)
+		return h.processTagPushEvent(ctx, event)
 	case "release":
-		return h.processReleaseEvent(event)
+		return h.processReleaseEvent(ctx, event)
 	case "deployment":
-		return h.processDeploymentEvent(event)
+		return h.processDeploymentEvent(ctx, event)
 	case "feature_flag":
-		return h.processFeatureFlagEvent(event)
+		return h.processFeatureFlagEvent(ctx, event)
 	default:
 		h.logger.Debug("Unsupported project event type", "type", event.Type)
 		return nil
@@ -178,7 +190,7 @@ func (h *ProjectHookHandler) processProjectEvent(event *Event) error {
 }
 
 // processPushEvent processes push events
-func (h *ProjectHookHandler) processPushEvent(event *Event) error {
+func (h *ProjectHookHandler) processPushEvent(ctx context.Context, event *Event) error {
 	if len(event.Commits) == 0 {
 		return nil
 	}
@@ -205,24 +217,45 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 		projectName = event.Project.Name
 	}
 
+	// Create URL builder for generating proper URLs
+	urlBuilder := NewURLBuilder(h.config, h.logger)
+
 	for _, commit := range event.Commits {
 		issueIDs := h.parser.ExtractIssueIDs(commit.Message)
 		for _, issueID := range issueIDs {
-			// Construct branch URL if we have project information
-			branchURL := ""
-			if event.Project != nil {
-				// Extract branch name from refs/heads/branch format
-				branchName := event.Ref
+			// Extract branch name from refs/heads/branch format
+			branchName := event.Ref
+			if branchName != "" {
 				if strings.HasPrefix(event.Ref, "refs/heads/") {
 					branchName = strings.TrimPrefix(event.Ref, "refs/heads/")
+				} else if strings.HasPrefix(event.Ref, "refs/tags/") {
+					branchName = strings.TrimPrefix(event.Ref, "refs/tags/")
 				}
-				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
+			} else {
+				// Fallback: try to get default branch from GitLab API
+				if event.Project != nil && event.Project.ID != 0 {
+					apiDefaultBranch := urlBuilder.GetProjectDefaultBranch(ctx, event.Project.ID)
+					if apiDefaultBranch != "" {
+						branchName = apiDefaultBranch
+					} else if event.Project.DefaultBranch != "" {
+						branchName = event.Project.DefaultBranch
+					} else {
+						branchName = "main" // Last resort fallback
+					}
+				} else {
+					branchName = "main" // Last resort fallback
+				}
 			}
 
-			// Construct author URL if we have project information
-			authorURL := ""
-			if event.Project != nil {
-				authorURL = fmt.Sprintf("%s/%s", event.Project.WebURL, commit.Author.Name)
+			// Get username from GitLab API
+			username := urlBuilder.GetUsernameByEmail(ctx, commit.Author.Email)
+
+			// Use URLBuilder for proper URL construction
+			authorURL := urlBuilder.ConstructAuthorURLFromEmail(ctx, commit.Author.Email)
+			// Construct branch URL using the determined branch name
+			branchURL := ""
+			if event.Project != nil && event.Project.WebURL != "" && branchName != "" {
+				branchURL = fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
 			}
 
 			// Get project web URL for MR links
@@ -231,15 +264,21 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				projectWebURL = event.Project.WebURL
 			}
 
+			// Use username if available, otherwise fallback to author name
+			displayName := username
+			if displayName == "" {
+				displayName = commit.Author.Name
+			}
+
 			comment := jira.GenerateCommitADFComment(
 				commit.ID,
 				commit.URL,
-				commit.Author.Name,
+				displayName, // Use username instead of full name
 				commit.Author.Email,
 				authorURL,
 				commit.Message,
 				commit.Timestamp,
-				event.Ref,
+				branchName, // Use extracted branch name instead of event.Ref
 				branchURL,
 				projectWebURL,
 				h.config.Timezone,
@@ -247,7 +286,7 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 				commit.Modified,
 				commit.Removed,
 			)
-			if err := h.jira.AddComment(issueID, comment); err != nil {
+			if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 				h.logger.Error("Failed to add commit comment to Jira",
 					"error", err,
 					"issueID", issueID,
@@ -266,7 +305,7 @@ func (h *ProjectHookHandler) processPushEvent(event *Event) error {
 }
 
 // processMergeRequestEvent processes merge request events
-func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
+func (h *ProjectHookHandler) processMergeRequestEvent(ctx context.Context, event *Event) error {
 	if event.ObjectAttributes == nil {
 		return nil
 	}
@@ -369,7 +408,7 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 
 	// Add comment to each issue
 	for issueID := range issueKeySet {
-		if err := h.jira.AddComment(issueID, comment); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, comment); err != nil {
 			h.logger.Error("Failed to add MR comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -386,7 +425,7 @@ func (h *ProjectHookHandler) processMergeRequestEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {
+func (h *ProjectHookHandler) processTagPushEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Tag push event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -414,7 +453,7 @@ func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {
 	// Extract Jira issue IDs from tag name
 	issueIDs := h.parser.ExtractIssueIDs(attrs.Ref)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add tag comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -431,7 +470,7 @@ func (h *ProjectHookHandler) processTagPushEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processReleaseEvent(event *Event) error {
+func (h *ProjectHookHandler) processReleaseEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Release event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -465,7 +504,7 @@ func (h *ProjectHookHandler) processReleaseEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add release comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -482,7 +521,7 @@ func (h *ProjectHookHandler) processReleaseEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processDeploymentEvent(event *Event) error {
+func (h *ProjectHookHandler) processDeploymentEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Deployment event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -515,7 +554,7 @@ func (h *ProjectHookHandler) processDeploymentEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add deployment comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -532,7 +571,7 @@ func (h *ProjectHookHandler) processDeploymentEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processFeatureFlagEvent(event *Event) error {
+func (h *ProjectHookHandler) processFeatureFlagEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Feature flag event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -565,7 +604,7 @@ func (h *ProjectHookHandler) processFeatureFlagEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add feature flag comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -582,7 +621,7 @@ func (h *ProjectHookHandler) processFeatureFlagEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processWikiPageEvent(event *Event) error {
+func (h *ProjectHookHandler) processWikiPageEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Wiki page event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -615,7 +654,7 @@ func (h *ProjectHookHandler) processWikiPageEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add wiki comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -632,7 +671,7 @@ func (h *ProjectHookHandler) processWikiPageEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processPipelineEvent(event *Event) error {
+func (h *ProjectHookHandler) processPipelineEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Pipeline event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -668,7 +707,7 @@ func (h *ProjectHookHandler) processPipelineEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add pipeline comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -685,7 +724,7 @@ func (h *ProjectHookHandler) processPipelineEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processBuildEvent(event *Event) error {
+func (h *ProjectHookHandler) processBuildEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Build event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -722,7 +761,7 @@ func (h *ProjectHookHandler) processBuildEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add build comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -739,7 +778,7 @@ func (h *ProjectHookHandler) processBuildEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processNoteEvent(event *Event) error {
+func (h *ProjectHookHandler) processNoteEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Note event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -767,7 +806,7 @@ func (h *ProjectHookHandler) processNoteEvent(event *Event) error {
 	// Extract Jira issue IDs from comment content
 	issueIDs := h.parser.ExtractIssueIDs(attrs.Note)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add note comment to Jira",
 				"error", err,
 				"issueID", issueID,
@@ -784,7 +823,7 @@ func (h *ProjectHookHandler) processNoteEvent(event *Event) error {
 	return nil
 }
 
-func (h *ProjectHookHandler) processIssueEvent(event *Event) error {
+func (h *ProjectHookHandler) processIssueEvent(ctx context.Context, event *Event) error {
 	h.logger.Info("Issue event (project hook)", "type", event.Type)
 
 	if event.ObjectAttributes == nil {
@@ -820,7 +859,7 @@ func (h *ProjectHookHandler) processIssueEvent(event *Event) error {
 
 	issueIDs := h.parser.ExtractIssueIDs(text)
 	for _, issueID := range issueIDs {
-		if err := h.jira.AddComment(issueID, jira.CreateSimpleADF(comment)); err != nil {
+		if err := h.jira.AddComment(ctx, issueID, jira.CreateSimpleADF(comment)); err != nil {
 			h.logger.Error("Failed to add issue comment to Jira",
 				"error", err,
 				"issueID", issueID,

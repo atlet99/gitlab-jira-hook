@@ -5,6 +5,191 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-08-18
+
+### Added
+- **Jira API v3 Compliance**
+  - Complete transition handling workflow using `/issue/{key}/transitions` endpoint
+  - Updated assignee management to use `accountId` instead of username
+  - Support for special assignee values: `null` for Unassigned, `-1` for Default assignee
+  - Enhanced Jira client with proper API v3 endpoint support
+
+- **ADF (Atlassian Document Format) Validation**
+  - Comprehensive ADF validation layer with JSON schema validation
+  - Automatic fallback to plain text when ADF validation fails
+  - Support for rich content validation with proper error handling
+  - Integration with comment synchronization for enhanced content processing
+
+- **Enhanced JWT Webhook Security**
+  - Advanced JWT validation using Atlassian public keys
+  - Support for multiple JWT algorithms (RS256, HS256)
+  - Comprehensive JWT claims validation (iss, aud, exp, iat)
+  - Configurable JWT validation with environment variables
+  - Enhanced security documentation and configuration examples
+
+- **JQL-based Event Filtering**
+  - Advanced JQL filter configuration for selective GitLab event processing
+  - Dynamic JQL execution for filtering events based on Jira queries
+  - Integration with existing event processing pipeline
+  - Comprehensive configuration management for JQL filters
+
+- **Dynamic Field Mapping Configuration**
+  - Flexible field mapping system between Jira and GitLab
+  - Configurable mapping rules for custom fields and attributes
+  - Support for bidirectional field synchronization
+  - Comprehensive configuration file support with validation
+
+- **Comprehensive Audit Logging System**
+  - Complete audit trail for all API operations and system events
+  - Structured logging with multiple event types (API request/response, authentication, authorization, data change, system operation, error)
+  - Request ID correlation for tracking operations across the system
+  - Sensitive data sanitization and field masking for security
+  - Configurable logging levels and performance monitoring
+
+- **Enhanced Error Handling**
+  - Structured error types with detailed codes, categories, and severity levels
+  - Centralized error handler with retry logic and circuit breaker patterns
+  - Enhanced error recovery mechanisms with multiple strategies
+  - JSON error responses with detailed diagnostics and suggestions
+  - Comprehensive error logging with context propagation
+
+- **Bidirectional Synchronization**
+  - Complete bidirectional sync system between Jira and GitLab
+  - Support for issue creation, updates, comments, and status synchronization
+  - Configurable sync direction (jira_to_gitlab, gitlab_to_jira, bidirectional)
+  - User mapping system for assignee synchronization using accountId
+  - Project mapping for cross-platform issue management
+  - Event filtering by age and type for efficient processing
+
+- **Advanced Conflict Resolution**
+  - Intelligent conflict detection for concurrent modifications
+  - Multiple resolution strategies: Last-Write-Wins, Merge, Manual
+  - Configurable conflict detection window (5-minute default)
+  - Field-level conflict analysis (title, description, status, assignee)
+  - Manual resolution queue for complex conflicts requiring human intervention
+  - Conflict resolution audit trail with detailed logging
+
+- **GitLab API Integration**
+  - Complete GitLab API client for issue and comment management
+  - Support for issue creation, updates, and comment synchronization
+  - GitLab user search and project management capabilities
+  - Adapter pattern for seamless integration with sync system
+  - Comprehensive GitLab API error handling and retry logic
+
+- **Enhanced Configuration Management**
+  - Extended configuration with 60+ new options for advanced features
+  - OAuth 2.0 configuration section with security best practices
+  - Bidirectional sync configuration with fine-grained controls
+  - Conflict resolution strategy configuration
+  - JWT validation configuration with multiple security options
+  - Enhanced validation with comprehensive input sanitization
+
+### Changed
+- **Jira Client Architecture Improvements**
+  - Refactored Jira client to support multiple authentication methods
+  - Added dynamic authorization header generation with token refresh
+  - Improved context propagation throughout API calls
+  - Enhanced error handling with structured retry logic
+  - Reduced cyclomatic complexity through function decomposition
+  - Added comprehensive API v3 compliance with proper endpoint usage
+
+- **Server Architecture Enhancements**
+  - Updated server initialization to support OAuth 2.0 endpoints
+  - Enhanced dependency injection for new sync components
+  - Improved error handling across all HTTP endpoints
+  - Added comprehensive logging for new features
+  - Enhanced webhook handler with audit logging integration
+
+- **Code Quality Improvements**
+  - Fixed all 69 linting and compilation issues across the entire codebase
+  - Resolved duplicate code in Jira client by creating shared helper functions
+  - Refactored HandleWebhook function (86 statements → 7 focused helper functions)
+  - Fixed long lines by breaking function signatures into multiple lines
+  - Eliminated magic numbers by replacing with named constants
+  - Fixed unused variables and parameters throughout the codebase
+  - Improved error handling with proper error return checking
+  - Enhanced code readability with better variable naming and function organization
+  - Fixed rangeValCopy issues by using pointer iteration to avoid value copying
+  - Resolved shadow variable conflicts and improved type safety
+  - Comprehensive test coverage improvements including integration tests
+  - Fixed compilation errors and type mismatches throughout the codebase
+  - **Critical Security and Stability Fixes**
+    - Fixed request forgery vulnerability in GetProjectInfo function with proper URL validation
+    - Resolved nil pointer dereferences in WriteErrorResponse and LogError functions
+    - Fixed unhandled error in validateAndFallback function (gosec G104)
+    - Eliminated duplicate constants in internal/monitoring/webhook_monitor.go
+    - Enhanced test server setup with proper GitLab webhook endpoint registration
+    - Fixed race condition in TestPriorityQueue/max_retries_exceeded with proper synchronization
+    - Added proper validation to webhook handler to return 400 for missing required fields
+    - Configured GitLab webhook handler with proper worker pool and monitor integration
+
+### Fixed
+- **Context Propagation**
+  - Fixed context.Context passing throughout the application
+  - Updated all API calls to properly handle request cancellation
+  - Improved timeout handling in long-running operations
+
+- **Test Infrastructure**
+  - Updated all test files to support new authentication methods
+  - Fixed mock interfaces to match new function signatures
+  - Enhanced test coverage for OAuth 2.0 and sync features
+  - Fixed compilation errors in test files
+  - Added comprehensive ADF validation tests
+
+- **Webhook Event Processing Fixes**
+  - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
+  - Added fallback logic to use event.Type when ObjectKind is empty
+  - Added support for repository_update events (skipped as not relevant for Jira integration)
+  - Fixed event type conversion between internal Event and webhook.Event structures
+  - Improved error logging with both object_kind and event_type for better debugging
+  - Enhanced merge request, issue, and note event processing with fallback logic
+  - Added better error handling and logging for missing event data
+  - Improved Jira issue ID extraction and validation in all event types
+  - Translated all Russian comments to English for better code maintainability
+
+- **Docker Compose and Worker Pool Improvements**
+  - Fixed Docker Compose resource reservations by removing unsupported `cpus` field
+  - Increased job timeout from 30 to 120 seconds to prevent premature context cancellation
+  - Improved context cancellation handling in worker pool with better error logging
+  - Enhanced retry logic to skip retries for context cancellation errors
+  - Added logger to PriorityQueue for better error tracking and debugging
+  - Fixed delayed queue scheduler interval logging to show milliseconds instead of nanoseconds
+  - Improved user name extraction from webhook events with fallback to commit authors
+  - Updated config.env.example with correct timeout values
+  - Fixed staticcheck warning about redundant nil check for slices
+  - Enhanced logging in worker pool scaling with detailed error rate information
+  - Improved duration logging to show milliseconds instead of nanoseconds for better readability
+  - Added detailed retry logging with delay information and success/failure tracking
+  - Fixed event type detection when object_kind and event_type are empty by analyzing event structure
+  - Updated config.env with test values for easier debugging
+  - Enhanced Jira client logging with detailed error information and retry attempts
+  - Improved event processing to handle both ObjectAttributes and direct event structures
+
+### Security
+- **Enhanced Authentication Security**
+  - Added OAuth 2.0 support for improved security over Basic Auth
+  - Implemented JWT signature validation for webhook security
+  - Added CSRF protection with secure state parameter handling
+  - Enhanced token storage and refresh mechanisms
+  - Added comprehensive JWT validation with Atlassian public keys
+
+- **Webhook Security Improvements**
+  - Improved HMAC-SHA256 signature validation
+  - Added replay attack prevention mechanisms
+  - Enhanced input validation and sanitization
+  - Added comprehensive audit logging for security events
+
+### Documentation
+- **Comprehensive Feature Documentation**
+  - Added detailed OAuth 2.0 setup and configuration guide
+  - Enhanced JWT validation documentation with security considerations
+  - Complete bidirectional sync configuration examples
+  - Conflict resolution strategy documentation
+  - Production deployment guidance
+  - ADF validation documentation with examples
+  - JQL-based filtering configuration guide
+  - Enhanced audit logging documentation
+
 ## [0.1.5] - 2025-07-24
 
 ### Added
@@ -486,8 +671,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.4...HEAD
-[0.1.4]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...v0.1.4
-[0.1.3]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...v0.1.2
-[0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 
+## [1.0.1] - 2025-08-18
+
+### Fixed
+- **Critical Security and Stability Improvements**
+  - Fixed request forgery vulnerability in GetProjectInfo function with proper URL validation and sanitization
+  - Resolved nil pointer dereferences in WriteErrorResponse and LogError functions with comprehensive nil checks
+  - Fixed unhandled error in validateAndFallback function (gosec G104) with proper error handling
+  - Eliminated duplicate constants in internal/monitoring/webhook_monitor.go by using shared constants from handlers.go
+  - Enhanced test server setup with proper GitLab webhook endpoint registration for all test scenarios
+  - Fixed race condition in TestPriorityQueue/max_retries_exceeded with proper synchronization and timing controls
+  - Added proper validation to webhook handler to return 400 for missing required fields with detailed error messages
+  - Configured GitLab webhook handler with proper worker pool and monitor integration for async processing
+  - Fixed failing tests that were outdated due to code logic changes with updated test expectations
+  - Resolved all linting and compilation issues across the entire codebase (69 issues total)
+  - Enhanced error handling with proper error return checking and structured error responses

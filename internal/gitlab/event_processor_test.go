@@ -9,16 +9,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/atlet99/gitlab-jira-hook/internal/jira"
 )
 
 // EventProcessorMockJiraClient implements the jira client interface for testing
 type EventProcessorMockJiraClient struct {
-	commentsAdded map[string]int
-	connectionOk  bool
+	commentsAdded    map[string]int
+	connectionOk     bool
+	searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
 }
 
-func (m *EventProcessorMockJiraClient) AddComment(issueID string, payload jira.CommentPayload) error {
+func (m *EventProcessorMockJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
 	if m.commentsAdded == nil {
 		m.commentsAdded = make(map[string]int)
 	}
@@ -26,19 +28,27 @@ func (m *EventProcessorMockJiraClient) AddComment(issueID string, payload jira.C
 	return nil
 }
 
-func (m *EventProcessorMockJiraClient) TestConnection() error {
+func (m *EventProcessorMockJiraClient) TestConnection(ctx context.Context) error {
 	if m.connectionOk {
 		return nil
 	}
 	return assert.AnError
 }
 
+func (m *EventProcessorMockJiraClient) SearchIssues(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+	if m.searchIssuesFunc != nil {
+		return m.searchIssuesFunc(ctx, jql)
+	}
+	return nil, nil
+}
+
 func TestNewEventProcessor(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
 	urlBuilder := &URLBuilder{}
+	mockConfig := &config.Config{Timezone: "Etc/GMT-5"}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, mockConfig, logger)
 
 	assert.NotNil(t, processor)
 	assert.Equal(t, mockJira, processor.jiraClient)
@@ -49,10 +59,10 @@ func TestNewEventProcessor(t *testing.T) {
 
 func TestEventProcessor_ProcessEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	tests := []struct {
 		name        string
@@ -126,10 +136,10 @@ func TestEventProcessor_ProcessEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessPushEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "push",
@@ -160,10 +170,10 @@ func TestEventProcessor_ProcessPushEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessMergeRequestEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "merge_request",
@@ -191,10 +201,10 @@ func TestEventProcessor_ProcessMergeRequestEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessIssueEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "issue",
@@ -222,10 +232,10 @@ func TestEventProcessor_ProcessIssueEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessNoteEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "note",
@@ -250,10 +260,10 @@ func TestEventProcessor_ProcessNoteEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessPipelineEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "pipeline",
@@ -277,10 +287,10 @@ func TestEventProcessor_ProcessPipelineEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessJobEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "job",
@@ -305,10 +315,10 @@ func TestEventProcessor_ProcessJobEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessDeploymentEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "deployment",
@@ -332,10 +342,10 @@ func TestEventProcessor_ProcessDeploymentEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessReleaseEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "release",
@@ -361,10 +371,10 @@ func TestEventProcessor_ProcessReleaseEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessWikiPageEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "wiki_page",
@@ -389,10 +399,10 @@ func TestEventProcessor_ProcessWikiPageEvent(t *testing.T) {
 
 func TestEventProcessor_ProcessFeatureFlagEvent(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	event := &Event{
 		ObjectKind: "feature_flag",
@@ -417,10 +427,10 @@ func TestEventProcessor_ProcessFeatureFlagEvent(t *testing.T) {
 
 func TestEventProcessor_BuildSimpleComment(t *testing.T) {
 	mockJira := &EventProcessorMockJiraClient{connectionOk: true}
-	urlBuilder := &URLBuilder{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
 
-	processor := NewEventProcessor(mockJira, urlBuilder, logger)
+	processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{Timezone: "Etc/GMT-5"}, logger)
 
 	comment := processor.buildSimpleComment("Test Event", "Test Title", "create")
 
@@ -431,4 +441,162 @@ func TestEventProcessor_BuildSimpleComment(t *testing.T) {
 	assert.Equal(t, "paragraph", comment.Body.Content[0].Type)
 	assert.Len(t, comment.Body.Content[0].Content, 1)
 	assert.Equal(t, "Test Event create: Test Title", comment.Body.Content[0].Content[0].Text)
+}
+
+func TestEventProcessor_ShouldProcessEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
+
+	tests := []struct {
+		name             string
+		jqlFilter        string
+		searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
+		event            *Event
+		expected         bool
+	}{
+		{
+			name:      "no JQL filter configured",
+			jqlFilter: "",
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "JQL filter matches issue",
+			jqlFilter: "project = TEST",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Return a matching issue
+				return []jira.JiraIssue{
+					{
+						Key: "ABC-123",
+					},
+				}, nil
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "JQL filter does not match issue",
+			jqlFilter: "project = OTHER",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Return no matching issues
+				return []jira.JiraIssue{}, nil
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name:      "JQL filter execution fails",
+			jqlFilter: "project = TEST",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Simulate an error
+				return nil, assert.AnError
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true, // Should process event even if JQL check fails
+		},
+		{
+			name:      "no issue IDs in event",
+			jqlFilter: "project = TEST",
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix some issue", // No issue ID in message
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true, // Should process event if no issue IDs found
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockJira := &EventProcessorMockJiraClient{
+				connectionOk:     true,
+				searchIssuesFunc: tt.searchIssuesFunc,
+			}
+
+			processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{
+				Timezone:  "Etc/GMT-5",
+				JQLFilter: tt.jqlFilter,
+			}, logger)
+
+			result, err := processor.shouldProcessEvent(context.Background(), tt.event)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

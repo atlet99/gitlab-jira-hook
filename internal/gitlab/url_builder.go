@@ -1,7 +1,9 @@
 package gitlab
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
@@ -9,38 +11,127 @@ import (
 
 // URLBuilder handles URL construction for GitLab entities
 type URLBuilder struct {
-	config *config.Config
+	config    *config.Config
+	apiClient *APIClient
+	logger    *slog.Logger
 }
 
 // NewURLBuilder creates a new URL builder
-func NewURLBuilder(cfg *config.Config) *URLBuilder {
+func NewURLBuilder(cfg *config.Config, logger *slog.Logger) *URLBuilder {
 	return &URLBuilder{
-		config: cfg,
+		config:    cfg,
+		apiClient: NewAPIClient(cfg, logger),
+		logger:    logger,
 	}
 }
 
-// ConstructAuthorURL constructs the URL for an author
+// ConstructAuthorURL constructs the URL for an author (requires GitLab API lookup for accurate username)
 func (b *URLBuilder) ConstructAuthorURL(event *Event, author Author) string {
-	if event.Project != nil && event.Project.WebURL != "" {
-		// Extract base URL from project web URL
-		baseURL := b.extractBaseURL(event.Project.WebURL)
-		return fmt.Sprintf("%s/%s", baseURL, author.Name)
+	// Note: This method returns empty until we implement GitLab API user lookup
+	// to get username from email. Using author.Name (full name) in URL is not reliable.
+	return ""
+}
+
+// ConstructAuthorURLFromEmail constructs the URL for an author from email using GitLab API
+func (b *URLBuilder) ConstructAuthorURLFromEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
 	}
 
-	// Fallback to configured GitLab URL
-	if b.config.GitLabBaseURL != "" {
-		return fmt.Sprintf("%s/%s", strings.TrimSuffix(b.config.GitLabBaseURL, "/"), author.Name)
+	// Try to get user info from GitLab API
+	user, err := b.apiClient.FindUserByEmail(ctx, email)
+	if err != nil {
+		b.logger.Debug("Failed to get user from GitLab API",
+			"email", email,
+			"error", err)
+		return ""
+	}
+
+	// Use web_url from API response if available
+	if user.WebURL != "" {
+		return user.WebURL
+	}
+
+	// Fallback: construct URL from base URL and username
+	if b.config.GitLabBaseURL != "" && user.Username != "" {
+		return fmt.Sprintf("%s/%s", strings.TrimSuffix(b.config.GitLabBaseURL, "/"), user.Username)
 	}
 
 	return ""
+}
+
+// GetUsernameByEmail gets username from GitLab API by email
+func (b *URLBuilder) GetUsernameByEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	user, err := b.apiClient.FindUserByEmail(ctx, email)
+	if err != nil {
+		b.logger.Debug("Failed to get username from GitLab API",
+			"email", email,
+			"error", err)
+		return ""
+	}
+
+	return user.Username
+}
+
+// GetProjectDefaultBranch gets the default branch for a project from GitLab API
+func (b *URLBuilder) GetProjectDefaultBranch(ctx context.Context, projectID int) string {
+	if projectID == 0 {
+		return ""
+	}
+
+	project, err := b.apiClient.GetProjectInfo(ctx, projectID)
+	if err != nil {
+		b.logger.Debug("Failed to get project info from GitLab API",
+			"project_id", projectID,
+			"error", err)
+		return ""
+	}
+
+	return project.DefaultBranch
+}
+
+// GetMergeRequestInfo returns MR details from GitLab API
+func (b *URLBuilder) GetMergeRequestInfo(ctx context.Context, projectID, mrIID int) (sourceBranch, targetBranch string) {
+	if projectID == 0 || mrIID == 0 {
+		return "", ""
+	}
+
+	mr, err := b.apiClient.GetMergeRequest(ctx, projectID, mrIID)
+	if err != nil {
+		b.logger.Debug("Failed to get MR info from GitLab API",
+			"project_id", projectID,
+			"mr_iid", mrIID,
+			"error", err)
+		return "", ""
+	}
+
+	return mr.SourceBranch, mr.TargetBranch
 }
 
 // ConstructBranchURL constructs the URL for a branch
 func (b *URLBuilder) ConstructBranchURL(event *Event, ref string) string {
-	if event.Project != nil && event.Project.WebURL != "" {
-		return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, ref)
+	if event.Project == nil || event.Project.WebURL == "" || ref == "" {
+		return ""
 	}
-	return ""
+
+	// Extract branch name from refs/heads/branch format
+	branchName := ref
+	if strings.HasPrefix(ref, "refs/heads/") {
+		branchName = strings.TrimPrefix(ref, "refs/heads/")
+	} else if strings.HasPrefix(ref, "refs/tags/") {
+		branchName = strings.TrimPrefix(ref, "refs/tags/")
+	}
+
+	// Only create URL if we have a valid branch name
+	if branchName == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/-/tree/%s", event.Project.WebURL, branchName)
 }
 
 // ConstructProjectURL constructs the project URL and returns both URL and path
@@ -135,17 +226,6 @@ func (b *URLBuilder) ConstructFeatureFlagURL(event *Event, flagName string) stri
 		return fmt.Sprintf("%s/-/feature_flags/%s", event.Project.WebURL, flagName)
 	}
 	return ""
-}
-
-// extractBaseURL extracts the base URL from a project web URL
-func (b *URLBuilder) extractBaseURL(projectURL string) string {
-	// Remove the project path from the URL
-	// Example: https://gitlab.com/group/project -> https://gitlab.com
-	parts := strings.Split(projectURL, "/")
-	if len(parts) >= 3 {
-		return strings.Join(parts[:3], "/")
-	}
-	return projectURL
 }
 
 // GetGitLabBaseURL returns the base GitLab URL
