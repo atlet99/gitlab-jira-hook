@@ -113,6 +113,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolved shadow variable conflicts and improved type safety
   - Comprehensive test coverage improvements including integration tests
   - Fixed compilation errors and type mismatches throughout the codebase
+  - **Critical Security and Stability Fixes**
+    - Fixed request forgery vulnerability in GetProjectInfo function with proper URL validation
+    - Resolved nil pointer dereferences in WriteErrorResponse and LogError functions
+    - Fixed unhandled error in validateAndFallback function (gosec G104)
+    - Eliminated duplicate constants in internal/monitoring/webhook_monitor.go
+    - Enhanced test server setup with proper GitLab webhook endpoint registration
+    - Fixed race condition in TestPriorityQueue/max_retries_exceeded with proper synchronization
+    - Added proper validation to webhook handler to return 400 for missing required fields
+    - Configured GitLab webhook handler with proper worker pool and monitor integration
 
 ### Fixed
 - **Context Propagation**
@@ -662,8 +671,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.4...HEAD
+## [1.0.1] - 2025-08-18
+
+### Fixed
+- **Critical Security and Stability Improvements**
+  - Fixed request forgery vulnerability in GetProjectInfo function with proper URL validation and sanitization
+  - Resolved nil pointer dereferences in WriteErrorResponse and LogError functions with comprehensive nil checks
+  - Fixed unhandled error in validateAndFallback function (gosec G104) with proper error handling
+  - Eliminated duplicate constants in internal/monitoring/webhook_monitor.go by using shared constants from handlers.go
+  - Enhanced test server setup with proper GitLab webhook endpoint registration for all test scenarios
+  - Fixed race condition in TestPriorityQueue/max_retries_exceeded with proper synchronization and timing controls
+  - Added proper validation to webhook handler to return 400 for missing required fields with detailed error messages
+  - Configured GitLab webhook handler with proper worker pool and monitor integration for async processing
+  - Fixed failing tests that were outdated due to code logic changes with updated test expectations
+  - Resolved all linting and compilation issues across the entire codebase (69 issues total)
+  - Enhanced error handling with proper error return checking and structured error responses
+
+[Unreleased]: https://github.com/atlet99/gitlab-jira-hook/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/atlet99/gitlab-jira-hook/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.4...v1.0.0
 [0.1.4]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/atlet99/gitlab-jira-hook/compare/v0.1.0...v0.1.2
-[0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0 
+[0.1.0]: https://github.com/atlet99/gitlab-jira-hook/releases/tag/v0.1.0
