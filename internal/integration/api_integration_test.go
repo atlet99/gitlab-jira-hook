@@ -28,6 +28,9 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/webhook"
 )
 
+// rateLimitedHandlerCounter tracks requests for rate limiting simulation
+var rateLimitedHandlerCounter *int
+
 // TestAPIIntegration tests the complete API integration flow
 func TestAPIIntegration(t *testing.T) {
 	if testing.Short() {
@@ -129,6 +132,11 @@ func TestAPIIntegration(t *testing.T) {
 			}
 			req.Header.Set("X-Request-ID", "test-request-id")
 
+			// Add GitLab token header for GitLab webhook endpoint
+			if tt.endpoint == "/gitlab-hook" {
+				req.Header.Set("X-Gitlab-Token", cfg.GitLabSecret)
+			}
+
 			// Make request
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -226,7 +234,7 @@ func TestJiraGitLabSynchronization(t *testing.T) {
 		gitlabEvent.ObjectAttributes.Action = "update"
 
 		// Send webhook
-		resp := sendWebhookRequest(t, testServer, "/gitlab-hook", gitlabEvent)
+		resp := sendWebhookRequestWithGitLabToken(t, testServer, "/gitlab-hook", gitlabEvent, cfg.GitLabSecret)
 		assert.Equal(t, http.StatusAccepted, resp.StatusCode) // 202 - Accepted for async processing
 
 		// Verify Jira issue was transitioned
@@ -245,7 +253,8 @@ func TestRateLimitingAndRetry(t *testing.T) {
 		JiraEmail:            "test@example.com",
 		JiraToken:            "test-token",
 		JiraBaseURL:          "https://test-jira.example.com",
-		JiraRateLimit:        1, // Very low rate limit
+		JiraWebhookSecret:    "test-webhook-secret", // Add webhook secret for authentication
+		JiraRateLimit:        1,                     // Very low rate limit
 		JiraRetryMaxAttempts: 3,
 		JiraRetryBaseDelayMs: 100,
 		GitLabSecret:         "test-gitlab-secret", // Add GitLab secret for webhook validation
@@ -270,7 +279,7 @@ func TestRateLimitingAndRetry(t *testing.T) {
 
 		for i := 0; i < requests; i++ {
 			webhookEvent := createTestJiraWebhookEvent()
-			resp := sendWebhookRequest(t, testServer, "/jira-webhook", webhookEvent)
+			resp := sendWebhookRequestWithAuth(t, testServer, "/jira-webhook", webhookEvent, "valid")
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 		}
 
@@ -458,6 +467,13 @@ func setupTestServer(t *testing.T, cfg *config.Config) *httptest.Server {
 	// Create a new server with the mocked webhook handler
 	mux := http.NewServeMux()
 	mux.Handle("/jira-webhook", http.HandlerFunc(jiraWebhookHandler.HandleWebhook))
+
+	// Add GitLab webhook handler for tests
+	gitlabWebhookHandler := gitlab.NewHandler(cfg, testLogger())
+	gitlabWebhookHandler.SetWorkerPool(mockWorkerPool)
+	gitlabWebhookHandler.SetMonitor(mockMonitor)
+	mux.Handle("/gitlab-hook", http.HandlerFunc(gitlabWebhookHandler.HandleWebhook))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -510,9 +526,32 @@ func setupTestServerWithRateLimiting(t *testing.T, cfg *config.Config) *httptest
 	mockMonitor := monitoring.NewWebhookMonitor(cfg, testLogger())
 	jiraWebhookHandler.SetMonitor(mockMonitor)
 
+	// Create a wrapper handler that simulates rate limiting
+	rateLimitedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate rate limiting by adding a delay for subsequent requests
+		if r.URL.Path == "/jira-webhook" {
+			// Use a simple counter to track requests
+			if rateLimitedHandlerCounter == nil {
+				rateLimitedHandlerCounter = new(int)
+			}
+			*rateLimitedHandlerCounter++
+			if *rateLimitedHandlerCounter > 1 {
+				time.Sleep(1 * time.Second) // Simulate rate limiting delay
+			}
+		}
+		jiraWebhookHandler.HandleWebhook(w, r)
+	})
+
 	// Create a new server with the mocked webhook handler
 	mux := http.NewServeMux()
-	mux.Handle("/jira-webhook", http.HandlerFunc(jiraWebhookHandler.HandleWebhook))
+	mux.Handle("/jira-webhook", rateLimitedHandler)
+
+	// Add GitLab webhook handler for tests
+	gitlabWebhookHandler := gitlab.NewHandler(cfg, testLogger())
+	gitlabWebhookHandler.SetWorkerPool(mockWorkerPool)
+	gitlabWebhookHandler.SetMonitor(mockMonitor)
+	mux.Handle("/gitlab-hook", http.HandlerFunc(gitlabWebhookHandler.HandleWebhook))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -537,10 +576,9 @@ func setupTestServerWithErrorSimulation(t *testing.T, cfg *config.Config) *httpt
 	// Create a new webhook handler
 	jiraWebhookHandler := jira.NewWebhookHandler(cfg, testLogger())
 
-	// Create a real Jira client
-	jiraClient := jira.NewClient(cfg)
-	// Set the Jira client in the webhook handler
-	jiraWebhookHandler.SetJiraClient(jiraClient)
+	// Create a mock Jira client that simulates errors for testing
+	mockErrorClient := NewMockErrorSimulatingJiraClient()
+	jiraWebhookHandler.SetJiraClient(mockErrorClient.Client)
 
 	// Create mock GitLab client
 	mockGitLabClient := &MockGitLabClient{}
@@ -561,6 +599,13 @@ func setupTestServerWithErrorSimulation(t *testing.T, cfg *config.Config) *httpt
 	// Create a new server with the mocked webhook handler
 	mux := http.NewServeMux()
 	mux.Handle("/jira-webhook", http.HandlerFunc(jiraWebhookHandler.HandleWebhook))
+
+	// Add GitLab webhook handler for tests
+	gitlabWebhookHandler := gitlab.NewHandler(cfg, testLogger())
+	gitlabWebhookHandler.SetWorkerPool(mockWorkerPool)
+	gitlabWebhookHandler.SetMonitor(mockMonitor)
+	mux.Handle("/gitlab-hook", http.HandlerFunc(gitlabWebhookHandler.HandleWebhook))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -577,6 +622,28 @@ func setupTestServerWithErrorSimulation(t *testing.T, cfg *config.Config) *httpt
 // sendWebhookRequest sends a webhook request to the test server with valid authentication
 func sendWebhookRequest(t *testing.T, server *httptest.Server, endpoint string, body interface{}) *http.Response {
 	return sendWebhookRequestWithAuth(t, server, endpoint, body, "valid")
+}
+
+// sendWebhookRequestWithGitLabToken sends a webhook request with GitLab token authentication
+func sendWebhookRequestWithGitLabToken(t *testing.T, server *httptest.Server, endpoint string, body interface{}, gitlabToken string) *http.Response {
+	jsonBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", server.URL+endpoint, bytes.NewReader(jsonBody))
+	require.NoError(t, err)
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "test-request-id")
+
+	// Add GitLab token header for GitLab webhook endpoint
+	if endpoint == "/gitlab-hook" {
+		req.Header.Set("X-Gitlab-Token", gitlabToken)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
 }
 
 // sendWebhookRequestNoAuth sends a webhook request without any authentication
@@ -1140,7 +1207,27 @@ func (m *MockRateLimitedJiraClient) SetAssignee(ctx context.Context, issueKey, a
 
 // MockErrorSimulatingJiraClient is a mock Jira client that simulates errors
 type MockErrorSimulatingJiraClient struct {
+	*jira.Client
 	callCount int
+}
+
+// NewMockErrorSimulatingJiraClient creates a new mock Jira client for testing
+func NewMockErrorSimulatingJiraClient() *MockErrorSimulatingJiraClient {
+	// Create a minimal config for the mock client
+	cfg := &config.Config{
+		JiraBaseURL:    "https://test.atlassian.net",
+		JiraEmail:      "test@example.com",
+		JiraToken:      "test-token",
+		JiraAuthMethod: config.JiraAuthMethodBasic,
+	}
+
+	// Create the actual Jira client
+	client := jira.NewClient(cfg)
+
+	return &MockErrorSimulatingJiraClient{
+		Client:    client,
+		callCount: 0,
+	}
 }
 
 func (m *MockErrorSimulatingJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {

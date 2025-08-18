@@ -23,7 +23,7 @@ type contextKey string
 
 // HTTP status constants
 const (
-	successStatusCode = 400
+	successStatusCode = 200
 	requestIDLength   = 16
 )
 
@@ -350,15 +350,19 @@ func (al *AuditLogger) LogError(r *http.Request, requestID, errorType, errorDeta
 		Category:  "error",
 		Action:    errorType,
 		Status:    "failed",
-		UserID:    getUserIDFromContext(r.Context()),
-		ClientIP:  getClientIP(r),
-		UserAgent: r.UserAgent(),
 		RequestID: requestID,
 		Error:     errorDetails,
 		Tags:      tags,
 		Metadata: map[string]interface{}{
 			"error_type": errorType,
 		},
+	}
+
+	// Only set request-specific fields if request is not nil
+	if r != nil {
+		event.UserID = getUserIDFromContext(r.Context())
+		event.ClientIP = getClientIP(r)
+		event.UserAgent = r.UserAgent()
 	}
 
 	al.LogEvent(event)
@@ -598,8 +602,13 @@ func isRetryableError(errorType ErrorType) bool {
 
 // WriteErrorResponse writes a standardized error response to the HTTP response writer
 func WriteErrorResponse(w http.ResponseWriter, r *http.Request, apiError *APIError) {
-	requestID := r.Header.Get("X-Request-ID")
-	if requestID == "" {
+	var requestID string
+	if r != nil {
+		requestID = r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+	} else {
 		requestID = generateRequestID()
 	}
 
@@ -648,6 +657,10 @@ func WriteSuccessResponse(w http.ResponseWriter, r *http.Request, data interface
 
 // HandleErrorWithMetrics handles an error and records metrics
 func HandleErrorWithMetrics(r *http.Request, apiError *APIError, start time.Time, monitor *monitoring.WebhookMonitor) {
+	if r == nil || apiError == nil {
+		return
+	}
+
 	requestPath := r.URL.Path
 	requestMethod := r.Method
 
@@ -1381,6 +1394,38 @@ func (h *WebhookHandler) parseWebhookEvent(body []byte) (*WebhookEvent, error) {
 	var event WebhookEvent
 	if err := json.Unmarshal(body, &event); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Jira webhook event: %w", err)
+	}
+
+	// Validate required fields
+	if event.WebhookEvent == "" {
+		return nil, fmt.Errorf("webhookEvent field is required")
+	}
+
+	// For issue-related events, validate that issue data is present
+	if strings.HasPrefix(event.WebhookEvent, "jira:issue_") ||
+		event.WebhookEvent == "comment_created" ||
+		event.WebhookEvent == "comment_updated" ||
+		event.WebhookEvent == "comment_deleted" ||
+		event.WebhookEvent == "worklog_created" ||
+		event.WebhookEvent == "worklog_updated" ||
+		event.WebhookEvent == "worklog_deleted" {
+		if event.Issue == nil {
+			return nil, fmt.Errorf("issue data is required for webhook event: %s", event.WebhookEvent)
+		}
+	}
+
+	// For comment events, validate that comment data is present
+	if strings.HasPrefix(event.WebhookEvent, "comment_") {
+		if event.Comment == nil {
+			return nil, fmt.Errorf("comment data is required for webhook event: %s", event.WebhookEvent)
+		}
+	}
+
+	// For worklog events, validate that worklog data is present
+	if strings.HasPrefix(event.WebhookEvent, "worklog_") {
+		if event.Worklog == nil {
+			return nil, fmt.Errorf("worklog data is required for webhook event: %s", event.WebhookEvent)
+		}
 	}
 
 	return &event, nil

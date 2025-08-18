@@ -262,6 +262,13 @@ func (pq *PriorityQueue) SubmitJob(
 
 // GetJob retrieves the next job from the highest priority non-empty queue
 func (pq *PriorityQueue) GetJob() (*Job, error) {
+	// Check if queue is shutting down
+	select {
+	case <-pq.ctx.Done():
+		return nil, fmt.Errorf("queue shutdown: unable to get job")
+	default:
+	}
+
 	// Check queues in priority order (Critical -> High -> Normal -> Low)
 	priorities := []JobPriority{PriorityCritical, PriorityHigh, PriorityNormal, PriorityLow}
 
@@ -301,7 +308,8 @@ func (pq *PriorityQueue) CompleteJob(job *Job, err error) {
 		if job.RetryCount < job.MaxRetries && job.ctx.Err() != context.Canceled {
 			job.Status = StatusRetrying
 			job.RetryCount++
-			pq.scheduleRetry(job)
+			// Schedule retry in a goroutine to avoid blocking
+			go pq.scheduleRetry(job)
 		} else if job.ctx.Err() == context.Canceled {
 			// Log context cancellation without retry
 			pq.logger.Warn("Job canceled, skipping retry",
@@ -338,10 +346,16 @@ func (pq *PriorityQueue) CompleteJob(job *Job, err error) {
 
 // scheduleRetry schedules a job for retry with exponential backoff
 func (pq *PriorityQueue) scheduleRetry(job *Job) {
+	// Capture job state before goroutine to avoid race conditions
+	jobID := job.ID
+	eventType := job.Event.Type
+	retryCount := job.RetryCount
+	maxRetries := job.MaxRetries
+	priority := job.Priority
 	delay := time.Duration(pq.config.RetryDelayMs) * time.Millisecond
 
 	// Apply exponential backoff
-	for i := 0; i < job.RetryCount-1; i++ {
+	for i := 0; i < retryCount-1; i++ {
 		delay = time.Duration(float64(delay) * pq.config.BackoffMultiplier)
 		if delay > time.Duration(pq.config.MaxBackoffMs)*time.Millisecond {
 			delay = time.Duration(pq.config.MaxBackoffMs) * time.Millisecond
@@ -349,20 +363,14 @@ func (pq *PriorityQueue) scheduleRetry(job *Job) {
 		}
 	}
 
-	// Reset job for retry
-	job.Status = StatusPending
-	job.StartedAt = nil
-	job.CompletedAt = nil
-	job.LastError = nil
-
 	// Schedule retry
 	go func() {
 		pq.logger.Info("Scheduling job retry",
-			"job_id", job.ID,
-			"event_type", job.Event.Type,
-			"retry_count", job.RetryCount,
+			"job_id", jobID,
+			"event_type", eventType,
+			"retry_count", retryCount,
 			"delay_ms", delay.Milliseconds(),
-			"max_retries", job.MaxRetries)
+			"max_retries", maxRetries)
 
 		time.Sleep(delay)
 
@@ -370,30 +378,30 @@ func (pq *PriorityQueue) scheduleRetry(job *Job) {
 		select {
 		case <-pq.ctx.Done():
 			pq.logger.Warn("Queue shutdown during retry, job abandoned",
-				"job_id", job.ID,
-				"event_type", job.Event.Type)
+				"job_id", jobID,
+				"event_type", eventType)
 			return
 		default:
 		}
 
-		// Re-submit to queue
-		queue := pq.queues[job.Priority]
+		// Re-submit to queue using captured priority
+		queue := pq.queues[priority]
 		select {
 		case queue.jobs <- job:
 			pq.updateStats(job, "retry_scheduled")
 			pq.logger.Info("Job retry scheduled successfully",
-				"job_id", job.ID,
-				"event_type", job.Event.Type,
-				"retry_count", job.RetryCount)
+				"job_id", jobID,
+				"event_type", eventType,
+				"retry_count", retryCount)
 		default:
 			// Queue is full, mark as failed
 			job.Status = StatusFailed
 			job.LastError = fmt.Errorf("queue full during retry")
 			pq.updateStats(job, "retry_failed")
 			pq.logger.Error("Job retry failed: queue full",
-				"job_id", job.ID,
-				"event_type", job.Event.Type,
-				"retry_count", job.RetryCount)
+				"job_id", jobID,
+				"event_type", eventType,
+				"retry_count", retryCount)
 		}
 	}()
 }

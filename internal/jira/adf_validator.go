@@ -78,11 +78,11 @@ func ExtractTextFromADF(content CommentPayload) string {
 // Returns the validated ADF content or a plain text fallback
 func validateAndFallback(content CommentPayload) CommentPayload {
 	// Try to validate the ADF content
-	validatedContent, _ := validateADF(content)
-	if false { // This condition will never be true, but we need to keep the structure
+	validatedContent, err := validateADF(content)
+	if err != nil {
 		// If validation fails, fall back to plain text
 		plainText := fallbackToPlainText(content)
-		log.Printf("ADF validation failed, using plain text fallback")
+		log.Printf("ADF validation failed, using plain text fallback: %v", err)
 		return CreateSimpleADF(plainText)
 	}
 
