@@ -56,6 +56,15 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 
 	// Create Jira webhook handler
 	jiraWebhookHandler := jira.NewWebhookHandler(cfg, logger)
+	
+	// Configure JWT validation if enabled
+	if cfg.JWTEnabled {
+		jiraWebhookHandler.ConfigureJWTValidation(cfg.JWTExpectedAudience, cfg.JWTAllowedIssuers)
+		logger.Info("JWT validation configured for Jira webhook handler",
+			"audience", cfg.JWTExpectedAudience,
+			"allowed_issuers", cfg.JWTAllowedIssuers)
+	}
+	
 	// Create and set GitLab API client via adapter
 	gitlabAPIClient := gitlab.NewAPIClient(cfg, logger)
 	gitlabAdapter := gitlab.NewJiraAPIAdapter(gitlabAPIClient)

@@ -18,6 +18,7 @@ This service listens to GitLab System Hook and Project Webhook events and automa
 - **Secure Authentication**: Uses Jira API tokens with Basic Auth
 - **Rate Limiting & Retry**: Built-in rate limiting and retry mechanisms for Jira API calls
 - **Environment Configuration**: Flexible configuration via environment variables
+- **JQL-based Event Filtering**: Filter events using JQL queries to process only relevant issues
 - **Structured Logging**: Comprehensive logging for monitoring and debugging
 - **Idempotent Operations**: Handles duplicate events gracefully
 
@@ -130,6 +131,10 @@ ALLOWED_PROJECTS=project1,project2
 ALLOWED_GROUPS=group1,group2
 # Optional: Push branch filter (comma-separated, supports * and ? wildcards)
 PUSH_BRANCH_FILTER=main,release-*,hotfix/*
+
+# Optional: JQL filter to process only specific issues
+# Example: JQL_FILTER=project = "TEST" AND issuetype = Bug
+JQL_FILTER=
 ```
 
 ### Dynamic Worker Pool Scaling
@@ -637,6 +642,27 @@ ALLOWED_GROUPS=my-org,another-org
 
 # No filtering (all projects allowed)
 # Leave empty or don't set
+```
+
+### JQL Filter Configuration
+
+Filter events using JQL queries to process only relevant issues:
+
+```env
+# Process only issues in the "TEST" project with "Bug" issue type
+JQL_FILTER=project = "TEST" AND issuetype = Bug
+
+# Process only high priority issues
+JQL_FILTER=priority = "High" OR priority = "Highest"
+
+# Process only issues assigned to a specific user
+JQL_FILTER=assignee = "user@example.com"
+
+# Process only issues in a specific status
+JQL_FILTER=status = "In Progress" OR status = "To Do"
+
+# Process only issues created in the last 7 days
+JQL_FILTER=created >= -7d
 ```
 
 ### Cache Configuration

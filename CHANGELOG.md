@@ -5,60 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-08-04
+## [1.0.0] - 2025-08-18
 
 ### Added
-- **OAuth 2.0 Authentication Support**
-  - Implemented Jira OAuth 2.0 (3LO) authentication as alternative to Basic Auth
-  - Added OAuth 2.0 client with authorization code flow support
-  - Implemented token refresh mechanism with automatic renewal
-  - Added OAuth 2.0 HTTP handlers for authorization and callback endpoints
-  - Added secure state management for CSRF protection
-  - Added OAuth 2.0 configuration options in config.env.example
-  - Integration with existing Jira client for seamless authentication method switching
+- **Jira API v3 Compliance**
+  - Complete transition handling workflow using `/issue/{key}/transitions` endpoint
+  - Updated assignee management to use `accountId` instead of username
+  - Support for special assignee values: `null` for Unassigned, `-1` for Default assignee
+  - Enhanced Jira client with proper API v3 endpoint support
 
-- **Advanced JWT Validation System**
-  - Enhanced JWT token validation for Jira webhook security
-  - Support for both RS256 (asymmetric) and HS256 (symmetric) algorithms
-  - Added comprehensive JWT claims validation (iss, aud, exp, iat)
-  - Implemented JWT audience validation with multiple audience support
-  - Added configurable JWT validation with environment variables
-  - Enhanced security documentation for JWT implementation
+- **ADF (Atlassian Document Format) Validation**
+  - Comprehensive ADF validation layer with JSON schema validation
+  - Automatic fallback to plain text when ADF validation fails
+  - Support for rich content validation with proper error handling
+  - Integration with comment synchronization for enhanced content processing
 
-- **Bidirectional Synchronization (Jira ↔ GitLab)**
+- **Enhanced JWT Webhook Security**
+  - Advanced JWT validation using Atlassian public keys
+  - Support for multiple JWT algorithms (RS256, HS256)
+  - Comprehensive JWT claims validation (iss, aud, exp, iat)
+  - Configurable JWT validation with environment variables
+  - Enhanced security documentation and configuration examples
+
+- **JQL-based Event Filtering**
+  - Advanced JQL filter configuration for selective GitLab event processing
+  - Dynamic JQL execution for filtering events based on Jira queries
+  - Integration with existing event processing pipeline
+  - Comprehensive configuration management for JQL filters
+
+- **Dynamic Field Mapping Configuration**
+  - Flexible field mapping system between Jira and GitLab
+  - Configurable mapping rules for custom fields and attributes
+  - Support for bidirectional field synchronization
+  - Comprehensive configuration file support with validation
+
+- **Comprehensive Audit Logging System**
+  - Complete audit trail for all API operations and system events
+  - Structured logging with multiple event types (API request/response, authentication, authorization, data change, system operation, error)
+  - Request ID correlation for tracking operations across the system
+  - Sensitive data sanitization and field masking for security
+  - Configurable logging levels and performance monitoring
+
+- **Enhanced Error Handling**
+  - Structured error types with detailed codes, categories, and severity levels
+  - Centralized error handler with retry logic and circuit breaker patterns
+  - Enhanced error recovery mechanisms with multiple strategies
+  - JSON error responses with detailed diagnostics and suggestions
+  - Comprehensive error logging with context propagation
+
+- **Bidirectional Synchronization**
   - Complete bidirectional sync system between Jira and GitLab
   - Support for issue creation, updates, comments, and status synchronization
   - Configurable sync direction (jira_to_gitlab, gitlab_to_jira, bidirectional)
-  - User mapping system for assignee synchronization
+  - User mapping system for assignee synchronization using accountId
   - Project mapping for cross-platform issue management
   - Event filtering by age and type for efficient processing
-  - Comprehensive sync configuration options
 
-- **Advanced Conflict Resolution System**
+- **Advanced Conflict Resolution**
   - Intelligent conflict detection for concurrent modifications
   - Multiple resolution strategies: Last-Write-Wins, Merge, Manual
   - Configurable conflict detection window (5-minute default)
   - Field-level conflict analysis (title, description, status, assignee)
   - Manual resolution queue for complex conflicts requiring human intervention
   - Conflict resolution audit trail with detailed logging
-  - Production-ready conflict management with rollback capabilities
-
-- **Comprehensive Audit Trail**
-  - Complete audit trail for all synchronization operations
-  - Event recording with before/after state tracking
-  - Performance metrics with duration and success rate tracking
-  - Rollback preparation and execution capabilities
-  - In-memory storage with configurable event limits (10,000 default)
-  - Rich query interface for audit event filtering
-  - Statistical analysis with success rates and error tracking
-
-- **Enhanced Error Handling Architecture**
-  - Structured error types with codes, categories, and severity levels
-  - Centralized error handler with retry logic and circuit breaker patterns
-  - Enhanced error recovery mechanisms with multiple strategies
-  - Improved error logging with context propagation
-  - JSON error responses for better API error handling
-  - Production-ready error management with detailed diagnostics
 
 - **GitLab API Integration**
   - Complete GitLab API client for issue and comment management
@@ -68,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Comprehensive GitLab API error handling and retry logic
 
 - **Enhanced Configuration Management**
-  - Extended configuration with 50+ new options for advanced features
+  - Extended configuration with 60+ new options for advanced features
   - OAuth 2.0 configuration section with security best practices
   - Bidirectional sync configuration with fine-grained controls
   - Conflict resolution strategy configuration
@@ -82,19 +91,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved context propagation throughout API calls
   - Enhanced error handling with structured retry logic
   - Reduced cyclomatic complexity through function decomposition
+  - Added comprehensive API v3 compliance with proper endpoint usage
 
 - **Server Architecture Enhancements**
   - Updated server initialization to support OAuth 2.0 endpoints
   - Enhanced dependency injection for new sync components
   - Improved error handling across all HTTP endpoints
   - Added comprehensive logging for new features
+  - Enhanced webhook handler with audit logging integration
 
 - **Code Quality Improvements**
-  - Fixed all linter issues (16 total): funlen, goconst, gocyclo, lll, mnd, revive, staticcheck
+  - Fixed all linter issues (20+ total): funlen, goconst, gocyclo, lll, mnd, revive, staticcheck
   - Improved function modularity by breaking down complex functions
   - Added constants for magic numbers and repeated strings
   - Enhanced code readability with proper function signatures
   - Comprehensive test coverage for new components
+  - Fixed compilation errors and type mismatches throughout the codebase
 
 ### Fixed
 - **Context Propagation**
@@ -106,6 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated all test files to support new authentication methods
   - Fixed mock interfaces to match new function signatures
   - Enhanced test coverage for OAuth 2.0 and sync features
+  - Fixed compilation errors in test files
+  - Added comprehensive ADF validation tests
 
 - **Webhook Event Processing Fixes**
   - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
@@ -142,11 +156,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented JWT signature validation for webhook security
   - Added CSRF protection with secure state parameter handling
   - Enhanced token storage and refresh mechanisms
+  - Added comprehensive JWT validation with Atlassian public keys
 
 - **Webhook Security Improvements**
   - Improved HMAC-SHA256 signature validation
   - Added replay attack prevention mechanisms
   - Enhanced input validation and sanitization
+  - Added comprehensive audit logging for security events
 
 ### Documentation
 - **Comprehensive Feature Documentation**
@@ -155,6 +171,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Complete bidirectional sync configuration examples
   - Conflict resolution strategy documentation
   - Production deployment guidance
+  - ADF validation documentation with examples
+  - JQL-based filtering configuration guide
+  - Enhanced audit logging documentation
 
 ## [0.1.5] - 2025-07-24
 

@@ -38,6 +38,12 @@ This document details all environment variables used by the GitLab ↔ Jira Hook
 - **Example**: `JIRA_API_TOKEN=your-atlassian-api-token`
 - **Note**: Create tokens at https://id.atlassian.com/manage-profile/security/api-tokens
 
+### `JQL_FILTER`
+- **Description**: JQL filter to determine which events to process. If set, only events that match the JQL filter will be processed. If not set, all events will be processed.
+- **Required**: No
+- **Default**: None
+- **Example**: `JQL_FILTER=project = "TEST" AND issuetype = Bug`
+
 ## Security Configuration
 
 ### `DEBUG_MODE`
@@ -54,19 +60,26 @@ This document details all environment variables used by the GitLab ↔ Jira Hook
 - **Example**: `ALLOWED_GITLAB_IP_RANGES=34.74.12.0/24,35.202.128.0/24`
 - **Note**: See GitLab's [IP ranges documentation](https://docs.gitlab.com/ee/user/gitlab_com/index.html#ip-range)
 
+### `JWT_ENABLED`
+- **Description**: Enable JWT validation for Jira Connect apps
+- **Required**: No
+- **Default**: `false`
+- **Example**: `JWT_ENABLED=true`
+- **Note**: Set to `true` when using Jira Connect apps
+
+### `JWT_EXPECTED_AUDIENCE`
+- **Description**: Expected audience for JWT tokens from Jira Connect apps
+- **Required**: Yes (when `JWT_ENABLED=true`)
+- **Default**: None
+- **Example**: `JWT_EXPECTED_AUDIENCE=https://your-app.com/webhook`
+- **Note**: Should match your webhook endpoint URL
+
 ### `JWT_ALLOWED_ISSUERS`
 - **Description**: Comma-separated list of allowed Jira Connect app client keys
-- **Required**: No (for Connect apps)
+- **Required**: Yes (when `JWT_ENABLED=true`)
 - **Default**: None
 - **Example**: `JWT_ALLOWED_ISSUERS=client-key-1,client-key-2`
 - **Note**: Required for JWT validation of Connect apps
-
-### `JWT_AUDIENCE`
-- **Description**: Expected audience for JWT tokens
-- **Required**: No (for Connect apps)
-- **Default**: None
-- **Example**: `JWT_AUDIENCE=https://your-app.com`
-- **Note**: Should match your app's base URL
 
 ## Server Configuration
 
@@ -254,6 +267,12 @@ GITLAB_TOKEN=glpat-abc123xyz456
 JIRA_BASE_URL=https://your-company.atlassian.net
 JIRA_USER_EMAIL=service-account@your-company.com
 JIRA_API_TOKEN=your-atlassian-api-token
+
+# JWT configuration for Connect apps (optional)
+JWT_ENABLED=false
+JWT_EXPECTED_AUDIENCE=https://your-app.com/webhook
+JWT_ALLOWED_ISSUERS=client-key-1,client-key-2
+
 SERVER_PORT=8080
 WORKER_POOL_SIZE=20
 CACHE_TTL=10m
@@ -291,6 +310,14 @@ METRICS_ENABLED=true
 #### "JWT validation failed: invalid issuer"
 - **Cause**: Jira Connect app client key not in `JWT_ALLOWED_ISSUERS`
 - **Solution**: Add the client key to the allowed issuers list
+
+#### "JWT_EXPECTED_AUDIENCE is required when JWT_ENABLED is true"
+- **Cause**: JWT validation is enabled but no audience is configured
+- **Solution**: Set `JWT_EXPECTED_AUDIENCE` to your webhook endpoint URL
+
+#### "JWT_ALLOWED_ISSUERS is required when JWT_ENABLED is true"
+- **Cause**: JWT validation is enabled but no allowed issuers are configured
+- **Solution**: Set `JWT_ALLOWED_ISSUERS` to your Jira Connect app client keys
 
 #### "Connection refused to Jira API"
 - **Cause**: Incorrect `JIRA_BASE_URL` or network issues

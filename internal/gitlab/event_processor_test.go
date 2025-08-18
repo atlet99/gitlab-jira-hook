@@ -17,6 +17,7 @@ import (
 type EventProcessorMockJiraClient struct {
 	commentsAdded map[string]int
 	connectionOk  bool
+	searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
 }
 
 func (m *EventProcessorMockJiraClient) AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error {
@@ -32,6 +33,13 @@ func (m *EventProcessorMockJiraClient) TestConnection(ctx context.Context) error
 		return nil
 	}
 	return assert.AnError
+}
+
+func (m *EventProcessorMockJiraClient) SearchIssues(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+	if m.searchIssuesFunc != nil {
+		return m.searchIssuesFunc(ctx, jql)
+	}
+	return nil, nil
 }
 
 func TestNewEventProcessor(t *testing.T) {
@@ -433,4 +441,162 @@ func TestEventProcessor_BuildSimpleComment(t *testing.T) {
 	assert.Equal(t, "paragraph", comment.Body.Content[0].Type)
 	assert.Len(t, comment.Body.Content[0].Content, 1)
 	assert.Equal(t, "Test Event create: Test Title", comment.Body.Content[0].Content[0].Text)
+}
+
+func TestEventProcessor_ShouldProcessEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	urlBuilder := NewURLBuilder(&config.Config{Timezone: "Etc/GMT-5", GitLabBaseURL: "https://gitlab.com"}, logger)
+
+	tests := []struct {
+		name          string
+		jqlFilter     string
+		searchIssuesFunc func(ctx context.Context, jql string) ([]jira.JiraIssue, error)
+		event         *Event
+		expected      bool
+	}{
+		{
+			name:      "no JQL filter configured",
+			jqlFilter: "",
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "JQL filter matches issue",
+			jqlFilter: "project = TEST",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Return a matching issue
+				return []jira.JiraIssue{
+					{
+						Key: "ABC-123",
+					},
+				}, nil
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "JQL filter does not match issue",
+			jqlFilter: "project = OTHER",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Return no matching issues
+				return []jira.JiraIssue{}, nil
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name:      "JQL filter execution fails",
+			jqlFilter: "project = TEST",
+			searchIssuesFunc: func(ctx context.Context, jql string) ([]jira.JiraIssue, error) {
+				// Simulate an error
+				return nil, assert.AnError
+			},
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix ABC-123",
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true, // Should process event even if JQL check fails
+		},
+		{
+			name:      "no issue IDs in event",
+			jqlFilter: "project = TEST",
+			event: &Event{
+				ObjectKind: "push",
+				Project: &Project{
+					ID:   1,
+					Name: "test-project",
+				},
+				Commits: []Commit{
+					{
+						ID:      "abc123",
+						Message: "Fix some issue", // No issue ID in message
+						Author: Author{
+							Name:  "Test User",
+							Email: "test@example.com",
+						},
+					},
+				},
+			},
+			expected: true, // Should process event if no issue IDs found
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockJira := &EventProcessorMockJiraClient{
+				connectionOk:     true,
+				searchIssuesFunc: tt.searchIssuesFunc,
+			}
+
+			processor := NewEventProcessor(mockJira, urlBuilder, &config.Config{
+				Timezone:  "Etc/GMT-5",
+				JQLFilter: tt.jqlFilter,
+			}, logger)
+
+			result, err := processor.shouldProcessEvent(context.Background(), tt.event)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

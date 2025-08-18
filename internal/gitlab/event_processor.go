@@ -15,6 +15,7 @@ type EventProcessor struct {
 	jiraClient interface {
 		AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
 		TestConnection(ctx context.Context) error
+		SearchIssues(ctx context.Context, jql string) ([]jira.JiraIssue, error)
 	}
 	urlBuilder *URLBuilder
 	config     *config.Config
@@ -26,6 +27,7 @@ type EventProcessor struct {
 func NewEventProcessor(jiraClient interface {
 	AddComment(ctx context.Context, issueID string, payload jira.CommentPayload) error
 	TestConnection(ctx context.Context) error
+	SearchIssues(ctx context.Context, jql string) ([]jira.JiraIssue, error)
 }, urlBuilder *URLBuilder, cfg *config.Config, logger *slog.Logger) *EventProcessor {
 	return &EventProcessor{
 		jiraClient: jiraClient,
@@ -36,8 +38,146 @@ func NewEventProcessor(jiraClient interface {
 	}
 }
 
+// shouldProcessEvent checks if an event should be processed based on JQL filter
+func (ep *EventProcessor) shouldProcessEvent(ctx context.Context, event *Event) (bool, error) {
+	// If no JQL filter is configured, process all events
+	if ep.config.JQLFilter == "" {
+		return true, nil
+	}
+
+	// Extract issue IDs from the event
+	issueIDs := ep.extractIssueIDsFromEvent(event)
+	
+	// If no issue IDs found, process the event (to avoid missing important events)
+	if len(issueIDs) == 0 {
+		return true, nil
+	}
+
+	// For each issue ID, check if it matches the JQL filter
+	for _, issueID := range issueIDs {
+		// Create JQL query to check if this specific issue matches the filter
+		jql := fmt.Sprintf("(%s) AND issueKey = %s", ep.config.JQLFilter, issueID)
+		
+		// Execute JQL query
+		issues, err := ep.jiraClient.SearchIssues(ctx, jql)
+		if err != nil {
+			ep.logger.Warn("Failed to execute JQL filter",
+				"error", err,
+				"jql", jql,
+				"issue_id", issueID)
+			// If JQL execution fails, process the event to avoid missing important events
+			return true, nil
+		}
+		
+		// If any issues match the filter, process the event
+		if len(issues) > 0 {
+			return true, nil
+		}
+	}
+	
+	// If none of the issues match the filter, skip processing
+	return false, nil
+}
+
+// extractIssueIDsFromEvent extracts all Jira issue IDs from an event
+func (ep *EventProcessor) extractIssueIDsFromEvent(event *Event) []string {
+	var issueIDs []string
+	
+	// Extract from commits
+	for _, commit := range event.Commits {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(commit.Message)...)
+	}
+	
+	// Extract from merge request
+	if event.MergeRequest != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.MergeRequest.Title)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.MergeRequest.Description)...)
+	}
+	
+	// Extract from issue
+	if event.Issue != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Issue.Title)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Issue.Description)...)
+	}
+	
+	// Extract from note
+	if event.Note != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Note.Note)...)
+	}
+	
+	// Extract from object attributes
+	if event.ObjectAttributes != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Title)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Description)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Note)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.ObjectAttributes.Ref)...)
+	}
+	
+	// Extract from pipeline
+	if event.Pipeline != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Pipeline.Ref)...)
+	}
+	
+	// Extract from build
+	if event.Build != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Build.Name)...)
+	}
+	
+	// Extract from deployment
+	if event.Deployment != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Deployment.Environment)...)
+	}
+	
+	// Extract from release
+	if event.Release != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Release.Name)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.Release.Description)...)
+	}
+	
+	// Extract from wiki page
+	if event.WikiPage != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.WikiPage.Title)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.WikiPage.Content)...)
+	}
+	
+	// Extract from feature flag
+	if event.FeatureFlag != nil {
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.FeatureFlag.Name)...)
+		issueIDs = append(issueIDs, ep.parser.ExtractIssueIDs(event.FeatureFlag.Description)...)
+	}
+	
+	// Remove duplicates
+	uniqueIssueIDs := make(map[string]bool)
+	var result []string
+	for _, id := range issueIDs {
+		if !uniqueIssueIDs[id] {
+			uniqueIssueIDs[id] = true
+			result = append(result, id)
+		}
+	}
+	
+	return result
+}
+
 // ProcessEvent processes a GitLab webhook event
 func (ep *EventProcessor) ProcessEvent(ctx context.Context, event *Event) error {
+	// Check if event should be processed based on JQL filter
+	shouldProcess, err := ep.shouldProcessEvent(ctx, event)
+	if err != nil {
+		ep.logger.Error("Failed to check if event should be processed",
+			"error", err)
+		// Continue processing even if JQL check fails to avoid missing important events
+	}
+	
+	if !shouldProcess {
+		ep.logger.Debug("Skipping event due to JQL filter",
+			"object_kind", event.ObjectKind,
+			"event_type", event.Type,
+			"project_id", event.Project.ID,
+			"project_name", event.Project.Name)
+		return nil
+	}
+
 	ep.logger.Info("Processing GitLab event",
 		"object_kind", event.ObjectKind,
 		"event_type", event.Type,

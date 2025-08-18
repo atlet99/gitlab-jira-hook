@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -240,4 +241,143 @@ func (c *APIClient) GetMergeRequest(ctx context.Context, projectID, mrIID int) (
 		"title", mr.Title)
 
 	return &mr, nil
+}
+
+// CreateIssueRequest represents the request body for creating a GitLab issue
+type CreateIssueRequest struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Labels      []string `json:"labels"`
+	Milestone   string   `json:"milestone_id,omitempty"`
+	AssigneeID  int      `json:"assignee_id,omitempty"`
+	DueDate     string   `json:"due_date,omitempty"`
+}
+
+// CreateIssue creates a new issue in GitLab
+func (c *APIClient) CreateIssue(ctx context.Context, projectID int, request CreateIssueRequest) (*GitLabIssue, error) {
+	if c.token == "" {
+		return nil, fmt.Errorf("gitlab token not configured")
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues", c.baseURL, projectID)
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Content-Type", "application/json")
+
+	c.logger.Debug("Creating GitLab issue",
+		"project_id", projectID,
+		"title", request.Title,
+		"labels", request.Labels,
+		"milestone", request.Milestone)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusCreated {
+		c.logger.Warn("GitLab API create issue request failed",
+			"status_code", resp.StatusCode,
+			"status", resp.Status,
+			"project_id", projectID)
+		return nil, fmt.Errorf("gitlab API returned status %d", resp.StatusCode)
+	}
+
+	var issue GitLabIssue
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	c.logger.Debug("Created GitLab issue",
+		"project_id", projectID,
+		"issue_id", issue.ID,
+		"issue_iid", issue.IID,
+		"title", issue.Title)
+
+	return &issue, nil
+}
+
+// UpdateIssueRequest represents the request body for updating a GitLab issue
+type UpdateIssueRequest struct {
+	Title       *string   `json:"title,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Labels      *[]string `json:"labels,omitempty"`
+	Milestone   *string   `json:"milestone_id,omitempty"`
+	AssigneeID  *int      `json:"assignee_id,omitempty"`
+	StateEvent  string    `json:"state_event,omitempty"`
+	DueDate     *string   `json:"due_date,omitempty"`
+}
+
+// UpdateIssue updates an existing GitLab issue
+func (c *APIClient) UpdateIssue(ctx context.Context, projectID, issueIID int, request UpdateIssueRequest) (*GitLabIssue, error) {
+	if c.token == "" {
+		return nil, fmt.Errorf("gitlab token not configured")
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", c.baseURL, projectID, issueIID)
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Content-Type", "application/json")
+
+	c.logger.Debug("Updating GitLab issue",
+		"project_id", projectID,
+		"issue_iid", issueIID,
+		"request", request)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		c.logger.Warn("GitLab API update issue request failed",
+			"status_code", resp.StatusCode,
+			"status", resp.Status,
+			"project_id", projectID,
+			"issue_iid", issueIID)
+		return nil, fmt.Errorf("gitlab API returned status %d", resp.StatusCode)
+	}
+
+	var issue GitLabIssue
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	c.logger.Debug("Updated GitLab issue",
+		"project_id", projectID,
+		"issue_id", issue.ID,
+		"issue_iid", issue.IID,
+		"title", issue.Title)
+
+	return &issue, nil
 }

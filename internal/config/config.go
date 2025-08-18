@@ -3,6 +3,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -201,6 +202,18 @@ type Config struct {
 	UserMapping           map[string]string // Jira user → GitLab user mapping (e.g., "john.doe@company.com" → "jdoe")
 	DefaultGitLabAssignee string            // default GitLab assignee when Jira user has no mapping
 
+	// JQL Filter Configuration
+	JQLFilter string // JQL filter to determine which events to process
+
+	// JWT Configuration for Connect Apps
+	JWTEnabled           bool   // enable JWT validation for Connect apps
+	JWTExpectedAudience string // expected JWT audience (usually your app URL)
+	JWTAllowedIssuers   []string // allowed JWT issuers (client keys)
+
+	// Dynamic Field Mapping Configuration
+	FieldMappings map[string]map[string]string // Dynamic field mappings (Jira field -> GitLab field -> mapping rule)
+	// Example: {"customfield_10010": {"target_field": "labels", "transform": "lowercase", "prefix": "bug-"}}
+
 	// Sync Limits and Safety
 	SyncBatchSize     int  // maximum number of sync operations per batch
 	SyncRateLimit     int  // maximum sync operations per minute
@@ -269,6 +282,17 @@ func Load() (*Config, error) {
 		MetricsEnabled:      parseBoolEnv("METRICS_ENABLED", DefaultMetricsEnabled),
 		HealthCheckInterval: parseIntEnv("HEALTH_CHECK_INTERVAL", DefaultHealthCheckInterval),
 	}
+
+	// JQL Filter Configuration
+	cfg.JQLFilter = getEnv("JQL_FILTER", "")
+
+	// JWT Configuration for Connect Apps
+	cfg.JWTEnabled = parseBoolEnv("JWT_ENABLED", false)
+	cfg.JWTExpectedAudience = getEnv("JWT_EXPECTED_AUDIENCE", "")
+	cfg.JWTAllowedIssuers = parseCSVEnv("JWT_ALLOWED_ISSUERS")
+
+	// Dynamic Field Mapping Configuration
+	cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
 
 	// Validate required fields
 	if err := cfg.validate(); err != nil {
@@ -378,13 +402,24 @@ func NewConfigFromEnv(logger *slog.Logger) *Config {
 	cfg.UserMapping = parseKeyValueMapping("USER_MAPPING")
 	cfg.DefaultGitLabAssignee = getEnv("DEFAULT_GITLAB_ASSIGNEE", "")
 
-	// Sync Limits and Safety
-	cfg.SyncBatchSize = parseIntEnv("SYNC_BATCH_SIZE", defaultSyncBatchSize)
-	cfg.SyncRateLimit = parseIntEnv("SYNC_RATE_LIMIT", defaultSyncRateLimit)
-	cfg.SyncRetryAttempts = parseIntEnv("SYNC_RETRY_ATTEMPTS", defaultSyncRetryAttempts)
-	cfg.SkipOldEvents = parseBoolEnv("SKIP_OLD_EVENTS", true)
-	cfg.MaxEventAge = parseIntEnv("MAX_EVENT_AGE", defaultMaxEventAge)
+	
+		// JQL Filter Configuration
+		cfg.JQLFilter = getEnv("JQL_FILTER", "")
 
+		// JWT Configuration for Connect Apps
+		cfg.JWTEnabled = parseBoolEnv("JWT_ENABLED", false)
+		cfg.JWTExpectedAudience = getEnv("JWT_EXPECTED_AUDIENCE", "")
+		cfg.JWTAllowedIssuers = parseCSVEnv("JWT_ALLOWED_ISSUERS")
+
+		// Dynamic Field Mapping Configuration
+		cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
+	
+		// Sync Limits and Safety
+		cfg.SyncBatchSize = parseIntEnv("SYNC_BATCH_SIZE", defaultSyncBatchSize)
+		cfg.SyncRateLimit = parseIntEnv("SYNC_RATE_LIMIT", defaultSyncRateLimit)
+		cfg.SyncRetryAttempts = parseIntEnv("SYNC_RETRY_ATTEMPTS", defaultSyncRetryAttempts)
+		cfg.SkipOldEvents = parseBoolEnv("SKIP_OLD_EVENTS", true)
+		cfg.MaxEventAge = parseIntEnv("MAX_EVENT_AGE", defaultMaxEventAge)
 	// Auto-detect worker/queue params if not set
 	cpuCount := runtime.NumCPU()
 	memLimitMB := detectMemoryLimitMB()
@@ -493,6 +528,11 @@ func (c *Config) validate() error {
 
 	// Validate bidirectional sync configuration
 	if err := c.validateBidirectionalSync(); err != nil {
+		return err
+	}
+
+	// Validate JWT configuration
+	if err := c.validateJWTConfig(); err != nil {
 		return err
 	}
 
@@ -656,6 +696,101 @@ func parseKeyValueMapping(key string) map[string]string {
 	}
 
 	return mappings
+}
+
+// parseFieldMappings parses field mappings from environment variable
+// Format: 'jira_field1:target_field=gitlab_field1,transform=rule1,prefix=value1;jira_field2:target_field=gitlab_field2,transform=rule2'
+// or JSON format: '{"jira_field1":{"target_field":"gitlab_field1","transform":"rule1","prefix":"value1"}}'
+func parseFieldMappings(key string) map[string]map[string]string {
+	value := getEnv(key, "")
+	if value == "" {
+		return make(map[string]map[string]string)
+	}
+
+	// Try to parse as JSON first
+	if strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") {
+		return parseFieldMappingsJSON(value)
+	}
+
+	// Parse as key-value pairs separated by semicolons
+	return parseFieldMappingsKeyValue(value)
+}
+
+// parseFieldMappingsJSON parses field mappings from JSON format
+func parseFieldMappingsJSON(jsonStr string) map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	
+	// Parse JSON string into a generic map
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &rawMap); err != nil {
+		return result
+	}
+	
+	// Convert to the desired format
+	for jiraField, fieldConfig := range rawMap {
+		if configMap, ok := fieldConfig.(map[string]interface{}); ok {
+			result[jiraField] = make(map[string]string)
+			for key, val := range configMap {
+				if strVal, ok := val.(string); ok {
+					result[jiraField][key] = strVal
+				}
+			}
+		}
+	}
+	
+	return result
+}
+
+// parseFieldMappingsKeyValue parses field mappings from key-value format
+func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	
+	// Split by semicolon to get individual field mappings
+	fieldMappings := strings.Split(value, ";")
+	for _, fieldMapping := range fieldMappings {
+		fieldMapping = strings.TrimSpace(fieldMapping)
+		if fieldMapping == "" {
+			continue
+		}
+		
+		// Split by colon to separate Jira field from configuration
+		parts := strings.SplitN(fieldMapping, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		
+		jiraField := strings.TrimSpace(parts[0])
+		configStr := strings.TrimSpace(parts[1])
+		
+		if jiraField == "" || configStr == "" {
+			continue
+		}
+		
+		// Parse configuration key-value pairs
+		result[jiraField] = make(map[string]string)
+		configPairs := strings.Split(configStr, ",")
+		for _, configPair := range configPairs {
+			configPair = strings.TrimSpace(configPair)
+			if configPair == "" {
+				continue
+			}
+			
+			// Split by equals to get key-value pair
+			configParts := strings.SplitN(configPair, "=", 2)
+			if len(configParts) != 2 {
+				continue
+			}
+			
+			configKey := strings.TrimSpace(configParts[0])
+			configValue := strings.TrimSpace(configParts[1])
+			
+			if configKey != "" && configValue != "" {
+				result[jiraField][configKey] = configValue
+			}
+		}
+	}
+	
+	return result
 }
 
 // validateURL validates that a string is a valid URL format
@@ -1019,6 +1154,37 @@ func (c *Config) validateCommentSyncDirection() error {
 		return fmt.Errorf("COMMENT_SYNC_DIRECTION must be one of: jira_to_gitlab, gitlab_to_jira, bidirectional, got: %s",
 			c.CommentSyncDirection)
 	}
+	return nil
+}
+
+// validateJWTConfig validates JWT configuration for Connect apps
+func (c *Config) validateJWTConfig() error {
+	// If JWT is not enabled, skip validation
+	if !c.JWTEnabled {
+		return nil
+	}
+
+	// Validate required JWT fields when JWT is enabled
+	if c.JWTExpectedAudience == "" {
+		return fmt.Errorf("JWT_EXPECTED_AUDIENCE is required when JWT_ENABLED is true")
+	}
+
+	if len(c.JWTAllowedIssuers) == 0 {
+		return fmt.Errorf("JWT_ALLOWED_ISSUERS is required when JWT_ENABLED is true")
+	}
+
+	// Validate audience format (should be a URL)
+	if err := validateURL(c.JWTExpectedAudience, "JWT_EXPECTED_AUDIENCE"); err != nil {
+		return fmt.Errorf("JWT_EXPECTED_AUDIENCE is not a valid URL: %w", err)
+	}
+
+	// Validate issuer format (should be non-empty strings)
+	for i, issuer := range c.JWTAllowedIssuers {
+		if strings.TrimSpace(issuer) == "" {
+			return fmt.Errorf("JWT_ALLOWED_ISSUERS[%d] cannot be empty", i)
+		}
+	}
+
 	return nil
 }
 

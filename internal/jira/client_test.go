@@ -268,6 +268,106 @@ func TestClientAddComment(t *testing.T) {
 	})
 }
 
+// TestAddCommentWithADFValidation tests the AddComment method with ADF validation
+func TestAddCommentWithADFValidation(t *testing.T) {
+	t.Run("successful comment addition with valid ADF", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/comment", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			// Verify request body
+			var payload CommentPayload
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
+			assert.Equal(t, "doc", payload.Body.Type)
+			assert.Equal(t, 1, payload.Body.Version)
+			assert.Len(t, payload.Body.Content, 1)
+			assert.Equal(t, "paragraph", payload.Body.Content[0].Type)
+			assert.Len(t, payload.Body.Content[0].Content, 1)
+			assert.Equal(t, "text", payload.Body.Content[0].Content[0].Type)
+			assert.Equal(t, "Test comment", payload.Body.Content[0].Content[0].Text)
+
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id": "12345"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:            "test@example.com",
+			JiraToken:            "test-token",
+			JiraBaseURL:          server.URL,
+			JiraRetryMaxAttempts: 3,
+			JiraRetryBaseDelayMs: 10,
+		}
+
+		client := NewClient(cfg)
+		payload := createTestCommentPayload("Test comment")
+
+		err := client.AddComment(context.Background(), "ABC-123", payload)
+		assert.NoError(t, err)
+	})
+
+	t.Run("comment addition with invalid ADF falls back to plain text", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/comment", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			// Verify request body - should be plain text fallback
+			var payload CommentPayload
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
+			assert.Equal(t, "doc", payload.Body.Type)
+			assert.Equal(t, 1, payload.Body.Version)
+			assert.Len(t, payload.Body.Content, 1)
+			assert.Equal(t, "paragraph", payload.Body.Content[0].Type)
+			assert.Len(t, payload.Body.Content[0].Content, 1)
+			assert.Equal(t, "text", payload.Body.Content[0].Content[0].Type)
+			// The content should be the fallback plain text
+			assert.Contains(t, payload.Body.Content[0].Content[0].Text, "Invalid content")
+
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id": "12345"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:            "test@example.com",
+			JiraToken:            "test-token",
+			JiraBaseURL:          server.URL,
+			JiraRetryMaxAttempts: 3,
+			JiraRetryBaseDelayMs: 10,
+		}
+
+		client := NewClient(cfg)
+		
+		// Create invalid ADF content (invalid type)
+		invalidPayload := CommentPayload{
+			Body: CommentBody{
+				Type:    "invalid",
+				Version: 1,
+				Content: []Content{
+					{
+						Type: "paragraph",
+						Content: []TextContent{
+							{Type: "text", Text: "Invalid content"},
+						},
+					},
+				},
+			},
+		}
+
+		err := client.AddComment(context.Background(), "ABC-123", invalidPayload)
+		// The method should not return an error even with invalid ADF, as it falls back to plain text
+		assert.NoError(t, err)
+	})
+}
+
 // Helper function to create a test Jira issue
 func createTestIssue(key, status string) JiraIssue {
 	return JiraIssue{
@@ -888,7 +988,7 @@ func TestClientEdgeCases(t *testing.T) {
 				},
 			},
 		}
-
+		
 		err := client.AddComment(context.Background(), "ABC-123", payload)
 		assert.Error(t, err)
 		if err != nil {
@@ -898,6 +998,80 @@ func TestClientEdgeCases(t *testing.T) {
 				strings.Contains(err.Error(), "jira API error"),
 				"Expected marshaling or network error, got: %s", err.Error())
 		}
+	})
+}
+
+// Tests for SearchIssues
+func TestClientSearchIssues(t *testing.T) {
+	t.Run("successful issue search", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/rest/api/3/search", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			// Verify request body
+			var payload map[string]interface{}
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
+			assert.Equal(t, "project = TEST", payload["jql"])
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"issues": [
+					{
+						"id": "12345",
+						"key": "TEST-1",
+						"fields": {
+							"summary": "Test issue 1"
+						}
+					},
+					{
+						"id": "12346",
+						"key": "TEST-2",
+						"fields": {
+							"summary": "Test issue 2"
+						}
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		issues, err := client.SearchIssues(context.Background(), "project = TEST")
+		assert.NoError(t, err)
+		assert.Len(t, issues, 2)
+		assert.Equal(t, "TEST-1", issues[0].Key)
+		assert.Equal(t, "TEST-2", issues[1].Key)
+	})
+
+	t.Run("issue search fails on 4xx error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error": "Invalid JQL"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		issues, err := client.SearchIssues(context.Background(), "invalid jql")
+		assert.Error(t, err)
+		assert.Nil(t, issues)
+		assert.Contains(t, err.Error(), "jira API error")
+		assert.Contains(t, err.Error(), "404")
 	})
 }
 
@@ -920,6 +1094,59 @@ func createTestCommentPayload(text string) CommentPayload {
 			},
 		},
 	}
+}
+
+// Tests for SetAssignee
+func TestClientSetAssignee(t *testing.T) {
+	t.Run("successful assignee update", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "PUT", r.Method)
+			assert.Equal(t, "/rest/api/3/issue/ABC-123/assignee", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Authorization"), "Basic "))
+
+			// Verify request body
+			var payload map[string]interface{}
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
+			assert.Equal(t, "user-account-id", payload["accountId"])
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"accountId": "user-account-id"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.SetAssignee(context.Background(), "ABC-123", "user-account-id")
+		assert.NoError(t, err)
+	})
+
+	t.Run("assignee update fails on 4xx error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error": "Issue not found"}`))
+		}))
+		defer server.Close()
+
+		cfg := &config.Config{
+			JiraEmail:   "test@example.com",
+			JiraToken:   "test-token",
+			JiraBaseURL: server.URL,
+		}
+
+		client := NewClient(cfg)
+		err := client.SetAssignee(context.Background(), "ABC-123", "user-account-id")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "jira API error")
+		assert.Contains(t, err.Error(), "404")
+	})
 }
 
 // Helper function to encode base64

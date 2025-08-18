@@ -34,6 +34,7 @@ type GitLabAPI interface {
 type JiraAPI interface {
 	UpdateIssue(ctx context.Context, issueKey string, fields map[string]interface{}) error
 	GetIssue(ctx context.Context, issueKey string) (*jira.JiraIssue, error)
+	SetAssignee(ctx context.Context, issueKey string, accountId string) error
 }
 
 // GitLabIssueRequest represents a request to create/update a GitLab issue

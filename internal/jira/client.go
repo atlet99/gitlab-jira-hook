@@ -128,6 +128,13 @@ func (c *Client) getAuthorizationHeader(ctx context.Context) (string, error) {
 //
 //nolint:gocyclo // Complex retry logic is necessary for reliability
 func (c *Client) AddComment(ctx context.Context, issueID string, payload CommentPayload) error {
+	// Validate ADF content and fallback to plain text if validation fails
+	validatedPayload, err := validateAndFallback(payload)
+	if err != nil {
+		// Log the validation error but continue with the fallback content
+		fmt.Printf("ADF validation failed for issue %s: %v\n", issueID, err)
+	}
+
 	maxAttempts := c.config.JiraRetryMaxAttempts
 	baseDelay := time.Duration(c.config.JiraRetryBaseDelayMs) * time.Millisecond
 	var lastErr error
@@ -140,7 +147,7 @@ func (c *Client) AddComment(ctx context.Context, issueID string, payload Comment
 		c.rateLimiter.Wait()
 
 		// Build and send request
-		req, err := c.buildCommentRequest(ctx, issueID, payload)
+		req, err := c.buildCommentRequest(ctx, issueID, validatedPayload)
 		if err != nil {
 			return err
 		}
@@ -516,4 +523,248 @@ func intMin(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// SetAssignee updates the assignee for a Jira issue using accountId
+func (c *Client) SetAssignee(ctx context.Context, issueKey, accountId string) error {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create payload
+	payload := map[string]interface{}{
+		"accountId": accountId,
+	}
+
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal assignee payload: %w", err)
+	}
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// SearchIssues executes a JQL query and returns matching issues
+func (c *Client) SearchIssues(ctx context.Context, jql string) ([]JiraIssue, error) {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/search", c.baseURL)
+	
+	// Create payload
+	payload := map[string]interface{}{
+		"jql": jql,
+	}
+	
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JQL payload: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response
+	var searchResult struct {
+		Issues []JiraIssue `json:"issues"`
+	}
+	if err := json.Unmarshal(body, &searchResult); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal search response: %w", err)
+	}
+
+	return searchResult.Issues, nil
+}
+
+// UpdateIssue updates a Jira issue with the given fields
+func (c *Client) UpdateIssue(ctx context.Context, issueKey string, fields map[string]interface{}) error {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create payload
+	payload := map[string]interface{}{
+		"fields": fields,
+	}
+
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal update payload: %w", err)
+	}
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// SearchUsers searches for users by email address
+func (c *Client) SearchUsers(ctx context.Context, email string) ([]JiraUser, error) {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Create request
+	url := fmt.Sprintf("%s/rest/api/3/user/search?query=%s", c.baseURL, email)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	authHeader, err := c.getAuthorizationHeader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authorization header: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Accept", "application/json")
+
+	// Add context
+	req = req.WithContext(ctx)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// explicitly ignore the error
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response
+	var users []JiraUser
+	if err := json.Unmarshal(body, &users); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal users response: %w", err)
+	}
+
+	return users, nil
 }

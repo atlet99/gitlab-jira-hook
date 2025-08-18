@@ -35,3 +35,8 @@ func (a *JiraSyncAdapter) GetIssue(_ context.Context, _ string) (*jira.JiraIssue
 	// For now, we'll return a not implemented error
 	return nil, fmt.Errorf("jira issue retrieval not yet implemented in jira.Client")
 }
+
+// SetAssignee updates the assignee for a Jira issue using accountId
+func (a *JiraSyncAdapter) SetAssignee(ctx context.Context, issueKey string, accountId string) error {
+	return a.client.SetAssignee(ctx, issueKey, accountId)
+}
