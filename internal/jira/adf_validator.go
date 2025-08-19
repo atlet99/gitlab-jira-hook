@@ -137,7 +137,8 @@ func validateMark(mark Mark, blockIndex, textIndex, markIndex int) error {
 	}
 
 	// Validate required attributes for specific mark types
-	if mark.Type == "link" {
+	const LinkMarkType = "link"
+	if mark.Type == LinkMarkType {
 		if mark.Attrs == nil {
 			return fmt.Errorf("mark %d in text content %d of block %d: link mark requires 'attrs'", markIndex, textIndex, blockIndex)
 		}

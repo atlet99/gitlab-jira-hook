@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/atlet99/gitlab-jira-hook/internal/config"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
 func TestNewJQLFilter(t *testing.T) {

@@ -216,6 +216,10 @@ type Config struct {
 	FieldMappings map[string]map[string]string // Dynamic field mappings (Jira field -> GitLab field -> mapping rule)
 	// Example: {"customfield_10010": {"target_field": "labels", "transform": "lowercase", "prefix": "bug-"}}
 
+	// Custom Field Mapping Configuration
+	CustomFieldMappings map[string]interface{} // Custom field mappings with advanced options
+	// Example: {"customfield_10010": "labels", "customfield_10011": {"target_field": "labels", "type": "string", "adf_support": true}}
+
 	// Sync Limits and Safety
 	SyncBatchSize     int  // maximum number of sync operations per batch
 	SyncRateLimit     int  // maximum sync operations per minute
@@ -295,6 +299,9 @@ func Load() (*Config, error) {
 
 	// Dynamic Field Mapping Configuration
 	cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
+
+	// Custom Field Mapping Configuration
+	cfg.CustomFieldMappings = parseCustomFieldMappings("CUSTOM_FIELD_MAPPINGS")
 
 	// Validate required fields
 	if err := cfg.validate(); err != nil {
@@ -414,6 +421,9 @@ func NewConfigFromEnv(logger *slog.Logger) *Config {
 
 	// Dynamic Field Mapping Configuration
 	cfg.FieldMappings = parseFieldMappings("FIELD_MAPPINGS")
+
+	// Custom Field Mapping Configuration
+	cfg.CustomFieldMappings = parseCustomFieldMappings("CUSTOM_FIELD_MAPPINGS")
 
 	// Sync Limits and Safety
 	cfg.SyncBatchSize = parseIntEnv("SYNC_BATCH_SIZE", defaultSyncBatchSize)
@@ -789,6 +799,85 @@ func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
 			if configKey != "" && configValue != "" {
 				result[jiraField][configKey] = configValue
 			}
+		}
+	}
+
+	return result
+}
+
+// parseCustomFieldMappings parses custom field mappings from environment variable
+// Format: 'jira_field1=gitlab_field1;jira_field2={"target_field":"gitlab_field2","type":"string","adf_support":true}'
+// or JSON format: '{"jira_field1":"gitlab_field1","jira_field2":{"target_field":"gitlab_field2","type":"string","adf_support":true}}'
+func parseCustomFieldMappings(key string) map[string]interface{} {
+	value := getEnv(key, "")
+	if value == "" {
+		return make(map[string]interface{})
+	}
+
+	// Try to parse as JSON first
+	if strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") {
+		return parseCustomFieldMappingsJSON(value)
+	}
+
+	// Parse as key-value pairs separated by semicolons
+	return parseCustomFieldMappingsKeyValue(value)
+}
+
+// parseCustomFieldMappingsJSON parses custom field mappings from JSON format
+func parseCustomFieldMappingsJSON(jsonStr string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Parse JSON string into a generic map
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &rawMap); err != nil {
+		return result
+	}
+
+	// Convert to the desired format
+	for jiraField, fieldConfig := range rawMap {
+		result[jiraField] = fieldConfig
+	}
+
+	return result
+}
+
+// parseCustomFieldMappingsKeyValue parses custom field mappings from key-value format
+func parseCustomFieldMappingsKeyValue(value string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Split by semicolon to get individual field mappings
+	fieldMappings := strings.Split(value, ";")
+	for _, fieldMapping := range fieldMappings {
+		fieldMapping = strings.TrimSpace(fieldMapping)
+		if fieldMapping == "" {
+			continue
+		}
+
+		// Split by equals to separate Jira field from GitLab field
+		parts := strings.SplitN(fieldMapping, "=", maxSplitParts)
+		if len(parts) != maxSplitParts {
+			continue
+		}
+
+		jiraField := strings.TrimSpace(parts[0])
+		gitlabField := strings.TrimSpace(parts[1])
+
+		if jiraField == "" || gitlabField == "" {
+			continue
+		}
+
+		// Try to parse GitLab field as JSON (for advanced configuration)
+		if strings.HasPrefix(gitlabField, "{") && strings.HasSuffix(gitlabField, "}") {
+			var config map[string]interface{}
+			if err := json.Unmarshal([]byte(gitlabField), &config); err == nil {
+				result[jiraField] = config
+			} else {
+				// If JSON parsing fails, treat as simple string
+				result[jiraField] = gitlabField
+			}
+		} else {
+			// Simple string mapping
+			result[jiraField] = gitlabField
 		}
 	}
 

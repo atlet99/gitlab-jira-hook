@@ -671,19 +671,27 @@ func (c *Client) SetAssigneeWithValidation(ctx context.Context, issueKey, accoun
 	return c.SetAssignee(ctx, issueKey, accountID)
 }
 
+const (
+	SpecialAssigneeNull       = "null"
+	SpecialAssigneeNil        = "nil"
+	SpecialAssigneeUnassigned = "unassigned"
+	SpecialAssigneeDefault    = "default"
+	SpecialAssigneeMinusOne   = "-1"
+)
+
 // isSpecialAssigneeValue checks if the accountId represents a special assignee value
 func (c *Client) isSpecialAssigneeValue(accountID string) bool {
-	if accountID == "" || accountID == "null" || accountID == "nil" {
+	if accountID == "" || accountID == SpecialAssigneeNull || accountID == SpecialAssigneeNil {
 		return true // Unassigned
 	}
 
 	// Check for default assignee
-	if accountID == "-1" || accountID == "default" {
+	if accountID == SpecialAssigneeMinusOne || accountID == SpecialAssigneeDefault {
 		return true // Default assignee
 	}
 
 	// Check for system accounts
-	systemAccounts := []string{"-1", "null", "nil", "system", "automation", "bot", "unassigned"}
+	systemAccounts := []string{SpecialAssigneeMinusOne, SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned, "system", "automation", "bot", "unassigned"}
 	for _, systemAccount := range systemAccounts {
 		if strings.EqualFold(accountID, systemAccount) {
 			return true
@@ -696,14 +704,14 @@ func (c *Client) isSpecialAssigneeValue(accountID string) bool {
 // handleSpecialAssignee handles special assignee cases (Unassigned, Default)
 func (c *Client) handleSpecialAssignee(ctx context.Context, issueKey, accountID string) error {
 	switch strings.ToLower(accountID) {
-	case "", "null", "nil", "unassigned":
+	case "", SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned:
 		// Set to unassigned
 		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
 		payload := map[string]interface{}{
 			"accountId": "", // Empty accountId means unassigned
 		}
 		return c.executePutRequest(ctx, url, payload)
-	case "-1", "default":
+	case SpecialAssigneeMinusOne, SpecialAssigneeDefault:
 		// Set to default assignee (remove specific assignee)
 		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
 		payload := map[string]interface{}{
@@ -756,9 +764,9 @@ type AssigneeDetails struct {
 // getSpecialAssigneeType determines the type of special assignee
 func (c *Client) getSpecialAssigneeType(accountID string) string {
 	switch strings.ToLower(accountID) {
-	case "", "null", "nil", "unassigned":
+	case "", SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned:
 		return "unassigned"
-	case "-1", "default":
+	case SpecialAssigneeMinusOne, SpecialAssigneeDefault:
 		return "default"
 	default:
 		return "system"
@@ -896,4 +904,58 @@ func (c *Client) SearchUsers(ctx context.Context, email string) ([]JiraUser, err
 	}
 
 	return users, nil
+}
+
+// do executes a generic HTTP request and handles the response
+func (c *Client) do(req *http.Request, response interface{}) error {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Set authorization header if not already set
+	if req.Header.Get("Authorization") == "" {
+		authHeader, err := c.getAuthorizationHeader(req.Context())
+		if err != nil {
+			return fmt.Errorf("failed to get authorization header: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
+	}
+
+	// Set default headers if not already set
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
+	}
+
+	// Add context
+	req = req.WithContext(req.Context())
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			slog.Error("Failed to close response body", "error", closeErr)
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response if response interface is provided
+	if response != nil {
+		if err := json.Unmarshal(body, response); err != nil {
+			return fmt.Errorf("failed to unmarshal response: %w", err)
+		}
+	}
+
+	return nil
 }
