@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -323,6 +324,57 @@ func (c *Client) TransitionToStatus(ctx context.Context, issueKey, targetStatus 
 	return c.ExecuteTransition(ctx, issueKey, transition.ID)
 }
 
+// ValidateTransition validates if a transition to the target status is available and valid
+func (c *Client) ValidateTransition(ctx context.Context, issueKey, targetStatus string) error {
+	// Get current issue to verify current status
+	currentIssue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to get current issue status: %w", err)
+	}
+
+	// Check if we're already in the target status (idempotency check)
+	if currentIssue.Fields.Status != nil && currentIssue.Fields.Status.Name == targetStatus {
+		return nil // Already in target status, transition is valid but not needed
+	}
+
+	// Get available transitions
+	transitions, err := c.GetTransitions(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to get available transitions: %w", err)
+	}
+
+	// Validate that transition to target status exists
+	for _, transition := range transitions {
+		if transition.To.Name == targetStatus {
+			return nil // Transition is valid
+		}
+	}
+
+	return fmt.Errorf("no valid transition found to status '%s' for issue %s", targetStatus, issueKey)
+}
+
+// ExecuteTransitionWithValidation executes a transition with full validation and idempotency checks
+func (c *Client) ExecuteTransitionWithValidation(ctx context.Context, issueKey, targetStatus string) error {
+	// Validate transition first
+	if err := c.ValidateTransition(ctx, issueKey, targetStatus); err != nil {
+		return fmt.Errorf("transition validation failed: %w", err)
+	}
+
+	// Find the transition ID
+	transition, err := c.FindTransition(ctx, issueKey, targetStatus)
+	if err != nil {
+		return fmt.Errorf("failed to find transition: %w", err)
+	}
+
+	// Execute the transition
+	return c.ExecuteTransition(ctx, issueKey, transition.ID)
+}
+
+// GetTransitionDetails gets detailed information about available transitions for an issue
+func (c *Client) GetTransitionDetails(ctx context.Context, issueKey string) ([]Transition, error) {
+	return c.GetTransitions(ctx, issueKey)
+}
+
 // GetIssue retrieves a Jira issue by key
 func (c *Client) GetIssue(ctx context.Context, issueKey string) (*JiraIssue, error) {
 	// Wait for rate limiter
@@ -576,11 +628,141 @@ func (c *Client) executePutRequest(ctx context.Context, url string, payload map[
 
 // SetAssignee updates the assignee for a Jira issue using accountId
 func (c *Client) SetAssignee(ctx context.Context, issueKey, accountID string) error {
+	// Handle special assignee cases
+	if c.isSpecialAssigneeValue(accountID) {
+		return c.handleSpecialAssignee(ctx, issueKey, accountID)
+	}
+
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
 	payload := map[string]interface{}{
 		"accountId": accountID,
 	}
 	return c.executePutRequest(ctx, url, payload)
+}
+
+// SetAssigneeWithValidation sets assignee with full validation and special value handling
+func (c *Client) SetAssigneeWithValidation(ctx context.Context, issueKey, accountID string) error {
+	// Handle special assignee cases
+	if c.isSpecialAssigneeValue(accountID) {
+		return c.handleSpecialAssignee(ctx, issueKey, accountID)
+	}
+
+	// Validate that the user exists if not a special value
+	if accountID != "" && accountID != "null" {
+		users, err := c.SearchUsers(ctx, "")
+		if err != nil {
+			return fmt.Errorf("failed to validate assignee: %w", err)
+		}
+
+		// Check if accountId exists among found users
+		userExists := false
+		for _, user := range users {
+			if user.AccountID == accountID {
+				userExists = true
+				break
+			}
+		}
+
+		if !userExists {
+			return fmt.Errorf("user with accountId '%s' not found", accountID)
+		}
+	}
+
+	return c.SetAssignee(ctx, issueKey, accountID)
+}
+
+// isSpecialAssigneeValue checks if the accountId represents a special assignee value
+func (c *Client) isSpecialAssigneeValue(accountID string) bool {
+	if accountID == "" || accountID == "null" || accountID == "nil" {
+		return true // Unassigned
+	}
+
+	// Check for default assignee
+	if accountID == "-1" || accountID == "default" {
+		return true // Default assignee
+	}
+
+	// Check for system accounts
+	systemAccounts := []string{"-1", "null", "nil", "system", "automation", "bot", "unassigned"}
+	for _, systemAccount := range systemAccounts {
+		if strings.EqualFold(accountID, systemAccount) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleSpecialAssignee handles special assignee cases (Unassigned, Default)
+func (c *Client) handleSpecialAssignee(ctx context.Context, issueKey, accountID string) error {
+	switch strings.ToLower(accountID) {
+	case "", "null", "nil", "unassigned":
+		// Set to unassigned
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": "", // Empty accountId means unassigned
+		}
+		return c.executePutRequest(ctx, url, payload)
+	case "-1", "default":
+		// Set to default assignee (remove specific assignee)
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": "null", // null means default assignee
+		}
+		return c.executePutRequest(ctx, url, payload)
+	default:
+		// Handle other system accounts
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": accountID,
+		}
+		return c.executePutRequest(ctx, url, payload)
+	}
+}
+
+// GetAssigneeDetails gets detailed information about the current assignee
+func (c *Client) GetAssigneeDetails(ctx context.Context, issueKey string) (*AssigneeDetails, error) {
+	issue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get issue: %w", err)
+	}
+
+	details := &AssigneeDetails{
+		IssueKey:    issueKey,
+		HasAssignee: issue.Fields.Assignee != nil,
+	}
+
+	if issue.Fields.Assignee != nil {
+		details.Assignee = *issue.Fields.Assignee
+		details.IsSpecial = c.isSpecialAssigneeValue(issue.Fields.Assignee.AccountID)
+		details.SpecialType = c.getSpecialAssigneeType(issue.Fields.Assignee.AccountID)
+	} else {
+		details.IsSpecial = true
+		details.SpecialType = "unassigned"
+	}
+
+	return details, nil
+}
+
+// AssigneeDetails represents detailed information about an issue's assignee
+type AssigneeDetails struct {
+	IssueKey    string   `json:"issue_key"`
+	HasAssignee bool     `json:"has_assignee"`
+	Assignee    JiraUser `json:"assignee,omitempty"`
+	IsSpecial   bool     `json:"is_special"`
+	SpecialType string   `json:"special_type,omitempty"`
+}
+
+// getSpecialAssigneeType determines the type of special assignee
+func (c *Client) getSpecialAssigneeType(accountID string) string {
+	switch strings.ToLower(accountID) {
+	case "", "null", "nil", "unassigned":
+		return "unassigned"
+	case "-1", "default":
+		return "default"
+	default:
+		return "system"
+	}
 }
 
 // SearchIssues executes a JQL query and returns matching issues

@@ -165,3 +165,137 @@ func TestValidateAndFallback(t *testing.T) {
 	assert.Equal(t, "doc", fallbackContent.Body.Type)
 	assert.Equal(t, 1, fallbackContent.Body.Version)
 }
+
+func TestValidateCommentPayload(t *testing.T) {
+	validContent := CommentPayload{
+		Body: CommentBody{
+			Type:    "doc",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Valid content"},
+					},
+				},
+			},
+		},
+	}
+
+	validatedContent, err := ValidateCommentPayload(validContent)
+	assert.NoError(t, err)
+	assert.Equal(t, validContent, validatedContent)
+
+	invalidContent := CommentPayload{
+		Body: CommentBody{
+			Type:    "invalid",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Invalid content"},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = ValidateCommentPayload(invalidContent)
+	assert.Error(t, err)
+}
+
+func TestIsADFValid(t *testing.T) {
+	validContent := CommentPayload{
+		Body: CommentBody{
+			Type:    "doc",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Valid content"},
+					},
+				},
+			},
+		},
+	}
+
+	assert.True(t, IsADFValid(validContent))
+
+	invalidContent := CommentPayload{
+		Body: CommentBody{
+			Type:    "invalid",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Invalid content"},
+					},
+				},
+			},
+		},
+	}
+
+	assert.False(t, IsADFValid(invalidContent))
+}
+
+func TestSanitizeADF(t *testing.T) {
+	content := CommentPayload{
+		Body: CommentBody{
+			Type:    "doc",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Valid content"},
+						{Type: "", Text: "Invalid content"}, // Invalid type
+					},
+				},
+				{
+					Type: "invalidType", // Invalid content type
+					Content: []TextContent{
+						{Type: "text", Text: "Some content"},
+					},
+				},
+			},
+		},
+	}
+
+	sanitized := SanitizeADF(content)
+
+	// Should have only valid content blocks
+	assert.Len(t, sanitized.Body.Content, 1)
+	assert.Equal(t, "paragraph", sanitized.Body.Content[0].Type)
+	assert.Len(t, sanitized.Body.Content[0].Content, 1)
+	assert.Equal(t, "Valid content", sanitized.Body.Content[0].Content[0].Text)
+}
+
+func TestExtractTextFromADF(t *testing.T) {
+	content := CommentPayload{
+		Body: CommentBody{
+			Type:    "doc",
+			Version: 1,
+			Content: []Content{
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "First paragraph"},
+					},
+				},
+				{
+					Type: "paragraph",
+					Content: []TextContent{
+						{Type: "text", Text: "Second paragraph"},
+					},
+				},
+			},
+		},
+	}
+
+	expected := "First paragraph\nSecond paragraph"
+	result := ExtractTextFromADF(content)
+	assert.Equal(t, expected, result)
+}
