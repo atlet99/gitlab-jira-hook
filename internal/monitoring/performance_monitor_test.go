@@ -328,7 +328,7 @@ func TestPerformanceMonitor_Close(t *testing.T) {
 func TestPerformanceMonitor_ResponseWriter(t *testing.T) {
 	// Test response writer wrapper
 	w := httptest.NewRecorder()
-	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+	rw := &performanceResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 	// Test WriteHeader
 	rw.WriteHeader(http.StatusNotFound)
