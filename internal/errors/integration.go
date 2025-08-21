@@ -11,6 +11,11 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/monitoring"
 )
 
+const (
+	defaultMaxCircuitBreakerAttempts = 5
+	defaultCircuitBreakerTimeout     = 30 * time.Second
+)
+
 // EnhancedAPIClient provides enhanced error handling for API operations
 type EnhancedAPIClient struct {
 	httpClient     *http.Client
@@ -25,7 +30,7 @@ func NewEnhancedAPIClient(httpClient *http.Client, logger *slog.Logger) *Enhance
 	return &EnhancedAPIClient{
 		httpClient:     httpClient,
 		retryer:        NewRetryer(DefaultRetryConfig(), logger),
-		circuitBreaker: async.NewCircuitBreaker(5, 30*time.Second, logger),
+		circuitBreaker: async.NewCircuitBreaker(defaultMaxCircuitBreakerAttempts, defaultCircuitBreakerTimeout, logger),
 		errorFactory:   NewAPIErrorFactory(),
 		logger:         logger,
 	}
@@ -50,8 +55,8 @@ func (c *EnhancedAPIClient) WithCustomRetryConfig(config *RetryConfig) *Enhanced
 }
 
 // WithCircuitBreaker configures the client with circuit breaker settings
-func (c *EnhancedAPIClient) WithCircuitBreaker(config *CircuitBreakerConfig) *EnhancedAPIClient {
-	c.circuitBreaker = async.NewCircuitBreaker(5, 30*time.Second, c.logger)
+func (c *EnhancedAPIClient) WithCircuitBreaker(_ *CircuitBreakerConfig) *EnhancedAPIClient {
+	c.circuitBreaker = async.NewCircuitBreaker(defaultMaxCircuitBreakerAttempts, defaultCircuitBreakerTimeout, c.logger)
 	return c
 }
 
@@ -301,7 +306,10 @@ func WithErrorRecovery(
 
 // WithCircuitBreaker wraps an operation with circuit breaker protection
 func WithCircuitBreaker(
-	ctx context.Context, logger *slog.Logger, operation func(ctx context.Context, attempt int) error, config *CircuitBreakerConfig,
+	ctx context.Context,
+	logger *slog.Logger,
+	operation func(ctx context.Context, attempt int) error,
+	config *CircuitBreakerConfig,
 ) error {
 	cb := NewCircuitBreaker(config, logger)
 	// Create a wrapper function that matches the expected signature

@@ -14,6 +14,11 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
+// Default constants for monitoring
+const (
+	defaultShutdownTimeout = 5 * time.Second
+)
+
 // MonitoringSystem provides a comprehensive monitoring system
 type MonitoringSystem struct {
 	config             *Config
@@ -115,14 +120,18 @@ func (ms *MonitoringSystem) Stop() error {
 
 	// Stop performance monitor
 	if ms.performanceMonitor != nil {
-		ms.performanceMonitor.Close()
+		if err := ms.performanceMonitor.Close(); err != nil {
+			ms.logger.Error("Failed to close performance monitor", "error", err)
+		}
 	}
 
 	// Stop HTTP server
 	if ms.server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultShutdownTimeout)
 		defer cancel()
-		ms.server.Shutdown(ctx)
+		if err := ms.server.Shutdown(ctx); err != nil {
+			ms.logger.Error("Failed to shutdown server", "error", err)
+		}
 	}
 
 	// Cancel context
@@ -162,8 +171,8 @@ func (ms *MonitoringSystem) startHTTPServer() {
 	ms.server = &http.Server{
 		Addr:         ":" + ms.config.Port,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  defaultReadTimeout,
+		WriteTimeout: defaultWriteTimeout,
 	}
 
 	go func() {
@@ -181,8 +190,8 @@ func (ms *MonitoringSystem) startPrometheusServer() {
 	server := &http.Server{
 		Addr:         ":" + ms.config.PrometheusPort,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  defaultReadTimeout,
+		WriteTimeout: defaultWriteTimeout,
 	}
 
 	ms.logger.Info("Starting Prometheus metrics server", "port", ms.config.PrometheusPort)
@@ -266,7 +275,7 @@ func (ms *MonitoringSystem) handleConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	config := map[string]interface{}{
+	cfg := map[string]interface{}{
 		"enabled":                     ms.config.Enabled,
 		"port":                        ms.config.Port,
 		"prometheus_port":             ms.config.PrometheusPort,
@@ -282,7 +291,7 @@ func (ms *MonitoringSystem) handleConfig(w http.ResponseWriter, r *http.Request)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
-		"config": config,
+		"config": cfg,
 	}); err != nil {
 		ms.logger.Error("Failed to encode config response", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -296,7 +305,7 @@ func (ms *MonitoringSystem) RecordWebhookRequest(endpoint string, success bool, 
 	}
 
 	if ms.prometheusMetrics != nil {
-		ms.prometheusMetrics.RecordHTTPRequest("POST", endpoint, 200, responseTime)
+		ms.prometheusMetrics.RecordHTTPRequest("POST", endpoint, http.StatusOK, responseTime)
 	}
 }
 
@@ -360,10 +369,10 @@ func (ms *MonitoringSystem) Middleware(next http.Handler) http.Handler {
 		start := time.Now()
 
 		// Record request
-		ms.RecordHTTPRequest(r.Method, r.URL.Path, 200, 0)
+		ms.RecordHTTPRequest(r.Method, r.URL.Path, http.StatusOK, 0)
 
 		// Create response writer wrapper
-		wrapped := &monitoringResponseWriter{ResponseWriter: w, statusCode: 200}
+		wrapped := &monitoringResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Process request
 		next.ServeHTTP(wrapped, r)

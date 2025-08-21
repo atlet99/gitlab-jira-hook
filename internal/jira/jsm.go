@@ -215,6 +215,48 @@ type RequestUser struct {
 	Active      bool   `json:"active"`
 }
 
+// Workflow represents a workflow for a request type
+type Workflow struct {
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Statuses    []WorkflowStatus     `json:"statuses"`
+	Transitions []WorkflowTransition `json:"transitions"`
+}
+
+// WorkflowStatus represents a status in a workflow
+type WorkflowStatus struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// WorkflowTransition represents a transition in a workflow
+type WorkflowTransition struct {
+	ID         string                `json:"id"`
+	Name       string                `json:"name"`
+	ToStatus   string                `json:"toStatus"`
+	Conditions []TransitionCondition `json:"conditions,omitempty"`
+	Validators []TransitionValidator `json:"validators,omitempty"`
+}
+
+// TransitionCondition represents a condition for a transition
+type TransitionCondition struct {
+	Type   string      `json:"type"`
+	Params interface{} `json:"params,omitempty"`
+}
+
+// TransitionValidator represents a validator for a transition
+type TransitionValidator struct {
+	Type   string      `json:"type"`
+	Params interface{} `json:"params,omitempty"`
+}
+
+// CustomerGroup represents a group for a customer
+type CustomerGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // GetServiceDesks retrieves all service desks accessible to the user
 func (s *JSMService) GetServiceDesks(ctx context.Context) ([]ServiceDesk, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk", s.client.baseURL)
@@ -249,26 +291,6 @@ func (s *JSMService) GetServiceDesk(ctx context.Context, serviceDeskID string) (
 	return nil, fmt.Errorf("failed to parse service desk response")
 }
 
-// GetRequestTypes retrieves all request types for a service desk
-func (s *JSMService) GetRequestTypes(ctx context.Context, serviceDeskID string) ([]RequestType, error) {
-	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting request types", "serviceDeskID", serviceDeskID, "url", apiURL)
-
-	var requestTypes []RequestType
-	if err := s.client.do(req, &requestTypes); err != nil {
-		return nil, fmt.Errorf("failed to get request types: %w", err)
-	}
-
-	s.logger.Info("Retrieved request types", "serviceDeskID", serviceDeskID, "count", len(requestTypes))
-	return requestTypes, nil
-}
-
 // GetRequestType retrieves a specific request type by ID
 func (s *JSMService) GetRequestType(ctx context.Context, serviceDeskID, requestTypeID string) (*RequestType, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype/%s",
@@ -291,6 +313,26 @@ func (s *JSMService) GetRequestType(ctx context.Context, serviceDeskID, requestT
 		"requestTypeID", requestTypeID,
 		"name", requestType.Name)
 	return &requestType, nil
+}
+
+// GetRequestTypes retrieves all request types for a service desk
+func (s *JSMService) GetRequestTypes(ctx context.Context, serviceDeskID string) ([]RequestType, error) {
+	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype", s.client.baseURL, serviceDeskID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	s.logger.Debug("Getting request types", "serviceDeskID", serviceDeskID, "url", apiURL)
+
+	var requestTypes []RequestType
+	if err := s.client.do(req, &requestTypes); err != nil {
+		return nil, fmt.Errorf("failed to get request types: %w", err)
+	}
+
+	s.logger.Info("Retrieved request types", "serviceDeskID", serviceDeskID, "count", len(requestTypes))
+	return requestTypes, nil
 }
 
 // CreateRequest creates a new service desk request

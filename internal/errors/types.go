@@ -13,6 +13,33 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/async"
 )
 
+// Default retry configuration constants
+const (
+	defaultMaxAttempts  = 3
+	defaultInitialDelay = 100 * time.Millisecond
+	defaultMaxDelay     = 10 * time.Second
+	defaultMultiplier   = 2.0
+	defaultJitterFactor = 0.25
+	defaultJitterRange  = 1000
+
+	// GitLab specific retry constants
+	gitlabMaxAttempts  = 5
+	gitlabInitialDelay = 1 * time.Second
+	gitlabMaxDelay     = 30 * time.Second
+	gitlabMultiplier   = 2.0
+
+	// Jira specific retry constants
+	jiraMaxAttempts  = 3
+	jiraInitialDelay = 500 * time.Millisecond
+	jiraMaxDelay     = 15 * time.Second
+	jiraMultiplier   = 1.5
+
+	// Circuit breaker constants
+	defaultFailureThreshold = 3
+	defaultSuccessThreshold = 1
+	defaultMonitoringWindow = time.Minute
+)
+
 // ErrorCode represents a specific error condition
 type ErrorCode string
 
@@ -508,17 +535,17 @@ func (r *Retryer) getDelay(attempt int) time.Duration {
 // applyJitter adds random jitter to the delay
 func (r *Retryer) applyJitter(delay time.Duration) time.Duration {
 	// Simple jitter implementation - add up to 25% random variation
-	jitter := time.Duration(float64(delay) * 0.25 * (2.0*float64(time.Now().UnixNano()%1000)/1000.0 - 1.0))
+	jitter := time.Duration(float64(delay) * defaultJitterFactor * (2.0*float64(time.Now().UnixNano()%defaultJitterRange)/float64(defaultJitterRange) - 1.0))
 	return delay + jitter
 }
 
 // DefaultRetryConfig returns default retry configuration
 func DefaultRetryConfig() *RetryConfig {
 	return &RetryConfig{
-		MaxAttempts:   3,
-		InitialDelay:  100 * time.Millisecond,
-		MaxDelay:      10 * time.Second,
-		Multiplier:    2.0,
+		MaxAttempts:   defaultMaxAttempts,
+		InitialDelay:  defaultInitialDelay,
+		MaxDelay:      defaultMaxDelay,
+		Multiplier:    defaultMultiplier,
 		Jitter:        true,
 		RetryableFunc: isDefaultRetryable,
 	}
@@ -527,10 +554,10 @@ func DefaultRetryConfig() *RetryConfig {
 // GitLabRetryConfig returns retry configuration optimized for GitLab API
 func GitLabRetryConfig() *RetryConfig {
 	return &RetryConfig{
-		MaxAttempts:   5,
-		InitialDelay:  1 * time.Second,
-		MaxDelay:      30 * time.Second,
-		Multiplier:    2.0,
+		MaxAttempts:   gitlabMaxAttempts,
+		InitialDelay:  gitlabInitialDelay,
+		MaxDelay:      gitlabMaxDelay,
+		Multiplier:    gitlabMultiplier,
 		Jitter:        true,
 		RetryableFunc: isDefaultRetryable,
 	}
@@ -539,10 +566,10 @@ func GitLabRetryConfig() *RetryConfig {
 // JiraRetryConfig returns retry configuration optimized for Jira API
 func JiraRetryConfig() *RetryConfig {
 	return &RetryConfig{
-		MaxAttempts:   3,
-		InitialDelay:  500 * time.Millisecond,
-		MaxDelay:      15 * time.Second,
-		Multiplier:    1.5,
+		MaxAttempts:   jiraMaxAttempts,
+		InitialDelay:  jiraInitialDelay,
+		MaxDelay:      jiraMaxDelay,
+		Multiplier:    jiraMultiplier,
 		Jitter:        true,
 		RetryableFunc: isDefaultRetryable,
 	}
@@ -551,10 +578,10 @@ func JiraRetryConfig() *RetryConfig {
 // DefaultCircuitBreakerConfig returns default circuit breaker configuration
 func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 	return &CircuitBreakerConfig{
-		FailureThreshold: 3,
-		SuccessThreshold: 1,
-		Timeout:          30 * time.Second,
-		MonitoringWindow: time.Minute,
+		FailureThreshold: defaultFailureThreshold,
+		SuccessThreshold: defaultSuccessThreshold,
+		Timeout:          defaultCircuitBreakerTimeout,
+		MonitoringWindow: defaultMonitoringWindow,
 	}
 }
 

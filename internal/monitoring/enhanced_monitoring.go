@@ -17,6 +17,62 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Default constants for enhanced monitoring
+const (
+	// Metrics collection intervals
+	enhancedDefaultMetricsCollectionInterval    = 10 * time.Second
+	enhancedDefaultHealthCheckInterval          = 30 * time.Second
+	enhancedDefaultPerformanceAnalyticsInterval = 60 * time.Second
+
+	// HTTP server timeouts (using existing constants from advanced_monitoring.go)
+	enhancedDefaultHTTPReadTimeout  = defaultReadTimeout
+	enhancedDefaultHTTPWriteTimeout = defaultWriteTimeout
+
+	// Real-time monitoring
+	enhancedDefaultRealTimeBufferSize     = 1000
+	enhancedDefaultRealTimeUpdateInterval = 1 * time.Second
+
+	// Health monitoring
+	enhancedDefaultHealthHistoryMaxSize = 1000
+
+	// Performance analytics
+	enhancedDefaultMaxDataPoints       = 10000
+	enhancedDefaultTrendWindow         = 24 * time.Hour
+	enhancedDefaultAnomalyThreshold    = 3.0
+	enhancedDefaultAnomalyWindowSize   = 100
+	enhancedDefaultAnomalyMethod       = "zscore"
+	enhancedDefaultMaxAnomalies        = 1000
+	enhancedDefaultMaxAggregatedPoints = 10000
+
+	// Alerting
+	enhancedDefaultAlertCheckInterval  = 30 * time.Second
+	enhancedDefaultAlertHistoryMaxSize = defaultAlertHistoryMaxSize
+
+	// Subscriber management
+	enhancedDefaultSubscriberCleanupInterval   = 30 * time.Second
+	enhancedDefaultSubscriberInactivityTimeout = 5 * time.Minute
+
+	// Distributed tracing
+	enhancedDefaultMaxSpans              = 10000
+	enhancedDefaultSpanCleanupInterval   = 5 * time.Minute
+	enhancedDefaultSpanRetentionTime     = time.Hour
+	enhancedDefaultSpanReportingInterval = 10 * time.Second
+	enhancedDefaultRecentSpansWindow     = time.Minute
+
+	// Health scoring
+	defaultHealthyScore     = 90.0
+	defaultWarningScore     = 70.0
+	defaultCriticalScore    = 50.0
+	defaultComponentWeight  = 0.6
+	defaultDependencyWeight = 0.4
+
+	// Performance predictions
+	defaultConfidenceLevel        = 0.95
+	defaultModelAccuracy          = 0.90
+	errorRateMultiplier           = 100.0
+	defaultPredictionResponseTime = 100 * time.Millisecond
+)
+
 // EnhancedMonitoringSystem provides advanced monitoring capabilities
 type EnhancedMonitoringSystem struct {
 	// Configuration
@@ -787,7 +843,7 @@ func (em *EnhancedMonitoringSystem) Stop() error {
 
 // metricsCollectionLoop collects metrics periodically
 func (em *EnhancedMonitoringSystem) metricsCollectionLoop() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(enhancedDefaultMetricsCollectionInterval)
 	defer ticker.Stop()
 
 	for {
@@ -802,7 +858,7 @@ func (em *EnhancedMonitoringSystem) metricsCollectionLoop() {
 
 // healthMonitoringLoop performs health checks periodically
 func (em *EnhancedMonitoringSystem) healthMonitoringLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(enhancedDefaultHealthCheckInterval)
 	defer ticker.Stop()
 
 	for {
@@ -817,7 +873,7 @@ func (em *EnhancedMonitoringSystem) healthMonitoringLoop() {
 
 // performanceAnalyticsLoop performs performance analytics
 func (em *EnhancedMonitoringSystem) performanceAnalyticsLoop() {
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(enhancedDefaultPerformanceAnalyticsInterval)
 	defer ticker.Stop()
 
 	for {
@@ -928,7 +984,8 @@ func (em *EnhancedMonitoringSystem) performDependencyHealthChecks() {
 			em.logger.Error("Dependency health check failed", "dependency", name, "error", err)
 		} else {
 			check.ResponseTime = time.Since(check.LastCheck)
-			em.logger.Info("Dependency health check completed", "dependency", name, "status", status, "response_time", check.ResponseTime)
+			em.logger.Info("Dependency health check completed",
+				"dependency", name, "status", status, "response_time", check.ResponseTime)
 		}
 
 		// Update details
@@ -1060,8 +1117,8 @@ func (em *EnhancedMonitoringSystem) startHTTPServer() {
 	server := &http.Server{
 		Addr:         ":" + em.config.Port,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  enhancedDefaultHTTPReadTimeout,
+		WriteTimeout: enhancedDefaultHTTPWriteTimeout,
 	}
 
 	em.logger.Info("Starting enhanced monitoring server", "port", em.config.Port)
@@ -1295,7 +1352,7 @@ func (em *EnhancedMonitoringSystem) handleRealTimeStream(w http.ResponseWriter, 
 	subscriberID := fmt.Sprintf("conn-%d", time.Now().UnixNano())
 	subscriber := &RealTimeSubscriber{
 		ID:       subscriberID,
-		Channel:  make(chan *RealTimeDataPoint, 100),
+		Channel:  make(chan *RealTimeDataPoint, enhancedDefaultRealTimeBufferSize),
 		Active:   true,
 		LastSeen: time.Now(),
 	}
@@ -1595,7 +1652,9 @@ func (em *EnhancedMonitoringSystem) RecordError(endpoint, errorType string) {
 }
 
 // RegisterDependencyHealthCheck registers a dependency health check
-func (em *EnhancedMonitoringSystem) RegisterDependencyHealthCheck(name string, checker HealthChecker, url string, timeout time.Duration, expectedStatus int) {
+func (em *EnhancedMonitoringSystem) RegisterDependencyHealthCheck(
+	name string, checker HealthChecker, url string, timeout time.Duration, expectedStatus int,
+) {
 	em.healthMonitor.mu.Lock()
 	defer em.healthMonitor.mu.Unlock()
 
@@ -1613,7 +1672,9 @@ func (em *EnhancedMonitoringSystem) RegisterDependencyHealthCheck(name string, c
 }
 
 // RegisterCircuitBreaker registers a circuit breaker
-func (em *EnhancedMonitoringSystem) RegisterCircuitBreaker(name string, maxFailures int64, resetTimeout time.Duration, checker HealthChecker) {
+func (em *EnhancedMonitoringSystem) RegisterCircuitBreaker(
+	name string, maxFailures int64, resetTimeout time.Duration, checker HealthChecker,
+) {
 	em.healthMonitor.mu.Lock()
 	defer em.healthMonitor.mu.Unlock()
 
@@ -1669,7 +1730,7 @@ func (em *EnhancedMonitoringSystem) Middleware(next http.Handler) http.Handler {
 		start := time.Now()
 
 		// Create response writer wrapper
-		wrapped := &enhancedMonitoringResponseWriter{ResponseWriter: w, statusCode: 200}
+		wrapped := &enhancedMonitoringResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Process request
 		next.ServeHTTP(wrapped, r)
@@ -1772,7 +1833,7 @@ func (em *EnhancedMetrics) RecordRequest(endpoint, method string, status int, du
 	em.businessMetrics.WithLabelValues("response_time").Set(duration.Seconds())
 
 	// Record error if status indicates error
-	if status >= 400 {
+	if status >= http.StatusBadRequest {
 		em.requestErrors.WithLabelValues(method, endpoint, "http_error").Inc()
 		em.businessMetrics.WithLabelValues("error_rate").Inc()
 	}
@@ -1829,10 +1890,10 @@ func (em *EnhancedMetrics) GetBusinessMetrics() map[string]interface{} {
 	metrics := make(map[string]interface{})
 
 	// Get current business metrics (these are gauges, so we get their current values)
-	requestRate := em.businessMetrics.WithLabelValues("request_rate").(prometheus.Gauge)
-	errorRate := em.businessMetrics.WithLabelValues("error_rate").(prometheus.Gauge)
-	responseTime := em.businessMetrics.WithLabelValues("response_time").(prometheus.Gauge)
-	activeUsers := em.businessMetrics.WithLabelValues("active_users").(prometheus.Gauge)
+	requestRate := em.businessMetrics.WithLabelValues("request_rate")
+	errorRate := em.businessMetrics.WithLabelValues("error_rate")
+	responseTime := em.businessMetrics.WithLabelValues("response_time")
+	activeUsers := em.businessMetrics.WithLabelValues("active_users")
 
 	// Set values to get current state (this is just for demonstration)
 	requestRate.Set(0)
@@ -1897,17 +1958,17 @@ func NewEnhancedHealthMonitor(logger *slog.Logger) *EnhancedHealthMonitor {
 		dependencyChecks: make(map[string]*DependencyHealthCheck),
 		circuitBreakers:  make(map[string]*CircuitBreaker),
 		healthHistory:    make([]HealthSnapshot, 0),
-		maxHistorySize:   1000,
+		maxHistorySize:   enhancedDefaultHealthHistoryMaxSize,
 		healthScore: &HealthScore{
 			Components:   make(map[string]float64),
 			Dependencies: make(map[string]float64),
 		},
 		thresholds: HealthThresholds{
-			HealthyScore:     90.0,
-			WarningScore:     70.0,
-			CriticalScore:    50.0,
-			ComponentWeight:  0.6,
-			DependencyWeight: 0.4,
+			HealthyScore:     defaultHealthyScore,
+			WarningScore:     defaultWarningScore,
+			CriticalScore:    defaultCriticalScore,
+			ComponentWeight:  defaultComponentWeight,
+			DependencyWeight: defaultDependencyWeight,
 		},
 		lastCheck: time.Now(),
 	}
@@ -1965,7 +2026,8 @@ func (ehm *EnhancedHealthMonitor) performDependencyHealthCheck(name string, chec
 		ehm.logger.Error("Dependency health check failed", "dependency", name, "error", err)
 	} else {
 		check.ResponseTime = time.Since(check.LastCheck)
-		ehm.logger.Info("Dependency health check completed", "dependency", name, "status", status, "response_time", check.ResponseTime)
+		ehm.logger.Info("Dependency health check completed",
+			"dependency", name, "status", status, "response_time", check.ResponseTime)
 	}
 
 	// Update details
@@ -2122,13 +2184,14 @@ func (ehm *EnhancedHealthMonitor) storeHealthSnapshot() {
 func (ehm *EnhancedHealthMonitor) getOverallHealthStatus() HealthStatus {
 	score := ehm.healthScore.Overall
 
-	if score >= ehm.thresholds.HealthyScore {
+	switch {
+	case score >= ehm.thresholds.HealthyScore:
 		return HealthStatusHealthy
-	} else if score >= ehm.thresholds.WarningScore {
+	case score >= ehm.thresholds.WarningScore:
 		return HealthStatusDegraded
-	} else if score >= ehm.thresholds.CriticalScore {
+	case score >= ehm.thresholds.CriticalScore:
 		return HealthStatusUnhealthy
-	} else {
+	default:
 		return HealthStatusUnhealthy
 	}
 }
@@ -2197,27 +2260,27 @@ func (ehm *EnhancedHealthMonitor) GetHealthThresholds() HealthThresholds {
 func NewPerformanceAnalytics(ctx context.Context) *PerformanceAnalytics {
 	return &PerformanceAnalytics{
 		dataPoints:     make([]PerformanceDataPoint, 0),
-		maxDataPoints:  10000,
-		updateInterval: 60 * time.Second,
+		maxDataPoints:  enhancedDefaultMaxDataPoints,
+		updateInterval: enhancedDefaultPerformanceAnalyticsInterval,
 		trends: &PerformanceTrends{
-			TrendWindow: 24 * time.Hour,
+			TrendWindow: enhancedDefaultTrendWindow,
 		},
 		predictions: &PerformancePredictions{
-			ConfidenceLevel: 0.95,
-			ModelAccuracy:   0.90,
+			ConfidenceLevel: defaultConfidenceLevel,
+			ModelAccuracy:   defaultModelAccuracy,
 		},
 		ctx:     ctx,
 		metrics: make(map[string]*PerformanceMetric),
 		anomalyDetector: &AnomalyDetector{
-			threshold:    3.0,
-			windowSize:   100,
-			method:       "zscore",
-			maxAnomalies: 1000,
+			threshold:    enhancedDefaultAnomalyThreshold,
+			windowSize:   enhancedDefaultAnomalyWindowSize,
+			method:       enhancedDefaultAnomalyMethod,
+			maxAnomalies: enhancedDefaultMaxAnomalies,
 		},
 		aggregator: &DataAggregator{
 			windows:             make(map[string]time.Duration),
 			aggregatedData:      make(map[string][]PerformanceDataPoint),
-			maxAggregatedPoints: 10000,
+			maxAggregatedPoints: enhancedDefaultMaxAggregatedPoints,
 		},
 		scoring: &PerformanceScoring{
 			weights: make(map[string]float64),
@@ -2259,7 +2322,7 @@ func (pa *PerformanceAnalytics) GetCurrentMetrics() map[string]interface{} {
 	for _, point := range pa.dataPoints {
 		totalResponseTime += point.ResponseTime
 		totalRequests++
-		if point.Status >= 400 {
+		if point.Status >= http.StatusBadRequest {
 			errorCount++
 		}
 		totalMemoryUsage += point.MemoryUsage
@@ -2268,7 +2331,7 @@ func (pa *PerformanceAnalytics) GetCurrentMetrics() map[string]interface{} {
 	metrics := map[string]interface{}{
 		"total_requests":        totalRequests,
 		"average_response_time": totalResponseTime / time.Duration(totalRequests),
-		"error_rate":            float64(errorCount) / float64(totalRequests) * 100,
+		"error_rate":            float64(errorCount) / float64(totalRequests) * errorRateMultiplier,
 		"total_memory_usage":    totalMemoryUsage,
 	}
 
@@ -2286,7 +2349,7 @@ func (pa *PerformanceAnalytics) UpdateTrends(metrics map[string]interface{}) {
 func (pa *PerformanceAnalytics) GeneratePredictions() {
 	// This would implement prediction algorithms
 	// For now, we'll set default predictions
-	pa.predictions.NextHourResponseTime = 100 * time.Millisecond
+	pa.predictions.NextHourResponseTime = defaultPredictionResponseTime
 	pa.predictions.NextHourErrorRate = 1.0
 	pa.predictions.NextHourThroughput = 1000
 }
@@ -2325,8 +2388,8 @@ func NewEnhancedAlertManager(logger *slog.Logger) *EnhancedAlertManager {
 		alertHistory:         make([]EnhancedAlert, 0),
 		alertRules:           make(map[string]*EnhancedAlertRule),
 		notificationChannels: make(map[string]NotificationChannel),
-		checkInterval:        30 * time.Second,
-		maxHistorySize:       1000,
+		checkInterval:        enhancedDefaultAlertCheckInterval,
+		maxHistorySize:       enhancedDefaultAlertHistoryMaxSize,
 		grafanaIntegration:   &GrafanaIntegration{},
 		datadogIntegration:   &DatadogIntegration{},
 	}
@@ -2516,7 +2579,9 @@ func (am *EnhancedAlertManager) CreateGrafanaDashboard(title string, panels []Gr
 }
 
 // CreateGrafanaAlertChannel creates a Grafana alert channel
-func (am *EnhancedAlertManager) CreateGrafanaAlertChannel(name, channelType string, settings map[string]interface{}, receivers []string) (*GrafanaAlertChannel, error) {
+func (am *EnhancedAlertManager) CreateGrafanaAlertChannel(
+	name, channelType string, settings map[string]interface{}, receivers []string,
+) (*GrafanaAlertChannel, error) {
 	if !am.grafanaIntegration.enabled {
 		return nil, fmt.Errorf("grafana integration not enabled")
 	}
@@ -2558,7 +2623,9 @@ func (am *EnhancedAlertManager) SendAlertToGrafana(alert *EnhancedAlert) error {
 }
 
 // SendMetricToDatadog sends a metric to Datadog
-func (am *EnhancedAlertManager) SendMetricToDatadog(name string, metricType string, value float64, tags map[string]string) error {
+func (am *EnhancedAlertManager) SendMetricToDatadog(
+	name, metricType string, value float64, tags map[string]string,
+) error {
 	if !am.datadogIntegration.enabled {
 		return fmt.Errorf("datadog integration not enabled")
 	}
@@ -2595,7 +2662,9 @@ func (am *EnhancedAlertManager) SendMetricToDatadog(name string, metricType stri
 }
 
 // CreateDatadogDashboard creates a Datadog dashboard
-func (am *EnhancedAlertManager) CreateDatadogDashboard(title, description string, widgets []DatadogWidget) (*DatadogDashboard, error) {
+func (am *EnhancedAlertManager) CreateDatadogDashboard(
+	title, description string, widgets []DatadogWidget,
+) (*DatadogDashboard, error) {
 	if !am.datadogIntegration.enabled {
 		return nil, fmt.Errorf("datadog integration not enabled")
 	}
@@ -2645,10 +2714,10 @@ func NewRealTimeMonitor(ctx context.Context) *RealTimeMonitor {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &RealTimeMonitor{
-		dataBuffer:     make(chan *RealTimeDataPoint, 1000),
+		dataBuffer:     make(chan *RealTimeDataPoint, enhancedDefaultRealTimeBufferSize),
 		subscribers:    make(map[string]*RealTimeSubscriber),
-		bufferSize:     1000,
-		updateInterval: 1 * time.Second,
+		bufferSize:     enhancedDefaultRealTimeBufferSize,
+		updateInterval: enhancedDefaultRealTimeUpdateInterval,
 		ctx:            ctx,
 		cancel:         cancel,
 	}
@@ -2800,7 +2869,7 @@ func (rtm *RealTimeMonitor) matchesFilter(point *RealTimeDataPoint, filter *Real
 
 // cleanupLoop cleans up inactive subscribers
 func (rtm *RealTimeMonitor) cleanupLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(enhancedDefaultSubscriberCleanupInterval)
 	defer ticker.Stop()
 
 	for {
@@ -2817,7 +2886,7 @@ func (rtm *RealTimeMonitor) cleanupLoop() {
 func (rtm *RealTimeMonitor) cleanupInactiveSubscribers() {
 	now := time.Now()
 	for id, subscriber := range rtm.subscribers {
-		if !subscriber.Active || now.Sub(subscriber.LastSeen) > 5*time.Minute {
+		if !subscriber.Active || now.Sub(subscriber.LastSeen) > enhancedDefaultSubscriberInactivityTimeout {
 			delete(rtm.subscribers, id)
 		}
 	}
@@ -2832,7 +2901,7 @@ func NewDistributedTracer(sampleRate float64, endpoint string) *DistributedTrace
 		endpoint:    endpoint,
 		activeSpans: make(map[string]*Span),
 		spanStorage: make([]Span, 0),
-		maxSpans:    10000,
+		maxSpans:    enhancedDefaultMaxSpans,
 	}
 }
 
@@ -2853,7 +2922,7 @@ func (dt *DistributedTracer) Stop() {
 }
 
 // StartSpan starts a new span
-func (dt *DistributedTracer) StartSpan(operation string, parentID string) *Span {
+func (dt *DistributedTracer) StartSpan(operation, parentID string) *Span {
 	// Check if we should sample this span
 	if dt.sampleRate < 1.0 && rand.Float64() > dt.sampleRate {
 		return nil
@@ -2904,7 +2973,7 @@ func (dt *DistributedTracer) AddTag(spanID, key, value string) {
 }
 
 // AddLog adds a log entry to a span
-func (dt *DistributedTracer) AddLog(spanID string, message string, fields map[string]interface{}) {
+func (dt *DistributedTracer) AddLog(spanID, message string, fields map[string]interface{}) {
 	if span, exists := dt.activeSpans[spanID]; exists {
 		span.Logs = append(span.Logs, SpanLog{
 			Timestamp: time.Now(),
@@ -2946,7 +3015,7 @@ func (dt *DistributedTracer) GetTrace(traceID string) []*Span {
 
 // spanCleanupLoop cleans up old spans periodically
 func (dt *DistributedTracer) spanCleanupLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(enhancedDefaultSpanCleanupInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -2956,7 +3025,7 @@ func (dt *DistributedTracer) spanCleanupLoop() {
 
 // cleanupOldSpans removes spans older than 1 hour
 func (dt *DistributedTracer) cleanupOldSpans() {
-	cutoff := time.Now().Add(-time.Hour)
+	cutoff := time.Now().Add(-enhancedDefaultSpanRetentionTime)
 
 	var newStorage []Span
 	for _, span := range dt.spanStorage {
@@ -2970,7 +3039,7 @@ func (dt *DistributedTracer) cleanupOldSpans() {
 
 // spanReportingLoop reports spans to the configured endpoint
 func (dt *DistributedTracer) spanReportingLoop() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(enhancedDefaultSpanReportingInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -3001,7 +3070,7 @@ func (dt *DistributedTracer) reportSpans() {
 // getRecentSpans returns spans from the last minute
 func (dt *DistributedTracer) getRecentSpans() []Span {
 	var recent []Span
-	oneMinuteAgo := time.Now().Add(-time.Minute)
+	oneMinuteAgo := time.Now().Add(-enhancedDefaultRecentSpansWindow)
 
 	for _, span := range dt.spanStorage {
 		if span.Start.After(oneMinuteAgo) {

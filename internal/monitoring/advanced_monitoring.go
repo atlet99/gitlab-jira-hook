@@ -14,6 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Default monitoring constants
+const (
+	defaultReadTimeout         = 30 * time.Second
+	defaultWriteTimeout        = 30 * time.Second
+	defaultAlertChanSize       = 100
+	defaultAlertHistoryMaxSize = 1000
+)
+
 // AdvancedMonitor provides advanced monitoring capabilities
 type AdvancedMonitor struct {
 	// Configuration
@@ -477,8 +485,8 @@ func (am *AdvancedMonitor) startHTTPServer() {
 	server := &http.Server{
 		Addr:         ":" + am.config.Port,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  defaultReadTimeout,
+		WriteTimeout: defaultWriteTimeout,
 	}
 
 	am.logger.Info("Starting advanced monitoring server", "port", am.config.Port)
@@ -608,7 +616,9 @@ func (am *AdvancedMonitor) handleExportMetrics(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(export))
+	if _, err := w.Write([]byte(export)); err != nil {
+		am.logger.Error("Failed to write export response", "error", err)
+	}
 }
 
 func (am *AdvancedMonitor) handleExportAlerts(w http.ResponseWriter, r *http.Request) {
@@ -626,7 +636,9 @@ func (am *AdvancedMonitor) handleExportAlerts(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(export)
+	if _, err := w.Write(export); err != nil {
+		am.logger.Error("Failed to write export response", "error", err)
+	}
 }
 
 func (am *AdvancedMonitor) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -839,7 +851,7 @@ func NewAlertManager() *AlertManager {
 		activeAlerts: make(map[string]*Alert),
 		alertRules:   make(map[string]*AlertRule),
 		alertHistory: make([]Alert, 0),
-		alertChan:    make(chan *Alert, 100),
+		alertChan:    make(chan *Alert, defaultAlertChanSize),
 	}
 }
 
@@ -978,7 +990,7 @@ func (am *AlertManager) CheckAlertRules(metrics *AdvancedMetrics) {
 	}
 
 	// Keep history size manageable
-	if len(am.alertHistory) > 1000 {
+	if len(am.alertHistory) > defaultAlertHistoryMaxSize {
 		am.alertHistory = am.alertHistory[1:]
 	}
 }

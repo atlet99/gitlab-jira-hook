@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Default constants for testing
+const (
+	defaultAlertCheckInterval = 30 * time.Second
+)
+
 func TestAdvancedMonitor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	config := &AdvancedConfig{
@@ -19,7 +24,7 @@ func TestAdvancedMonitor(t *testing.T) {
 		EnableAlerting:     true,
 		EnableDashboards:   true,
 		MetricsRetention:   24 * time.Hour,
-		AlertCheckInterval: 30 * time.Second,
+		AlertCheckInterval: defaultAlertCheckInterval,
 		EnableExport:       true,
 		ExportFormat:       "json",
 	}
@@ -34,9 +39,13 @@ func TestAdvancedMonitor(t *testing.T) {
 
 	t.Run("start_stop", func(t *testing.T) {
 		monitor := NewAdvancedMonitor(config, logger)
-		monitor.Start()
+		if err := monitor.Start(); err != nil {
+			t.Errorf("Failed to start monitor: %v", err)
+		}
 		time.Sleep(100 * time.Millisecond)
-		monitor.Stop()
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
 	})
 }
 
@@ -49,12 +58,16 @@ func TestAdvancedMonitorMetrics(t *testing.T) {
 		EnableAlerting:     true,
 		EnableDashboards:   true,
 		MetricsRetention:   24 * time.Hour,
-		AlertCheckInterval: 30 * time.Second,
+		AlertCheckInterval: defaultAlertCheckInterval,
 		EnableExport:       true,
 		ExportFormat:       "json",
 	}
 	monitor := NewAdvancedMonitor(config, logger)
-	defer monitor.Stop()
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("record_counter", func(t *testing.T) {
 		monitor.RecordCounter("test_counter", 1.0, map[string]string{"label1": "value1"})
@@ -123,8 +136,14 @@ func TestAdvancedMonitorAlerts(t *testing.T) {
 	}
 	monitor := NewAdvancedMonitor(config, logger)
 	monitor.SetTestMode(true)
-	monitor.Start()
-	defer monitor.Stop()
+	if err := monitor.Start(); err != nil {
+		t.Errorf("Failed to start monitor: %v", err)
+	}
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("add_alert_rule", func(t *testing.T) {
 		rule := &AlertRule{
@@ -225,12 +244,16 @@ func TestAdvancedMonitorDashboards(t *testing.T) {
 		EnableAlerting:     true,
 		EnableDashboards:   true,
 		MetricsRetention:   24 * time.Hour,
-		AlertCheckInterval: 30 * time.Second,
+		AlertCheckInterval: defaultAlertCheckInterval,
 		EnableExport:       true,
 		ExportFormat:       "json",
 	}
 	monitor := NewAdvancedMonitor(config, logger)
-	defer monitor.Stop()
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("create_dashboard", func(t *testing.T) {
 		dashboard := monitor.CreateDashboard("Test Dashboard", "A test dashboard")
@@ -306,8 +329,14 @@ func TestAdvancedMonitorExport(t *testing.T) {
 	}
 	monitor := NewAdvancedMonitor(config, logger)
 	monitor.SetTestMode(true)
-	monitor.Start()
-	defer monitor.Stop()
+	if err := monitor.Start(); err != nil {
+		t.Errorf("Failed to start monitor: %v", err)
+	}
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("export_metrics", func(t *testing.T) {
 		monitor.RecordGauge("export_test", 42.5, map[string]string{"label1": "value1"})
@@ -383,8 +412,14 @@ func TestAdvancedMonitorHealthStatus(t *testing.T) {
 	}
 	monitor := NewAdvancedMonitor(config, logger)
 	monitor.SetTestMode(true)
-	monitor.Start()
-	defer monitor.Stop()
+	if err := monitor.Start(); err != nil {
+		t.Errorf("Failed to start monitor: %v", err)
+	}
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("healthy_status", func(t *testing.T) {
 		status := monitor.GetHealthStatus()
@@ -454,8 +489,14 @@ func TestAdvancedMonitorAlertChannel(t *testing.T) {
 	}
 	monitor := NewAdvancedMonitor(config, logger)
 	monitor.SetTestMode(true)
-	monitor.Start()
-	defer monitor.Stop()
+	if err := monitor.Start(); err != nil {
+		t.Errorf("Failed to start monitor: %v", err)
+	}
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("alert_channel", func(t *testing.T) {
 		alertChan := monitor.GetAlertChannel()
@@ -502,7 +543,11 @@ func TestAdvancedMonitorConditionEvaluation(t *testing.T) {
 		ExportFormat:       "json",
 	}
 	monitor := NewAdvancedMonitor(config, logger)
-	defer monitor.Stop()
+	defer func() {
+		if err := monitor.Stop(); err != nil {
+			t.Errorf("Failed to stop monitor: %v", err)
+		}
+	}()
 
 	t.Run("condition_evaluation", func(t *testing.T) {
 		testCases := []struct {

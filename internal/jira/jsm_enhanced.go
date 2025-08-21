@@ -25,8 +25,8 @@ func NewJSMServiceEnhanced(client *Client, logger *slog.Logger) *JSMServiceEnhan
 	}
 }
 
-// ServiceDesk represents a Jira Service Desk
-type ServiceDesk struct {
+// ServiceDeskEnhanced represents an enhanced Jira Service Desk
+type ServiceDeskEnhanced struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
 	Key          string                 `json:"key"`
@@ -66,8 +66,8 @@ type CustomField struct {
 	Schema   interface{} `json:"schema,omitempty"`
 }
 
-// RequestType represents a Jira Service Desk request type
-type RequestType struct {
+// RequestTypeEnhanced represents an enhanced Jira Service Desk request type
+type RequestTypeEnhanced struct {
 	ID            string                 `json:"id"`
 	Name          string                 `json:"name"`
 	Description   string                 `json:"description"`
@@ -80,57 +80,8 @@ type RequestType struct {
 	Workflow      *Workflow              `json:"workflow,omitempty"`
 }
 
-// RequestTypeField represents a field in a request type
-type RequestTypeField struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Type          string                 `json:"type"`
-	Required      bool                   `json:"required"`
-	Orderable     bool                   `json:"orderable"`
-	Visible       bool                   `json:"visible"`
-	Description   string                 `json:"description"`
-	AllowedValues []string               `json:"allowedValues,omitempty"`
-	Schema        map[string]interface{} `json:"schema"`
-}
-
-// Workflow represents a workflow for a request type
-type Workflow struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Statuses    []WorkflowStatus     `json:"statuses"`
-	Transitions []WorkflowTransition `json:"transitions"`
-}
-
-// WorkflowStatus represents a status in a workflow
-type WorkflowStatus struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// WorkflowTransition represents a transition in a workflow
-type WorkflowTransition struct {
-	ID         string                `json:"id"`
-	Name       string                `json:"name"`
-	ToStatus   string                `json:"toStatus"`
-	Conditions []TransitionCondition `json:"conditions,omitempty"`
-	Validators []TransitionValidator `json:"validators,omitempty"`
-}
-
-// TransitionCondition represents a condition for a transition
-type TransitionCondition struct {
-	Type   string      `json:"type"`
-	Params interface{} `json:"params,omitempty"`
-}
-
-// TransitionValidator represents a validator for a transition
-type TransitionValidator struct {
-	Type   string      `json:"type"`
-	Params interface{} `json:"params,omitempty"`
-}
-
-// Customer represents a Jira Service Desk customer
-type Customer struct {
+// CustomerEnhanced represents an enhanced Jira Service Desk customer
+type CustomerEnhanced struct {
 	ID          string                 `json:"id"`
 	Name        string                 `json:"name"`
 	Key         string                 `json:"key"`
@@ -143,19 +94,8 @@ type Customer struct {
 	Groups      []CustomerGroup        `json:"groups,omitempty"`
 }
 
-// CustomerLinks represents links for a customer
-type CustomerLinks struct {
-	Self string `json:"self"`
-}
-
-// CustomerGroup represents a group for a customer
-type CustomerGroup struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// Request represents a service desk request
-type Request struct {
+// RequestEnhanced represents an enhanced service desk request
+type RequestEnhanced struct {
 	ID          string                 `json:"id"`
 	Key         string                 `json:"key"`
 	ProjectID   int                    `json:"projectId"`
@@ -168,34 +108,11 @@ type Request struct {
 	UpdatedDate time.Time              `json:"updatedDate"`
 	Reporter    RequestUser            `json:"reporter"`
 	Assignee    RequestUser            `json:"assignee,omitempty"`
-	ServiceDesk ServiceDesk            `json:"serviceDesk"`
-	RequestType RequestType            `json:"requestType"`
+	ServiceDesk ServiceDeskEnhanced    `json:"serviceDesk"`
+	RequestType RequestTypeEnhanced    `json:"requestType"`
 	Comments    []RequestComment       `json:"comments,omitempty"`
 	Attachments []RequestAttachment    `json:"attachments,omitempty"`
 	Transitions []RequestTransition    `json:"transitions,omitempty"`
-}
-
-// RequestStatus represents the status of a service desk request
-type RequestStatus struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	StatusCategory string `json:"statusCategory"`
-}
-
-// RequestPriority represents the priority of a service desk request
-type RequestPriority struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	IconURL string `json:"iconUrl"`
-}
-
-// RequestUser represents a user in the context of service desk requests
-type RequestUser struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
-	Active      bool   `json:"active"`
 }
 
 // RequestComment represents a comment on a service desk request
@@ -237,8 +154,8 @@ type RequestTransition struct {
 	Validators []TransitionValidator  `json:"validators,omitempty"`
 }
 
-// SLA represents a Service Level Agreement
-type SLA struct {
+// SLAEnhanced represents an enhanced Service Level Agreement
+type SLAEnhanced struct {
 	ID                   string      `json:"id"`
 	Name                 string      `json:"name"`
 	GroupID              string      `json:"groupId"`
@@ -252,40 +169,6 @@ type SLA struct {
 	Metrics              []SLAMetric `json:"metrics,omitempty"`
 }
 
-// SLASchedule represents the schedule for an SLA
-type SLASchedule struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Active      bool       `json:"active"`
-	IsDefault   bool       `json:"isDefault"`
-	Entries     []SLAEntry `json:"entries"`
-}
-
-// SLAEntry represents an entry in an SLA schedule
-type SLAEntry struct {
-	ID        string `json:"id"`
-	DayOfWeek int    `json:"dayOfWeek"`
-	StartTime string `json:"startTime"`
-	EndTime   string `json:"endTime"`
-}
-
-// SLATarget represents the target for an SLA
-type SLATarget struct {
-	Type              string `json:"type"`
-	Value             int    `json:"value"`
-	Unit              string `json:"unit"`
-	BusinessHoursOnly bool   `json:"businessHoursOnly"`
-}
-
-// SLAWarning represents warning settings for an SLA
-type SLAWarning struct {
-	Type              string `json:"type"`
-	Value             int    `json:"value"`
-	Unit              string `json:"unit"`
-	BusinessHoursOnly bool   `json:"businessHoursOnly"`
-}
-
 // SLAMetric represents a metric for an SLA
 type SLAMetric struct {
 	ID          string `json:"id"`
@@ -296,50 +179,16 @@ type SLAMetric struct {
 }
 
 // GetServiceDesks retrieves all service desks accessible to the user
-func (s *JSMServiceEnhanced) GetServiceDesks(ctx context.Context) ([]ServiceDesk, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk", s.client.baseURL)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting service desks", "url", url)
-
-	var serviceDesks []ServiceDesk
-	if err := s.client.do(req, &serviceDesks); err != nil {
-		return nil, fmt.Errorf("failed to get service desks: %w", err)
-	}
-
-	s.logger.Info("Retrieved service desks", "count", len(serviceDesks))
-	return serviceDesks, nil
-}
 
 // GetServiceDesk retrieves a specific service desk by ID
-func (s *JSMServiceEnhanced) GetServiceDesk(ctx context.Context, serviceDeskID string) (*ServiceDesk, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting service desk", "serviceDeskID", serviceDeskID, "url", url)
-
-	var serviceDesk ServiceDesk
-	if err := s.client.do(req, &serviceDesk); err != nil {
-		return nil, fmt.Errorf("failed to get service desk: %w", err)
-	}
-
-	s.logger.Info("Retrieved service desk", "serviceDeskID", serviceDeskID, "name", serviceDesk.Name)
-	return &serviceDesk, nil
-}
 
 // GetServiceDeskPermissions retrieves permissions for a service desk
-func (s *JSMServiceEnhanced) GetServiceDeskPermissions(ctx context.Context, serviceDeskID string) (*ServiceDeskPermissions, error) {
+func (s *JSMServiceEnhanced) GetServiceDeskPermissions(
+	ctx context.Context, serviceDeskID string,
+) (*ServiceDeskPermissions, error) {
 	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/permission", s.client.baseURL, serviceDeskID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -356,149 +205,11 @@ func (s *JSMServiceEnhanced) GetServiceDeskPermissions(ctx context.Context, serv
 }
 
 // GetServiceDeskCustomFields retrieves custom fields for a service desk
-func (s *JSMServiceEnhanced) GetServiceDeskCustomFields(ctx context.Context, serviceDeskID string) ([]CustomField, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/customField", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting service desk custom fields", "serviceDeskID", serviceDeskID, "url", url)
-
-	var customFields []CustomField
-	if err := s.client.do(req, &customFields); err != nil {
-		return nil, fmt.Errorf("failed to get service desk custom fields: %w", err)
-	}
-
-	s.logger.Info("Retrieved service desk custom fields", "serviceDeskID", serviceDeskID, "count", len(customFields))
-	return customFields, nil
-}
-
-// GetRequestTypes retrieves all request types for a service desk
-func (s *JSMServiceEnhanced) GetRequestTypes(ctx context.Context, serviceDeskID string) ([]RequestType, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting request types", "serviceDeskID", serviceDeskID, "url", url)
-
-	var requestTypes []RequestType
-	if err := s.client.do(req, &requestTypes); err != nil {
-		return nil, fmt.Errorf("failed to get request types: %w", err)
-	}
-
-	s.logger.Info("Retrieved request types", "serviceDeskID", serviceDeskID, "count", len(requestTypes))
-	return requestTypes, nil
-}
-
-// GetRequestType retrieves a specific request type by ID
-func (s *JSMServiceEnhanced) GetRequestType(ctx context.Context, serviceDeskID, requestTypeID string) (*RequestType, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype/%s", s.client.baseURL, serviceDeskID, requestTypeID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting request type", "serviceDeskID", serviceDeskID, "requestTypeID", requestTypeID, "url", url)
-
-	var requestType RequestType
-	if err := s.client.do(req, &requestType); err != nil {
-		return nil, fmt.Errorf("failed to get request type: %w", err)
-	}
-
-	s.logger.Info("Retrieved request type", "serviceDeskID", serviceDeskID, "requestTypeID", requestTypeID, "name", requestType.Name)
-	return &requestType, nil
-}
-
-// CreateRequest creates a new service desk request
-func (s *JSMServiceEnhanced) CreateRequest(ctx context.Context, serviceDeskID string, requestType string, fields map[string]interface{}) (*Request, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request", s.client.baseURL)
-
-	requestData := map[string]interface{}{
-		"serviceDeskId":      serviceDeskID,
-		"requestTypeId":      requestType,
-		"requestFieldValues": fields,
-	}
-
-	jsonData, err := json.Marshal(requestData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request data: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	s.logger.Debug("Creating service desk request", "serviceDeskID", serviceDeskID, "requestType", requestType, "url", url)
-
-	var request Request
-	if err := s.client.do(req, &request); err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Info("Created service desk request", "requestID", request.ID, "key", request.Key)
-	return &request, nil
-}
-
-// GetRequest retrieves a specific service desk request by ID
-func (s *JSMServiceEnhanced) GetRequest(ctx context.Context, requestID string) (*Request, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request/%s", s.client.baseURL, requestID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting service desk request", "requestID", requestID, "url", url)
-
-	var request Request
-	if err := s.client.do(req, &request); err != nil {
-		return nil, fmt.Errorf("failed to get request: %w", err)
-	}
-
-	s.logger.Info("Retrieved service desk request", "requestID", requestID, "key", request.Key)
-	return &request, nil
-}
-
-// UpdateRequest updates a service desk request
-func (s *JSMServiceEnhanced) UpdateRequest(ctx context.Context, requestID string, fields map[string]interface{}) (*Request, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request/%s", s.client.baseURL, requestID)
-
-	requestData := map[string]interface{}{
-		"requestFieldValues": fields,
-	}
-
-	jsonData, err := json.Marshal(requestData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request data: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	s.logger.Debug("Updating service desk request", "requestID", requestID, "url", url)
-
-	var request Request
-	if err := s.client.do(req, &request); err != nil {
-		return nil, fmt.Errorf("failed to update request: %w", err)
-	}
-
-	s.logger.Info("Updated service desk request", "requestID", requestID, "key", request.Key)
-	return &request, nil
-}
 
 // AddComment adds a comment to a service desk request
-func (s *JSMServiceEnhanced) AddComment(ctx context.Context, requestID string, comment string, visibility *CommentVisibility) error {
+func (s *JSMServiceEnhanced) AddComment(
+	ctx context.Context, requestID, comment string, visibility *CommentVisibility,
+) error {
 	url := fmt.Sprintf("%s/servicedeskapi/request/%s/comment", s.client.baseURL, requestID)
 
 	commentData := map[string]interface{}{
@@ -530,28 +241,10 @@ func (s *JSMServiceEnhanced) AddComment(ctx context.Context, requestID string, c
 	return nil
 }
 
-// GetComments retrieves comments for a service desk request
-func (s *JSMServiceEnhanced) GetComments(ctx context.Context, requestID string) ([]RequestComment, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request/%s/comment", s.client.baseURL, requestID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting comments for service desk request", "requestID", requestID, "url", url)
-
-	var comments []RequestComment
-	if err := s.client.do(req, &comments); err != nil {
-		return nil, fmt.Errorf("failed to get comments: %w", err)
-	}
-
-	s.logger.Info("Retrieved comments for service desk request", "requestID", requestID, "count", len(comments))
-	return comments, nil
-}
-
 // AddAttachment adds an attachment to a service desk request
-func (s *JSMServiceEnhanced) AddAttachment(ctx context.Context, requestID string, filename string, content []byte) (*RequestAttachment, error) {
+func (s *JSMServiceEnhanced) AddAttachment(
+	ctx context.Context, requestID, filename string, content []byte,
+) (*RequestAttachment, error) {
 	url := fmt.Sprintf("%s/servicedeskapi/request/%s/attachment", s.client.baseURL, requestID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(content))
@@ -572,48 +265,10 @@ func (s *JSMServiceEnhanced) AddAttachment(ctx context.Context, requestID string
 	return &attachment, nil
 }
 
-// GetAttachments retrieves attachments for a service desk request
-func (s *JSMServiceEnhanced) GetAttachments(ctx context.Context, requestID string) ([]RequestAttachment, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request/%s/attachment", s.client.baseURL, requestID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting attachments for service desk request", "requestID", requestID, "url", url)
-
-	var attachments []RequestAttachment
-	if err := s.client.do(req, &attachments); err != nil {
-		return nil, fmt.Errorf("failed to get attachments: %w", err)
-	}
-
-	s.logger.Info("Retrieved attachments for service desk request", "requestID", requestID, "count", len(attachments))
-	return attachments, nil
-}
-
-// GetTransitions retrieves available transitions for a service desk request
-func (s *JSMServiceEnhanced) GetTransitions(ctx context.Context, requestID string) ([]RequestTransition, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/request/%s/transitions", s.client.baseURL, requestID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting transitions for service desk request", "requestID", requestID, "url", url)
-
-	var transitions []RequestTransition
-	if err := s.client.do(req, &transitions); err != nil {
-		return nil, fmt.Errorf("failed to get transitions: %w", err)
-	}
-
-	s.logger.Info("Retrieved transitions for service desk request", "requestID", requestID, "count", len(transitions))
-	return transitions, nil
-}
-
 // ExecuteTransition executes a transition for a service desk request
-func (s *JSMServiceEnhanced) ExecuteTransition(ctx context.Context, requestID string, transitionID string, fields map[string]interface{}) error {
+func (s *JSMServiceEnhanced) ExecuteTransition(
+	ctx context.Context, requestID, transitionID string, fields map[string]interface{},
+) error {
 	url := fmt.Sprintf("%s/servicedeskapi/request/%s/transitions", s.client.baseURL, requestID)
 
 	payload := map[string]interface{}{
@@ -635,7 +290,8 @@ func (s *JSMServiceEnhanced) ExecuteTransition(ctx context.Context, requestID st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Executing transition for service desk request", "requestID", requestID, "transitionID", transitionID, "url", url)
+	s.logger.Debug("Executing transition for service desk request",
+		"requestID", requestID, "transitionID", transitionID, "url", url)
 
 	if err := s.client.do(req, nil); err != nil {
 		return fmt.Errorf("failed to execute transition: %w", err)
@@ -645,78 +301,18 @@ func (s *JSMServiceEnhanced) ExecuteTransition(ctx context.Context, requestID st
 	return nil
 }
 
-// GetSLAs retrieves all SLAs for a service desk
-func (s *JSMServiceEnhanced) GetSLAs(ctx context.Context, serviceDeskID string) ([]SLA, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/sla/%s", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting SLAs for service desk", "serviceDeskID", serviceDeskID, "url", url)
-
-	var slas []SLA
-	if err := s.client.do(req, &slas); err != nil {
-		return nil, fmt.Errorf("failed to get SLAs: %w", err)
-	}
-
-	s.logger.Info("Retrieved SLAs for service desk", "serviceDeskID", serviceDeskID, "count", len(slas))
-	return slas, nil
-}
-
-// GetSLA retrieves a specific SLA by ID
-func (s *JSMServiceEnhanced) GetSLA(ctx context.Context, slaID string) (*SLA, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/sla/%s", s.client.baseURL, slaID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting SLA", "slaID", slaID, "url", url)
-
-	var sla SLA
-	if err := s.client.do(req, &sla); err != nil {
-		return nil, fmt.Errorf("failed to get SLA: %w", err)
-	}
-
-	s.logger.Info("Retrieved SLA", "slaID", slaID, "name", sla.Name)
-	return &sla, nil
-}
-
-// GetCustomers retrieves all customers for a service desk
-func (s *JSMServiceEnhanced) GetCustomers(ctx context.Context, serviceDeskID string) ([]Customer, error) {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/customer", s.client.baseURL, serviceDeskID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.logger.Debug("Getting customers for service desk", "serviceDeskID", serviceDeskID, "url", url)
-
-	var customers []Customer
-	if err := s.client.do(req, &customers); err != nil {
-		return nil, fmt.Errorf("failed to get customers: %w", err)
-	}
-
-	s.logger.Info("Retrieved customers for service desk", "serviceDeskID", serviceDeskID, "count", len(customers))
-	return customers, nil
-}
-
 // GetCustomer retrieves a specific customer by ID
-func (s *JSMServiceEnhanced) GetCustomer(ctx context.Context, customerID string) (*Customer, error) {
+func (s *JSMServiceEnhanced) GetCustomer(ctx context.Context, customerID string) (*CustomerEnhanced, error) {
 	url := fmt.Sprintf("%s/servicedeskapi/customer/%s", s.client.baseURL, customerID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	s.logger.Debug("Getting customer", "customerID", customerID, "url", url)
 
-	var customer Customer
+	var customer CustomerEnhanced
 	if err := s.client.do(req, &customer); err != nil {
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
@@ -726,7 +322,7 @@ func (s *JSMServiceEnhanced) GetCustomer(ctx context.Context, customerID string)
 }
 
 // CreateCustomer creates a new customer
-func (s *JSMServiceEnhanced) CreateCustomer(ctx context.Context, name, email string) (*Customer, error) {
+func (s *JSMServiceEnhanced) CreateCustomer(ctx context.Context, name, email string) (*CustomerEnhanced, error) {
 	url := fmt.Sprintf("%s/servicedeskapi/customer", s.client.baseURL)
 
 	customerData := map[string]interface{}{
@@ -747,7 +343,7 @@ func (s *JSMServiceEnhanced) CreateCustomer(ctx context.Context, name, email str
 
 	s.logger.Debug("Creating customer", "name", name, "email", email, "url", url)
 
-	var customer Customer
+	var customer CustomerEnhanced
 	if err := s.client.do(req, &customer); err != nil {
 		return nil, fmt.Errorf("failed to create customer: %w", err)
 	}
@@ -777,7 +373,8 @@ func (s *JSMServiceEnhanced) AttachCustomerToServiceDesk(ctx context.Context, cu
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Attaching customer to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID, "url", url)
+	s.logger.Debug("Attaching customer to service desk",
+		"customerID", customerID, "serviceDeskID", serviceDeskID, "url", url)
 
 	if err := s.client.do(req, nil); err != nil {
 		return fmt.Errorf("failed to attach customer to service desk: %w", err)
@@ -791,7 +388,7 @@ func (s *JSMServiceEnhanced) AttachCustomerToServiceDesk(ctx context.Context, cu
 func (s *JSMServiceEnhanced) GetCustomerGroups(ctx context.Context, customerID string) ([]CustomerGroup, error) {
 	url := fmt.Sprintf("%s/servicedeskapi/customer/%s/group", s.client.baseURL, customerID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
