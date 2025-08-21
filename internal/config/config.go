@@ -218,7 +218,8 @@ type Config struct {
 
 	// Custom Field Mapping Configuration
 	CustomFieldMappings map[string]interface{} // Custom field mappings with advanced options
-	// Example: {"customfield_10010": "labels", "customfield_10011": {"target_field": "labels", "type": "string", "adf_support": true}}
+	// Example: {"customfield_10010": "labels",
+	// "customfield_10011": {"target_field": "labels", "type": "string", "adf_support": true}}
 
 	// Sync Limits and Safety
 	SyncBatchSize     int  // maximum number of sync operations per batch
@@ -807,7 +808,8 @@ func parseFieldMappingsKeyValue(value string) map[string]map[string]string {
 
 // parseCustomFieldMappings parses custom field mappings from environment variable
 // Format: 'jira_field1=gitlab_field1;jira_field2={"target_field":"gitlab_field2","type":"string","adf_support":true}'
-// or JSON format: '{"jira_field1":"gitlab_field1","jira_field2":{"target_field":"gitlab_field2","type":"string","adf_support":true}}'
+// or JSON format: '{"jira_field1":"gitlab_field1",
+// "jira_field2":{"target_field":"gitlab_field2","type":"string","adf_support":true}}'
 func parseCustomFieldMappings(key string) map[string]interface{} {
 	value := getEnv(key, "")
 	if value == "" {

@@ -255,7 +255,7 @@ func (v *JWTValidator) validateAsymmetricJWT(
 
 // validateSymmetricJWT validates HS256 JWT tokens with shared secret
 func (v *JWTValidator) validateSymmetricJWT(
-	ctx context.Context, tokenString string, claims *JWTClaims, request *http.Request,
+	_ context.Context, _ string, claims *JWTClaims, request *http.Request,
 ) *ValidationResult {
 	// Validate basic claims structure
 	if err := v.validateBasicClaims(claims); err != nil {
@@ -272,9 +272,10 @@ func (v *JWTValidator) validateSymmetricJWT(
 		computedQSH := v.computeCanonicalHash(request)
 		if claims.QueryHash != computedQSH {
 			return &ValidationResult{
-				Valid:        false,
-				ErrorCode:    errors.ErrCodeInvalidSignature,
-				ErrorMessage: fmt.Sprintf("Query string hash validation failed: expected %s, got %s", computedQSH, claims.QueryHash),
+				Valid:     false,
+				ErrorCode: errors.ErrCodeInvalidSignature,
+				ErrorMessage: fmt.Sprintf("Query string hash validation failed: "+
+					"expected %s, got %s", computedQSH, claims.QueryHash),
 			}
 		}
 	}

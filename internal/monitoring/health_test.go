@@ -184,7 +184,7 @@ func TestHTTPHealthHandler_handleOverall(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
-	handler.handleOverall(w, req, context.Background())
+	handler.handleOverall(context.Background(), w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -195,7 +195,7 @@ func TestHTTPHealthHandler_handleOverall(t *testing.T) {
 
 	monitor.RunHealthChecks(context.Background())
 
-	handler.handleOverall(w, req, context.Background())
+	handler.handleOverall(context.Background(), w, req)
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
@@ -210,7 +210,7 @@ func TestHTTPHealthHandler_handleReadiness(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health/ready", nil)
 	w := httptest.NewRecorder()
 
-	handler.handleReadiness(w, req, context.Background())
+	handler.handleReadiness(context.Background(), w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -221,7 +221,7 @@ func TestHTTPHealthHandler_handleReadiness(t *testing.T) {
 
 	monitor.RunHealthChecks(context.Background())
 
-	handler.handleReadiness(w, req, context.Background())
+	handler.handleReadiness(context.Background(), w, req)
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 

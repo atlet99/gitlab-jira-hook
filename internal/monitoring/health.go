@@ -18,10 +18,17 @@ import (
 type HealthStatus string
 
 const (
-	HealthStatusHealthy   HealthStatus = "healthy"
-	HealthStatusDegraded  HealthStatus = "degraded"
+	// HealthStatusHealthy indicates the system is functioning normally
+	HealthStatusHealthy HealthStatus = "healthy"
+	// HealthStatusDegraded indicates the system is experiencing reduced performance
+	HealthStatusDegraded HealthStatus = "degraded"
+	// HealthStatusUnhealthy indicates the system is experiencing critical issues
 	HealthStatusUnhealthy HealthStatus = "unhealthy"
-	HealthStatusUnknown   HealthStatus = "unknown"
+	// HealthStatusUnknown indicates the health status cannot be determined
+	HealthStatusUnknown HealthStatus = "unknown"
+
+	// Memory calculation constants
+	megabyte = 1024 * 1024
 )
 
 // HealthCheck represents a health check for a specific component
@@ -158,9 +165,9 @@ func (hm *HealthMonitor) collectSystemInfo() map[string]interface{} {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	info["memory"] = map[string]interface{}{
-		"allocated_mb":       m.Alloc / 1024 / 1024,
-		"total_allocated_mb": m.TotalAlloc / 1024 / 1024,
-		"system_memory_mb":   m.Sys / 1024 / 1024,
+		"allocated_mb":       m.Alloc / megabyte,
+		"total_allocated_mb": m.TotalAlloc / megabyte,
+		"system_memory_mb":   m.Sys / megabyte,
 		"gc_count":           m.NumGC,
 		"gc_pause_total_ns":  m.PauseTotalNs,
 	}
@@ -199,7 +206,8 @@ type SimpleHealthChecker struct {
 }
 
 // NewSimpleHealthChecker creates a new simple health checker
-func NewSimpleHealthChecker(name string, checkFunc func(ctx context.Context) (HealthStatus, string, map[string]interface{}, error)) *SimpleHealthChecker {
+func NewSimpleHealthChecker(name string,
+	checkFunc func(ctx context.Context) (HealthStatus, string, map[string]interface{}, error)) *SimpleHealthChecker {
 	return &SimpleHealthChecker{
 		name:      name,
 		checkFunc: checkFunc,
@@ -207,7 +215,8 @@ func NewSimpleHealthChecker(name string, checkFunc func(ctx context.Context) (He
 }
 
 // CheckHealth performs the health check
-func (s *SimpleHealthChecker) CheckHealth(ctx context.Context) (HealthStatus, string, map[string]interface{}, error) {
+func (s *SimpleHealthChecker) CheckHealth(ctx context.Context) (status HealthStatus,
+	message string, details map[string]interface{}, err error) {
 	return s.checkFunc(ctx)
 }
 
@@ -217,12 +226,14 @@ type CacheHealthChecker struct {
 }
 
 // NewCacheHealthChecker creates a new cache health checker
-func NewCacheHealthChecker(cache cache.Cache) *CacheHealthChecker {
-	return &CacheHealthChecker{cache: cache}
+func NewCacheHealthChecker(cacheCache cache.Cache) *CacheHealthChecker {
+	return &CacheHealthChecker{cache: cacheCache}
 }
 
 // CheckHealth checks cache connectivity and performance
-func (c *CacheHealthChecker) CheckHealth(ctx context.Context) (HealthStatus, string, map[string]interface{}, error) {
+func (c *CacheHealthChecker) CheckHealth(
+	_ context.Context,
+) (status HealthStatus, message string, details map[string]interface{}, err error) {
 	if c.cache == nil {
 		return HealthStatusUnhealthy, "Cache is nil", nil, nil
 	}
@@ -242,7 +253,8 @@ func (c *CacheHealthChecker) CheckHealth(ctx context.Context) (HealthStatus, str
 
 	// Verify the value
 	if result != testValue {
-		return HealthStatusUnhealthy, "Cache returned incorrect value", nil, fmt.Errorf("expected %s, got %v", testValue, result)
+		return HealthStatusUnhealthy, "Cache returned incorrect value", nil,
+			fmt.Errorf("expected %s, got %v", testValue, result)
 	}
 
 	// Delete value
@@ -250,7 +262,7 @@ func (c *CacheHealthChecker) CheckHealth(ctx context.Context) (HealthStatus, str
 
 	// Get cache stats
 	stats := c.cache.GetStats()
-	details := map[string]interface{}{
+	details = map[string]interface{}{
 		"hits":              stats.Hits,
 		"misses":            stats.Misses,
 		"evictions":         stats.Evictions,
@@ -280,30 +292,33 @@ func (h *HTTPHealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request)
 
 	// Check if health check endpoint is requested
 	if r.URL.Path == "/health/ready" {
-		h.handleReadiness(w, r, ctx)
+		h.handleReadiness(ctx, w, r)
 		return
 	}
 
 	// Default to overall health check
-	h.handleOverall(w, r, ctx)
+	h.handleOverall(ctx, w, r)
 }
 
 // handleOverall handles overall health check requests
-func (h *HTTPHealthHandler) handleOverall(w http.ResponseWriter, r *http.Request, ctx context.Context) {
+func (h *HTTPHealthHandler) handleOverall(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
 	report := h.monitor.RunHealthChecks(ctx)
 
-	statusCode := http.StatusOK
-	if report.OverallStatus == HealthStatusUnhealthy {
+	var statusCode int
+	switch report.OverallStatus {
+	case HealthStatusUnhealthy:
 		statusCode = http.StatusServiceUnavailable
-	} else if report.OverallStatus == HealthStatusDegraded {
+	case HealthStatusDegraded:
 		statusCode = http.StatusOK // Or http.StatusPartialContent if preferred
+	default:
+		statusCode = http.StatusOK
 	}
 
 	h.writeJSONResponse(w, statusCode, report)
 }
 
 // handleReadiness handles readiness check requests
-func (h *HTTPHealthHandler) handleReadiness(w http.ResponseWriter, r *http.Request, ctx context.Context) {
+func (h *HTTPHealthHandler) handleReadiness(_ context.Context, w http.ResponseWriter, _ *http.Request) {
 	// For readiness, we might only check critical components
 	criticalChecks := []string{
 		"cache",

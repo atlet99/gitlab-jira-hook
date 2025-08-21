@@ -27,7 +27,12 @@ func NewAgileService(client *Client, logger *slog.Logger) *AgileService {
 }
 
 // getSingleResource makes a GET request to get a single resource by ID
-func (s *AgileService) getSingleResource(ctx context.Context, endpoint string, resourceID int, resourceType string) (interface{}, error) {
+func (s *AgileService) getSingleResource(
+	_ context.Context,
+	endpoint string,
+	resourceID int,
+	resourceType string,
+) (interface{}, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/%s/%d", s.client.baseURL, endpoint, resourceID)
 
 	req, err := http.NewRequest("GET", url, http.NoBody)
@@ -44,7 +49,12 @@ func (s *AgileService) getSingleResource(ctx context.Context, endpoint string, r
 }
 
 // getIssuesForResource makes a GET request to get issues for a specific resource
-func (s *AgileService) getIssuesForResource(ctx context.Context, endpoint string, resourceID int, startAt, maxResults int, resourceType string) ([]AgileIssue, error) {
+func (s *AgileService) getIssuesForResource(
+	_ context.Context,
+	endpoint string,
+	resourceID, startAt, maxResults int,
+	resourceType string,
+) ([]AgileIssue, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/%s/%d/issue", s.client.baseURL, endpoint, resourceID)
 
 	// Add pagination parameters
@@ -66,7 +76,10 @@ func (s *AgileService) getIssuesForResource(ctx context.Context, endpoint string
 		return nil, fmt.Errorf("failed to get %s issues: %w", resourceType, err)
 	}
 
-	s.logger.Info("Retrieved issues", "type", resourceType, "count", len(issuesResponse.Issues), "total", issuesResponse.Total)
+	s.logger.Info("Retrieved issues",
+		"type", resourceType,
+		"count", len(issuesResponse.Issues),
+		"total", issuesResponse.Total)
 	return issuesResponse.Issues, nil
 }
 
@@ -169,7 +182,7 @@ type Color struct {
 }
 
 // GetBoards retrieves all boards for a project
-func (s *AgileService) GetBoards(ctx context.Context, projectKey string) ([]AgileBoard, error) {
+func (s *AgileService) GetBoards(_ context.Context, projectKey string) ([]AgileBoard, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/board", s.client.baseURL)
 
 	// Add project filter if provided
@@ -216,7 +229,7 @@ func (s *AgileService) GetBoard(ctx context.Context, boardID int) (*AgileBoard, 
 }
 
 // GetBoardIssues retrieves issues for a specific board
-func (s *AgileService) GetBoardIssues(ctx context.Context, boardID int, startAt, maxResults int) ([]AgileIssue, error) {
+func (s *AgileService) GetBoardIssues(ctx context.Context, boardID, startAt, maxResults int) ([]AgileIssue, error) {
 	return s.getIssuesForResource(ctx, "board", boardID, startAt, maxResults, "board")
 }
 
@@ -266,12 +279,13 @@ func (s *AgileService) GetSprint(ctx context.Context, sprintID int) (*AgileSprin
 }
 
 // GetSprintIssues retrieves issues for a specific sprint
-func (s *AgileService) GetSprintIssues(ctx context.Context, sprintID int, startAt, maxResults int) ([]AgileIssue, error) {
+func (s *AgileService) GetSprintIssues(ctx context.Context, sprintID, startAt, maxResults int) ([]AgileIssue, error) {
 	return s.getIssuesForResource(ctx, "sprint", sprintID, startAt, maxResults, "sprint")
 }
 
 // CreateSprint creates a new sprint for a board
-func (s *AgileService) CreateSprint(_ context.Context, boardID int, name, goal string, startDate, endDate time.Time) (*AgileSprint, error) {
+func (s *AgileService) CreateSprint(_ context.Context,
+	boardID int, name, goal string, startDate, endDate time.Time) (*AgileSprint, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/sprint", s.client.baseURL)
 
 	payload := map[string]interface{}{
@@ -302,7 +316,8 @@ func (s *AgileService) CreateSprint(_ context.Context, boardID int, name, goal s
 }
 
 // UpdateSprint updates an existing sprint
-func (s *AgileService) UpdateSprint(_ context.Context, sprintID int, name, goal string, startDate, endDate *time.Time) (*AgileSprint, error) {
+func (s *AgileService) UpdateSprint(_ context.Context,
+	sprintID int, name, goal string, startDate, endDate *time.Time) (*AgileSprint, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/sprint/%d", s.client.baseURL, sprintID)
 
 	payload := map[string]interface{}{
@@ -434,7 +449,7 @@ func (s *AgileService) GetEpic(ctx context.Context, epicID int) (*AgileEpic, err
 }
 
 // CreateEpic creates a new epic
-func (s *AgileService) CreateEpic(_ context.Context, name, summary string, colorKey string) (*AgileEpic, error) {
+func (s *AgileService) CreateEpic(_ context.Context, name, summary, colorKey string) (*AgileEpic, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/epic", s.client.baseURL)
 
 	payload := map[string]interface{}{
@@ -466,7 +481,7 @@ func (s *AgileService) CreateEpic(_ context.Context, name, summary string, color
 }
 
 // UpdateEpic updates an existing epic
-func (s *AgileService) UpdateEpic(_ context.Context, epicID int, name, summary *string, colorKey *string) (*AgileEpic, error) {
+func (s *AgileService) UpdateEpic(_ context.Context, epicID int, name, summary, colorKey *string) (*AgileEpic, error) {
 	url := fmt.Sprintf("%s/rest/agile/1.0/epic/%d", s.client.baseURL, epicID)
 
 	payload := map[string]interface{}{}
@@ -501,12 +516,12 @@ func (s *AgileService) UpdateEpic(_ context.Context, epicID int, name, summary *
 }
 
 // GetEpicIssues retrieves issues for a specific epic
-func (s *AgileService) GetEpicIssues(ctx context.Context, epicID int, startAt, maxResults int) ([]AgileIssue, error) {
+func (s *AgileService) GetEpicIssues(ctx context.Context, epicID, startAt, maxResults int) ([]AgileIssue, error) {
 	return s.getIssuesForResource(ctx, "epic", epicID, startAt, maxResults, "epic")
 }
 
 // RankIssue ranks an issue within a sprint
-func (s *AgileService) RankIssue(ctx context.Context, issueKey, afterIssueKey string) error {
+func (s *AgileService) RankIssue(_ context.Context, issueKey, afterIssueKey string) error {
 	url := fmt.Sprintf("%s/rest/agile/1.0/issue/rank", s.client.baseURL)
 
 	payload := map[string]interface{}{
@@ -538,7 +553,7 @@ func (s *AgileService) RankIssue(ctx context.Context, issueKey, afterIssueKey st
 }
 
 // MoveIssueToSprint moves an issue to a specific sprint
-func (s *AgileService) MoveIssueToSprint(ctx context.Context, issueKey string, sprintID int) error {
+func (s *AgileService) MoveIssueToSprint(_ context.Context, issueKey string, sprintID int) error {
 	url := fmt.Sprintf("%s/rest/agile/1.0/backlog/issue", s.client.baseURL)
 
 	payload := map[string]interface{}{

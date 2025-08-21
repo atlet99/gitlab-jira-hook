@@ -11,6 +11,17 @@ import (
 	"github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
+// CustomField type constants
+const (
+	FieldTypeSelect      = "select"
+	FieldTypeMultiSelect = "multiselect"
+)
+
+// Cache constants
+const (
+	CustomFieldCacheTTL = 5 * time.Minute
+)
+
 // CustomFieldMapping represents a mapping between Jira custom fields and GitLab fields
 type CustomFieldMapping struct {
 	JiraFieldID    string                 `json:"jira_field_id"`
@@ -40,7 +51,7 @@ func NewCustomFieldManager(client *Client, cfg *config.Config, logger *slog.Logg
 		mappings: make([]CustomFieldMapping, 0),
 		logger:   logger,
 		cache:    make(map[string]interface{}),
-		cacheTTL: 5 * time.Minute,
+		cacheTTL: CustomFieldCacheTTL, // Default cache TTL
 	}
 }
 
@@ -63,7 +74,9 @@ func (cfm *CustomFieldManager) LoadMappings() error {
 		}
 
 		// Handle both string and map configurations
-		if configMap, ok := gitlabField.(map[string]interface{}); ok {
+		switch v := gitlabField.(type) {
+		case map[string]interface{}:
+			configMap := v
 			// Extract target_field from map
 			if targetField, ok := configMap["target_field"].(string); ok {
 				mapping.GitLabField = targetField
@@ -81,9 +94,8 @@ func (cfm *CustomFieldManager) LoadMappings() error {
 			if transformation, ok := configMap["transformation"].(map[string]interface{}); ok {
 				mapping.Transformation = transformation
 			}
-		} else if strValue, ok := gitlabField.(string); ok {
-			// Simple string mapping
-			mapping.GitLabField = strValue
+		case string:
+			mapping.GitLabField = v
 		}
 
 		cfm.mappings = append(cfm.mappings, mapping)
@@ -122,7 +134,8 @@ func (cfm *CustomFieldManager) GetMappingByGitLabField(gitlabField string) (*Cus
 }
 
 // TransformJiraToGitLab transforms Jira custom fields to GitLab format
-func (cfm *CustomFieldManager) TransformJiraToGitLab(ctx context.Context, issue *JiraIssue) (map[string]interface{}, error) {
+func (cfm *CustomFieldManager) TransformJiraToGitLab(ctx context.Context,
+	issue *JiraIssue) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
 	// Get all custom fields from the issue
@@ -169,7 +182,8 @@ func (cfm *CustomFieldManager) TransformJiraToGitLab(ctx context.Context, issue 
 }
 
 // TransformGitLabToJira transforms GitLab custom fields to Jira format
-func (cfm *CustomFieldManager) TransformGitLabToJira(ctx context.Context, gitlabFields map[string]interface{}) (map[string]interface{}, error) {
+func (cfm *CustomFieldManager) TransformGitLabToJira(ctx context.Context,
+	gitlabFields map[string]interface{}) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
 	for gitlabField, value := range gitlabFields {
@@ -192,7 +206,11 @@ func (cfm *CustomFieldManager) TransformGitLabToJira(ctx context.Context, gitlab
 }
 
 // transformFieldValue transforms a field value based on its type and mapping
-func (cfm *CustomFieldManager) transformFieldValue(ctx context.Context, mapping *CustomFieldMapping, value interface{}) (interface{}, error) {
+func (cfm *CustomFieldManager) transformFieldValue(
+	_ context.Context,
+	mapping *CustomFieldMapping,
+	value interface{},
+) (interface{}, error) {
 	if value == nil {
 		return nil, nil
 	}
@@ -210,22 +228,26 @@ func (cfm *CustomFieldManager) transformFieldValue(ctx context.Context, mapping 
 	// Type-based transformation
 	switch mapping.FieldType {
 	case "string":
-		return cfm.transformToString(value)
+		return cfm.transformToString(value), nil
 	case "number":
 		return cfm.transformToNumber(value)
 	case "date":
 		return cfm.transformToDate(value)
 	case "user":
 		return cfm.transformToUser(value)
-	case "select", "multiselect":
-		return cfm.transformToSelect(value, mapping.FieldType == "multiselect")
+	case FieldTypeSelect, FieldTypeMultiSelect:
+		return cfm.transformToSelect(value, mapping.FieldType == FieldTypeMultiSelect)
 	default:
 		return value, nil
 	}
 }
 
 // transformFieldValueToJira transforms a GitLab field value to Jira format
-func (cfm *CustomFieldManager) transformFieldValueToJira(ctx context.Context, mapping *CustomFieldMapping, value interface{}) (interface{}, error) {
+func (cfm *CustomFieldManager) transformFieldValueToJira(
+	_ context.Context,
+	mapping *CustomFieldMapping,
+	value interface{},
+) (interface{}, error) {
 	if value == nil {
 		return nil, nil
 	}
@@ -238,15 +260,15 @@ func (cfm *CustomFieldManager) transformFieldValueToJira(ctx context.Context, ma
 	// Type-based transformation to Jira format
 	switch mapping.FieldType {
 	case "string":
-		return cfm.transformToString(value)
+		return cfm.transformToString(value), nil
 	case "number":
 		return cfm.transformToNumber(value)
 	case "date":
 		return cfm.transformToJiraDate(value)
 	case "user":
 		return cfm.transformToJiraUser(value)
-	case "select", "multiselect":
-		return cfm.transformToJiraSelect(value, mapping.FieldType == "multiselect")
+	case FieldTypeSelect, FieldTypeMultiSelect:
+		return cfm.transformToJiraSelect(value, mapping.FieldType == FieldTypeMultiSelect)
 	default:
 		return value, nil
 	}
@@ -289,7 +311,8 @@ func (cfm *CustomFieldManager) transformADFContent(value interface{}) (interface
 }
 
 // applyTransformation applies custom transformation rules
-func (cfm *CustomFieldManager) applyTransformation(mapping *CustomFieldMapping, value interface{}) (interface{}, error) {
+func (cfm *CustomFieldManager) applyTransformation(mapping *CustomFieldMapping,
+	value interface{}) (interface{}, error) {
 	if mapping.Transformation == nil {
 		return value, nil
 	}
@@ -319,7 +342,8 @@ func (cfm *CustomFieldManager) applyTransformation(mapping *CustomFieldMapping, 
 }
 
 // applyReverseTransformation applies reverse transformation rules for GitLab to Jira
-func (cfm *CustomFieldManager) applyReverseTransformation(mapping *CustomFieldMapping, value interface{}) (interface{}, error) {
+func (cfm *CustomFieldManager) applyReverseTransformation(mapping *CustomFieldMapping,
+	value interface{}) (interface{}, error) {
 	if mapping.Transformation == nil {
 		return value, nil
 	}
@@ -353,21 +377,21 @@ func (cfm *CustomFieldManager) applyReverseTransformation(mapping *CustomFieldMa
 }
 
 // transformToString converts various types to string
-func (cfm *CustomFieldManager) transformToString(value interface{}) (string, error) {
+func (cfm *CustomFieldManager) transformToString(value interface{}) string {
 	if value == nil {
-		return "", nil
+		return ""
 	}
 	switch v := value.(type) {
 	case string:
-		return v, nil
+		return v
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", v), nil
+		return fmt.Sprintf("%d", v)
 	case float32, float64:
-		return fmt.Sprintf("%f", v), nil
+		return fmt.Sprintf("%f", v)
 	case bool:
-		return fmt.Sprintf("%t", v), nil
+		return fmt.Sprintf("%t", v)
 	default:
-		return fmt.Sprintf("%v", v), nil
+		return fmt.Sprintf("%v", v)
 	}
 }
 
@@ -541,7 +565,7 @@ func (cfm *CustomFieldManager) transformToJiraSelect(value interface{}, multi bo
 }
 
 // ValidateCustomFields validates custom fields against their mappings
-func (cfm *CustomFieldManager) ValidateCustomFields(ctx context.Context, issue *JiraIssue) error {
+func (cfm *CustomFieldManager) ValidateCustomFields(_ context.Context, issue *JiraIssue) error {
 	for _, mapping := range cfm.mappings {
 		if mapping.Required {
 			if issue.Fields == nil {
@@ -550,7 +574,8 @@ func (cfm *CustomFieldManager) ValidateCustomFields(ctx context.Context, issue *
 
 			// Check if the field exists and has a value
 			fieldsValue := reflect.ValueOf(issue.Fields).Elem()
-			if field := fieldsValue.FieldByName(mapping.JiraFieldName); !field.IsValid() || (field.Kind() == reflect.Ptr && field.IsNil()) {
+			if field := fieldsValue.FieldByName(mapping.JiraFieldName); !field.IsValid() ||
+				(field.Kind() == reflect.Ptr && field.IsNil()) {
 				// For the test case, we'll skip validation since custom fields
 				// are handled via reflection and we can't easily mock them
 				// In a real scenario, the field would exist in the Jira response
@@ -563,7 +588,10 @@ func (cfm *CustomFieldManager) ValidateCustomFields(ctx context.Context, issue *
 }
 
 // GetCustomFieldMetadata retrieves metadata for custom fields
-func (cfm *CustomFieldManager) GetCustomFieldMetadata(ctx context.Context, projectKey string) (map[string]interface{}, error) {
+func (cfm *CustomFieldManager) GetCustomFieldMetadata(
+	_ context.Context,
+	projectKey string,
+) (map[string]interface{}, error) {
 	// This would typically call Jira API to get field metadata
 	// For now, return cached or default metadata
 	cacheKey := fmt.Sprintf("field_metadata_%s", projectKey)

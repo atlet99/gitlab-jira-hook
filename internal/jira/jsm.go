@@ -27,7 +27,7 @@ func NewJSMService(client *Client, logger *slog.Logger) *JSMService {
 }
 
 // getSingleResource makes a GET request to get a single resource by ID
-func (s *JSMService) getSingleResource(ctx context.Context, endpoint, id string, resourceType string) (interface{}, error) {
+func (s *JSMService) getSingleResource(ctx context.Context, endpoint, id, resourceType string) (interface{}, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/%s/%s", s.client.baseURL, endpoint, id)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
@@ -47,7 +47,7 @@ func (s *JSMService) getSingleResource(ctx context.Context, endpoint, id string,
 }
 
 // getMultipleResources makes a GET request to get multiple resources
-func (s *JSMService) getMultipleResources(ctx context.Context, endpoint string, resourceType string) ([]interface{}, error) {
+func (s *JSMService) getMultipleResources(ctx context.Context, endpoint, resourceType string) ([]interface{}, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/%s", s.client.baseURL, endpoint)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
@@ -219,7 +219,7 @@ type RequestUser struct {
 func (s *JSMService) GetServiceDesks(ctx context.Context) ([]ServiceDesk, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk", s.client.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -253,7 +253,7 @@ func (s *JSMService) GetServiceDesk(ctx context.Context, serviceDeskID string) (
 func (s *JSMService) GetRequestTypes(ctx context.Context, serviceDeskID string) ([]RequestType, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype", s.client.baseURL, serviceDeskID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -271,9 +271,10 @@ func (s *JSMService) GetRequestTypes(ctx context.Context, serviceDeskID string) 
 
 // GetRequestType retrieves a specific request type by ID
 func (s *JSMService) GetRequestType(ctx context.Context, serviceDeskID, requestTypeID string) (*RequestType, error) {
-	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype/%s", s.client.baseURL, serviceDeskID, requestTypeID)
+	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/requesttype/%s",
+		s.client.baseURL, serviceDeskID, requestTypeID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -285,12 +286,16 @@ func (s *JSMService) GetRequestType(ctx context.Context, serviceDeskID, requestT
 		return nil, fmt.Errorf("failed to get request type: %w", err)
 	}
 
-	s.logger.Info("Retrieved request type", "serviceDeskID", serviceDeskID, "requestTypeID", requestTypeID, "name", requestType.Name)
+	s.logger.Info("Retrieved request type",
+		"serviceDeskID", serviceDeskID,
+		"requestTypeID", requestTypeID,
+		"name", requestType.Name)
 	return &requestType, nil
 }
 
 // CreateRequest creates a new service desk request
-func (s *JSMService) CreateRequest(ctx context.Context, serviceDeskID string, requestType string, fields map[string]interface{}) (*Request, error) {
+func (s *JSMService) CreateRequest(ctx context.Context,
+	serviceDeskID, requestType string, fields map[string]interface{}) (*Request, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/request", s.client.baseURL)
 
 	requestData := map[string]interface{}{
@@ -310,7 +315,10 @@ func (s *JSMService) CreateRequest(ctx context.Context, serviceDeskID string, re
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Creating service desk request", "serviceDeskID", serviceDeskID, "requestType", requestType, "url", apiURL)
+	s.logger.Debug("Creating service desk request",
+		"serviceDeskID", serviceDeskID,
+		"requestType", requestType,
+		"url", apiURL)
 
 	var request Request
 	if err := s.client.do(req, &request); err != nil {
@@ -336,7 +344,8 @@ func (s *JSMService) GetRequest(ctx context.Context, requestID string) (*Request
 }
 
 // UpdateRequest updates a service desk request
-func (s *JSMService) UpdateRequest(ctx context.Context, requestID string, fields map[string]interface{}) (*Request, error) {
+func (s *JSMService) UpdateRequest(ctx context.Context,
+	requestID string, fields map[string]interface{}) (*Request, error) {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/request/%s", s.client.baseURL, requestID)
 
 	requestData := map[string]interface{}{
@@ -366,7 +375,7 @@ func (s *JSMService) UpdateRequest(ctx context.Context, requestID string, fields
 }
 
 // AddComment adds a comment to a service desk request
-func (s *JSMService) AddComment(ctx context.Context, requestID string, comment string) error {
+func (s *JSMService) AddComment(ctx context.Context, requestID, comment string) error {
 	apiURL := fmt.Sprintf("%s/servicedeskapi/request/%s/comment", s.client.baseURL, requestID)
 
 	commentData := map[string]interface{}{
@@ -510,7 +519,10 @@ func (s *JSMService) AttachCustomerToServiceDesk(ctx context.Context, customerID
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Attaching customer to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID, "url", apiURL)
+	s.logger.Debug("Attaching customer to service desk",
+		"customerID", customerID,
+		"serviceDeskID", serviceDeskID,
+		"url", apiURL)
 
 	if err := s.client.do(req, nil); err != nil {
 		return fmt.Errorf("failed to attach customer to service desk: %w", err)

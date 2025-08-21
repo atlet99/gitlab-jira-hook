@@ -9,11 +9,80 @@ import (
 // TextContentType is the constant for "text" content type in ADF
 const TextContentType = "text"
 
+// DocType represents the document type for ADF content
+const DocType = "doc"
+
+// ParagraphType represents a paragraph content type in ADF
+const ParagraphType = "paragraph"
+
+// HeadingType represents a heading content type in ADF
+const HeadingType = "heading"
+
+// BulletListType represents a bullet list content type in ADF
+const BulletListType = "bulletList"
+
+// OrderedListType represents an ordered list content type in ADF
+const OrderedListType = "orderedList"
+
+// CodeBlockType represents a code block content type in ADF
+const CodeBlockType = "codeBlock"
+
+// QuoteBlockType represents a quote block content type in ADF
+const QuoteBlockType = "blockquote"
+
+// PanelType represents a panel content type in ADF
+const PanelType = "panel"
+
+// TableType represents a table content type in ADF
+const TableType = "table"
+
+// LayoutType represents a layout content type in ADF
+const LayoutType = "layout"
+
+// EmbedType represents an embed content type in ADF
+const EmbedType = "embed"
+
+// ExtensionType represents an extension content type in ADF
+const ExtensionType = "extension"
+
+// HardBreakType represents the ADF hard break type
+const HardBreakType = "hardBreak"
+
+// MentionType represents the ADF mention type
+const MentionType = "mention"
+
+// BoldMarkType represents the ADF bold mark type
+const BoldMarkType = "bold"
+
+// ItalicMarkType represents the ADF italic mark type
+const ItalicMarkType = "italic"
+
+// UnderlineMarkType represents the ADF underline mark type
+const UnderlineMarkType = "underline"
+
+// StrikeMarkType represents the ADF strike mark type
+const StrikeMarkType = "strike"
+
+// CodeMarkType represents the ADF code mark type
+const CodeMarkType = "code"
+
+// SubscriptMarkType represents the ADF subscript mark type
+const SubscriptMarkType = "subscript"
+
+// SuperscriptMarkType represents the ADF superscript mark type
+const SuperscriptMarkType = "superscript"
+
+// ColorMarkType represents the ADF color mark type
+const ColorMarkType = "color"
+
+// LinkMarkType represents the ADF link mark type
+const LinkMarkType = "link"
+
 // validateADF validates ADF content against the ADF schema
 // Returns the validated ADF content or an error if validation fails
 func validateADF(content CommentPayload) (CommentPayload, error) {
 	// Check required fields
-	if content.Body.Type != "doc" {
+	if content.Body.Type != DocType {
 		return content, fmt.Errorf("ADF must have type 'doc', got: %s", content.Body.Type)
 	}
 
@@ -45,17 +114,17 @@ func validateContentBlock(block Content, index int) error {
 
 	// Validate content type is allowed
 	allowedTypes := map[string]bool{
-		"paragraph":   true,
-		"heading":     true,
-		"bulletList":  true,
-		"orderedList": true,
-		"codeBlock":   true,
-		"blockquote":  true,
-		"panel":       true,
-		"table":       true,
-		"layout":      true,
-		"embed":       true,
-		"extension":   true,
+		ParagraphType:   true,
+		HeadingType:     true,
+		BulletListType:  true,
+		OrderedListType: true,
+		CodeBlockType:   true,
+		QuoteBlockType:  true,
+		PanelType:       true,
+		TableType:       true,
+		LayoutType:      true,
+		EmbedType:       true,
+		ExtensionType:   true,
 	}
 
 	if !allowedTypes[block.Type] {
@@ -86,9 +155,9 @@ func validateTextContent(textContent TextContent, blockIndex, textIndex int) err
 
 	// Validate text content type is allowed
 	allowedTextTypes := map[string]bool{
-		"text":      true,
-		"hardBreak": true,
-		"mention":   true,
+		TextContentType: true,
+		HardBreakType:   true,
+		MentionType:     true,
 	}
 
 	if !allowedTextTypes[textContent.Type] {
@@ -96,7 +165,7 @@ func validateTextContent(textContent TextContent, blockIndex, textIndex int) err
 	}
 
 	// Validate text content has required fields
-	if textContent.Type == "text" && textContent.Text == "" {
+	if textContent.Type == TextContentType && textContent.Text == "" {
 		return fmt.Errorf("text content %d in block %d: text content cannot be empty", textIndex, blockIndex)
 	}
 
@@ -121,29 +190,32 @@ func validateMark(mark Mark, blockIndex, textIndex, markIndex int) error {
 
 	// Validate mark type is allowed
 	allowedMarkTypes := map[string]bool{
-		"bold":        true,
-		"italic":      true,
-		"underline":   true,
-		"strike":      true,
-		"code":        true,
-		"link":        true,
-		"subscript":   true,
-		"superscript": true,
-		"color":       true,
+		BoldMarkType:        true,
+		ItalicMarkType:      true,
+		UnderlineMarkType:   true,
+		StrikeMarkType:      true,
+		CodeMarkType:        true,
+		LinkMarkType:        true,
+		SubscriptMarkType:   true,
+		SuperscriptMarkType: true,
+		ColorMarkType:       true,
 	}
 
 	if !allowedMarkTypes[mark.Type] {
-		return fmt.Errorf("mark %d in text content %d of block %d: invalid mark type '%s'", markIndex, textIndex, blockIndex, mark.Type)
+		return fmt.Errorf("mark %d in text content %d of block %d: "+
+			"invalid mark type '%s'", markIndex, textIndex, blockIndex, mark.Type)
 	}
 
 	// Validate required attributes for specific mark types
 	const LinkMarkType = "link"
 	if mark.Type == LinkMarkType {
 		if mark.Attrs == nil {
-			return fmt.Errorf("mark %d in text content %d of block %d: link mark requires 'attrs'", markIndex, textIndex, blockIndex)
+			return fmt.Errorf("mark %d in text content %d of block %d: "+
+				"link mark requires 'attrs'", markIndex, textIndex, blockIndex)
 		}
 		if mark.Attrs["href"] == nil {
-			return fmt.Errorf("mark %d in text content %d of block %d: link mark requires 'href' attribute", markIndex, textIndex, blockIndex)
+			return fmt.Errorf("mark %d in text content %d of block %d: "+
+				"link mark requires 'href' attribute", markIndex, textIndex, blockIndex)
 		}
 	}
 
@@ -249,17 +321,17 @@ func isValidContentBlock(block Content) bool {
 
 	// Check if content type is allowed
 	allowedTypes := map[string]bool{
-		"paragraph":   true,
-		"heading":     true,
-		"bulletList":  true,
-		"orderedList": true,
-		"codeBlock":   true,
-		"blockquote":  true,
-		"panel":       true,
-		"table":       true,
-		"layout":      true,
-		"embed":       true,
-		"extension":   true,
+		ParagraphType:   true,
+		HeadingType:     true,
+		BulletListType:  true,
+		OrderedListType: true,
+		CodeBlockType:   true,
+		QuoteBlockType:  true,
+		PanelType:       true,
+		TableType:       true,
+		LayoutType:      true,
+		EmbedType:       true,
+		ExtensionType:   true,
 	}
 
 	return allowedTypes[block.Type]
@@ -306,7 +378,7 @@ func sanitizeMark(mark Mark) Mark {
 
 	// Sanitize attributes if present
 	if sanitized.Attrs != nil {
-		if sanitized.Type == "link" && sanitized.Attrs["href"] == nil {
+		if sanitized.Type == LinkMarkType && sanitized.Attrs["href"] == nil {
 			// Remove invalid link marks
 			return Mark{}
 		}
@@ -321,7 +393,7 @@ func isValidTextContent(textContent TextContent) bool {
 		return false
 	}
 
-	if textContent.Type == "text" && textContent.Text == "" {
+	if textContent.Type == TextContentType && textContent.Text == "" {
 		return false
 	}
 
@@ -334,11 +406,11 @@ func isValidMark(mark Mark) bool {
 		return false
 	}
 
-	if mark.Type == "link" && mark.Attrs == nil {
+	if mark.Type == LinkMarkType && mark.Attrs == nil {
 		return false
 	}
 
-	if mark.Type == "link" && mark.Attrs["href"] == nil {
+	if mark.Type == LinkMarkType && mark.Attrs["href"] == nil {
 		return false
 	}
 

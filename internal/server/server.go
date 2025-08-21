@@ -186,7 +186,8 @@ func createMux(
 	healthMonitor := monitoring.NewHealthMonitor(cfg, logger, "1.0.0")
 
 	// Register health checkers
-	healthMonitor.RegisterChecker("cache", monitoring.NewCacheHealthChecker(cache.NewMultiLevelCache(1000, 10000)))
+	healthMonitor.RegisterChecker("cache", monitoring.NewCacheHealthChecker(cache.NewMultiLevelCache(
+		cacheL1Size, cacheL2Size))) // Default cache sizes
 
 	// Register main webhook routes with rate limiting and performance monitoring
 	registerWebhookRoutes(mux, gitlabHandler, projectHookHandler, jiraWebhookHandler, webhookMonitor, performanceMonitor)

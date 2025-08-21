@@ -387,10 +387,6 @@ func (m *mockJiraClient) GetHealthStatus() HealthStatus {
 	return HealthStatus{Healthy: true}
 }
 
-func (m *mockJiraClient) GetConfig() *Config {
-	return &Config{}
-}
-
 func (m *mockJiraClient) ValidateConfig() error {
 	return nil
 }

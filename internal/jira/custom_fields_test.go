@@ -118,8 +118,7 @@ func TestCustomFieldManager_TransformString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := manager.transformToString(tc.input)
-			assert.NoError(t, err)
+			result := manager.transformToString(tc.input)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

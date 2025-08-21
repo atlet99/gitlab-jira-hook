@@ -874,7 +874,7 @@ type WebhookHandler struct {
 	authValidator *AuthValidator
 	syncManager   Manager // Bidirectional sync manager
 	auditLogger   *AuditLogger
-	jqlFilter     *JQLFilter // JQL-based event filter
+	// jqlFilter     *JQLFilter // JQL-based event filter - TODO: implement JQL filtering
 }
 
 // NewWebhookHandler creates a new Jira webhook handler

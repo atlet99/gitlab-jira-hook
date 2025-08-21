@@ -112,10 +112,35 @@ func (jf *JQLFilter) buildJQLParameters(event *WebhookEvent) map[string]interfac
 	params := make(map[string]interface{})
 
 	// Basic issue information
-	params["issue_key"] = event.Issue.Key
-	params["project"] = event.Issue.Fields.Project.Key
+	jf.addBasicInfo(params, event)
 
 	// Issue fields
+	jf.addIssueFields(params, event)
+
+	// User information
+	jf.addUserInfo(params, event)
+
+	// Collections (labels, versions, components)
+	jf.addCollections(params, event)
+
+	// Dates
+	jf.addDates(params, event)
+
+	// Event-specific information
+	params["event_type"] = event.WebhookEvent
+	params["timestamp"] = event.Timestamp
+
+	return params
+}
+
+// addBasicInfo adds basic issue information to parameters
+func (jf *JQLFilter) addBasicInfo(params map[string]interface{}, event *WebhookEvent) {
+	params["issue_key"] = event.Issue.Key
+	params["project"] = event.Issue.Fields.Project.Key
+}
+
+// addIssueFields adds issue fields to parameters
+func (jf *JQLFilter) addIssueFields(params map[string]interface{}, event *WebhookEvent) {
 	if event.Issue.Fields.Summary != "" {
 		params["summary"] = event.Issue.Fields.Summary
 	}
@@ -131,7 +156,10 @@ func (jf *JQLFilter) buildJQLParameters(event *WebhookEvent) map[string]interfac
 	if event.Issue.Fields.IssueType != nil {
 		params["issue_type"] = event.Issue.Fields.IssueType.Name
 	}
+}
 
+// addUserInfo adds user information to parameters
+func (jf *JQLFilter) addUserInfo(params map[string]interface{}, event *WebhookEvent) {
 	// Assignee information
 	if event.Issue.Fields.Assignee != nil {
 		params["assignee"] = event.Issue.Fields.Assignee.AccountID
@@ -149,7 +177,10 @@ func (jf *JQLFilter) buildJQLParameters(event *WebhookEvent) map[string]interfac
 			params["reporter_email"] = event.Issue.Fields.Reporter.EmailAddress
 		}
 	}
+}
 
+// addCollections adds collection fields to parameters
+func (jf *JQLFilter) addCollections(params map[string]interface{}, event *WebhookEvent) {
 	// Labels
 	if len(event.Issue.Fields.Labels) > 0 {
 		params["labels"] = event.Issue.Fields.Labels
@@ -157,46 +188,56 @@ func (jf *JQLFilter) buildJQLParameters(event *WebhookEvent) map[string]interfac
 
 	// Fix versions
 	if len(event.Issue.Fields.FixVersions) > 0 {
-		versionNames := make([]string, len(event.Issue.Fields.FixVersions))
-		for i, version := range event.Issue.Fields.FixVersions {
-			versionNames[i] = version.Name
-		}
+		versionNames := jf.extractVersionNames(event.Issue.Fields.FixVersions)
 		params["fix_versions"] = versionNames
 	}
 
 	// Components
 	if len(event.Issue.Fields.Components) > 0 {
-		componentNames := make([]string, len(event.Issue.Fields.Components))
-		for i, component := range event.Issue.Fields.Components {
-			componentNames[i] = component.Name
-		}
+		componentNames := jf.extractComponentNames(event.Issue.Fields.Components)
 		params["components"] = componentNames
 	}
+}
 
-	// Created and updated dates
+// addDates adds date fields to parameters
+func (jf *JQLFilter) addDates(params map[string]interface{}, event *WebhookEvent) {
+	// Created date
 	if event.Issue.Fields.Created != "" {
 		if createdTime, err := time.Parse(time.RFC3339, event.Issue.Fields.Created); err == nil {
 			params["created"] = createdTime
 		}
 	}
 
+	// Updated date
 	if event.Issue.Fields.Updated != "" {
 		if updatedTime, err := time.Parse(time.RFC3339, event.Issue.Fields.Updated); err == nil {
 			params["updated"] = updatedTime
 		}
 	}
+}
 
-	// Event-specific information
-	params["event_type"] = event.WebhookEvent
-	params["timestamp"] = event.Timestamp
+// extractVersionNames extracts version names from fix versions
+func (jf *JQLFilter) extractVersionNames(fixVersions []Version) []string {
+	versionNames := make([]string, len(fixVersions))
+	for i, version := range fixVersions {
+		versionNames[i] = version.Name
+	}
+	return versionNames
+}
 
-	return params
+// extractComponentNames extracts component names from components
+func (jf *JQLFilter) extractComponentNames(components []Component) []string {
+	componentNames := make([]string, len(components))
+	for i, component := range components {
+		componentNames[i] = component.Name
+	}
+	return componentNames
 }
 
 // executeJQLCheck executes a JQL query to check if the issue matches the filter
 func (jf *JQLFilter) executeJQLCheck(issueKey string, params map[string]interface{}) (bool, error) {
 	if jf.jiraClient == nil {
-		return false, fmt.Errorf("Jira client not available")
+		return false, fmt.Errorf("jira client not available")
 	}
 
 	// Parse the JQL filter and replace placeholders with actual values

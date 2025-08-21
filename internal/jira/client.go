@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/atlet99/gitlab-jira-hook/internal/config"
+	configpkg "github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
 // Client represents a Jira API client
 type Client struct {
-	config       *config.Config
+	config       *configpkg.Config
 	httpClient   *http.Client
 	baseURL      string
 	authHeader   string        // Used for Basic Auth
@@ -76,7 +76,7 @@ func (rl *RateLimiter) Wait() {
 }
 
 // NewClient creates a new Jira API client
-func NewClient(cfg *config.Config) *Client {
+func NewClient(cfg *configpkg.Config) *Client {
 	if cfg == nil {
 		return nil
 	}
@@ -101,7 +101,7 @@ func NewClient(cfg *config.Config) *Client {
 	}
 
 	// Initialize authentication based on method
-	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
+	if cfg.JiraAuthMethod == configpkg.JiraAuthMethodOAuth2 {
 		client.oauth2Client = NewOAuth2Client(cfg, slog.Default())
 	} else {
 		// Default to Basic Auth for backward compatibility
@@ -114,7 +114,7 @@ func NewClient(cfg *config.Config) *Client {
 
 // getAuthorizationHeader returns the appropriate Authorization header based on auth method
 func (c *Client) getAuthorizationHeader(ctx context.Context) (string, error) {
-	if c.config.JiraAuthMethod == config.JiraAuthMethodOAuth2 && c.oauth2Client != nil {
+	if c.config.JiraAuthMethod == configpkg.JiraAuthMethodOAuth2 && c.oauth2Client != nil {
 		return c.oauth2Client.CreateAuthorizationHeader(ctx)
 	}
 
@@ -211,7 +211,7 @@ func (c *Client) GetTransitions(ctx context.Context, issueKey string) ([]Transit
 
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("JIRA API error: %s - %s", resp.Status, string(body))
 	}
 
 	// Parse response
@@ -292,7 +292,7 @@ func (c *Client) FindTransition(ctx context.Context, issueKey, targetStatus stri
 		return nil, err
 	}
 
-	for i := range transitions {
+	for i := 0; i < len(transitions); i++ {
 		if transitions[i].To.Name == targetStatus {
 			return &transitions[i], nil
 		}
@@ -344,8 +344,8 @@ func (c *Client) ValidateTransition(ctx context.Context, issueKey, targetStatus 
 	}
 
 	// Validate that transition to target status exists
-	for _, transition := range transitions {
-		if transition.To.Name == targetStatus {
+	for i := 0; i < len(transitions); i++ {
+		if transitions[i].To.Name == targetStatus {
 			return nil // Transition is valid
 		}
 	}
@@ -648,7 +648,7 @@ func (c *Client) SetAssigneeWithValidation(ctx context.Context, issueKey, accoun
 	}
 
 	// Validate that the user exists if not a special value
-	if accountID != "" && accountID != "null" {
+	if accountID != "" && accountID != SpecialAssigneeNull {
 		users, err := c.SearchUsers(ctx, "")
 		if err != nil {
 			return fmt.Errorf("failed to validate assignee: %w", err)
@@ -672,11 +672,24 @@ func (c *Client) SetAssigneeWithValidation(ctx context.Context, issueKey, accoun
 }
 
 const (
-	SpecialAssigneeNull       = "null"
-	SpecialAssigneeNil        = "nil"
+	// SpecialAssigneeNull represents the null assignee value in Jira
+	SpecialAssigneeNull = "null"
+	// SpecialAssigneeNil represents the nil assignee value in Jira
+	SpecialAssigneeNil = "nil"
+	// SpecialAssigneeUnassigned represents the unassigned value in Jira
 	SpecialAssigneeUnassigned = "unassigned"
-	SpecialAssigneeDefault    = "default"
-	SpecialAssigneeMinusOne   = "-1"
+	// SpecialAssigneeDefault represents the default assignee value in Jira
+	SpecialAssigneeDefault = "default"
+	// SpecialAssigneeMinusOne represents the -1 assignee value in Jira
+	SpecialAssigneeMinusOne = "-1"
+	// SystemAccount represents the system account in Jira
+	SystemAccount = "system"
+	// AutomationAccount represents the automation account in Jira
+	AutomationAccount = "automation"
+	// BotAccount represents the bot account in Jira
+	BotAccount = "bot"
+	// UnassignedAccount represents the unassigned account in Jira
+	UnassignedAccount = "unassigned"
 )
 
 // isSpecialAssigneeValue checks if the accountId represents a special assignee value
@@ -691,7 +704,11 @@ func (c *Client) isSpecialAssigneeValue(accountID string) bool {
 	}
 
 	// Check for system accounts
-	systemAccounts := []string{SpecialAssigneeMinusOne, SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned, "system", "automation", "bot", "unassigned"}
+	systemAccounts := []string{
+		SpecialAssigneeMinusOne, SpecialAssigneeNull, SpecialAssigneeNil,
+		SpecialAssigneeUnassigned, SystemAccount, AutomationAccount,
+		BotAccount, UnassignedAccount,
+	}
 	for _, systemAccount := range systemAccounts {
 		if strings.EqualFold(accountID, systemAccount) {
 			return true

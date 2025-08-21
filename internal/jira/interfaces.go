@@ -34,7 +34,6 @@ type ClientInterface interface {
 	GetHealthStatus() HealthStatus
 
 	// Configuration
-	GetConfig() *Config
 	ValidateConfig() error
 }
 
@@ -171,14 +170,12 @@ type ConfigurationManagerInterface interface {
 	ValidateConfigWithContext(ctx context.Context) error
 
 	// Configuration access
-	GetConfig() *Config
-	SetConfig(config *Config) error
 	GetConfigValue(key string) interface{}
 	SetConfigValue(key string, value interface{}) error
 
 	// Configuration monitoring
-	WatchConfigChanges(callback func(*Config)) error
-	WatchConfigChangesWithContext(ctx context.Context, callback func(*Config)) error
+	WatchConfigChanges(callback func()) error
+	WatchConfigChangesWithContext(ctx context.Context, callback func()) error
 }
 
 // HealthCheckerInterface defines the interface for Jira health checking
@@ -243,19 +240,6 @@ type HealthStatus struct {
 	LastCheck    time.Time              `json:"last_check"`
 	Details      map[string]interface{} `json:"details"`
 	ResponseTime time.Duration          `json:"response_time"`
-}
-
-// Config represents Jira configuration
-type Config struct {
-	BaseURL      string            `json:"base_url"`
-	Username     string            `json:"username"`
-	APIToken     string            `json:"api_token"`
-	Timeout      time.Duration     `json:"timeout"`
-	MaxRetries   int               `json:"max_retries"`
-	RetryDelay   time.Duration     `json:"retry_delay"`
-	RateLimit    int               `json:"rate_limit"`
-	BurstLimit   int               `json:"burst_limit"`
-	CustomFields map[string]string `json:"custom_fields"`
 }
 
 // PushEvent represents a push event from GitLab
