@@ -365,23 +365,17 @@ func TestAdvancedMonitorExport(t *testing.T) {
 		// Trigger alert
 		monitor.RecordGauge("export_test", 50.0, nil)
 
-		// Manually trigger alert processing to ensure it runs
-		monitor.alerts.CheckAlertRules(monitor.metrics)
+		// Wait for background alert processing to trigger the alert
+		time.Sleep(200 * time.Millisecond) // Give time for background processing
 
-		time.Sleep(100 * time.Millisecond) // Give some time for alert processing
-
-		// Debug: Print alert history
-		history := monitor.alerts.GetAlertHistory()
-		t.Logf("Alert history: %v", history)
-
-		// Get active alerts and manually add them to history for testing
+		// Get active alerts
 		activeAlerts := monitor.alerts.GetActiveAlerts()
 		t.Logf("Active alerts: %v", activeAlerts)
 
 		// The test should pass if we have any active alerts
 		assert.Greater(t, len(activeAlerts), 0, "Expected at least one active alert")
 
-		// Manually add active alerts to history for export testing
+		// Add active alerts to history for export testing
 		monitor.alerts.mu.Lock()
 		for _, alert := range activeAlerts {
 			monitor.alerts.alertHistory = append(monitor.alerts.alertHistory, *alert)
