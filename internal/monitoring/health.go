@@ -235,7 +235,7 @@ func (c *CacheHealthChecker) CheckHealth(
 	_ context.Context,
 ) (status HealthStatus, message string, details map[string]interface{}, err error) {
 	if c.cache == nil {
-		return HealthStatusUnhealthy, "Cache is nil", nil, nil
+		return HealthStatusUnhealthy, "Cache is nil", nil, fmt.Errorf("cache is nil")
 	}
 
 	// Test cache operations

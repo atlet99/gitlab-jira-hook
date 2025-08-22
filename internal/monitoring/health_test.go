@@ -195,8 +195,10 @@ func TestHTTPHealthHandler_handleOverall(t *testing.T) {
 
 	monitor.RunHealthChecks(context.Background())
 
-	handler.handleOverall(context.Background(), w, req)
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	// Create a new recorder for the second call
+	w2 := httptest.NewRecorder()
+	handler.handleOverall(context.Background(), w2, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w2.Code)
 }
 
 func TestHTTPHealthHandler_handleReadiness(t *testing.T) {
@@ -221,8 +223,10 @@ func TestHTTPHealthHandler_handleReadiness(t *testing.T) {
 
 	monitor.RunHealthChecks(context.Background())
 
-	handler.handleReadiness(context.Background(), w, req)
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	// Create a new recorder for the second call
+	w2 := httptest.NewRecorder()
+	handler.handleReadiness(context.Background(), w2, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w2.Code)
 }
 
 func TestHTTPHealthHandler_writeJSONResponse(t *testing.T) {

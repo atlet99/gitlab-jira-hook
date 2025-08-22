@@ -279,16 +279,22 @@ func (s *JSMService) GetServiceDesks(ctx context.Context) ([]ServiceDesk, error)
 
 // GetServiceDesk retrieves a specific service desk by ID
 func (s *JSMService) GetServiceDesk(ctx context.Context, serviceDeskID string) (*ServiceDesk, error) {
-	result, err := s.getSingleResource(ctx, "servicedesk", serviceDeskID, "service desk")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s", s.client.baseURL, serviceDeskID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if serviceDesk, ok := result.(*ServiceDesk); ok {
-		s.logger.Info("Retrieved service desk", "serviceDeskID", serviceDeskID, "name", serviceDesk.Name)
-		return serviceDesk, nil
+	s.logger.Debug("Getting service desk", "serviceDeskID", serviceDeskID, "url", apiURL)
+
+	var result ServiceDesk
+	if err := s.client.do(req, &result); err != nil {
+		return nil, fmt.Errorf("failed to get service desk: %w", err)
 	}
-	return nil, fmt.Errorf("failed to parse service desk response")
+
+	s.logger.Info("Retrieved service desk", "serviceDeskID", serviceDeskID, "name", result.Name)
+	return &result, nil
 }
 
 // GetRequestType retrieves a specific request type by ID
@@ -373,16 +379,22 @@ func (s *JSMService) CreateRequest(ctx context.Context,
 
 // GetRequest retrieves a specific service desk request by ID
 func (s *JSMService) GetRequest(ctx context.Context, requestID string) (*Request, error) {
-	result, err := s.getSingleResource(ctx, "request", requestID, "service desk request")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/request/%s", s.client.baseURL, requestID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if request, ok := result.(*Request); ok {
-		s.logger.Info("Retrieved service desk request", "requestID", requestID, "key", request.Key)
-		return request, nil
+	s.logger.Debug("Getting service desk request", "requestID", requestID, "url", apiURL)
+
+	var result Request
+	if err := s.client.do(req, &result); err != nil {
+		return nil, fmt.Errorf("failed to get request: %w", err)
 	}
-	return nil, fmt.Errorf("failed to parse request response")
+
+	s.logger.Info("Retrieved service desk request", "requestID", requestID, "key", result.Key)
+	return &result, nil
 }
 
 // UpdateRequest updates a service desk request
@@ -447,16 +459,18 @@ func (s *JSMService) AddComment(ctx context.Context, requestID, comment string) 
 
 // GetSLAs retrieves all SLAs for a service desk
 func (s *JSMService) GetSLAs(ctx context.Context, serviceDeskID string) ([]SLA, error) {
-	results, err := s.getMultipleResources(ctx, "sla", "SLA")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/sla", s.client.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	s.logger.Debug("Getting SLAs", "serviceDeskID", serviceDeskID, "url", apiURL)
+
 	var slas []SLA
-	for _, result := range results {
-		if sla, ok := result.(*SLA); ok {
-			slas = append(slas, *sla)
-		}
+	if err := s.client.do(req, &slas); err != nil {
+		return nil, fmt.Errorf("failed to get SLAs: %w", err)
 	}
 
 	s.logger.Info("Retrieved SLAs", "serviceDeskID", serviceDeskID, "count", len(slas))
@@ -465,30 +479,38 @@ func (s *JSMService) GetSLAs(ctx context.Context, serviceDeskID string) ([]SLA, 
 
 // GetSLA retrieves a specific SLA by ID
 func (s *JSMService) GetSLA(ctx context.Context, slaID string) (*SLA, error) {
-	result, err := s.getSingleResource(ctx, "sla", slaID, "SLA")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/sla/%s", s.client.baseURL, slaID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if sla, ok := result.(*SLA); ok {
-		s.logger.Info("Retrieved SLA", "slaID", slaID, "name", sla.Name)
-		return sla, nil
+	s.logger.Debug("Getting SLA", "slaID", slaID, "url", apiURL)
+
+	var result SLA
+	if err := s.client.do(req, &result); err != nil {
+		return nil, fmt.Errorf("failed to get SLA: %w", err)
 	}
-	return nil, fmt.Errorf("failed to parse SLA response")
+
+	s.logger.Info("Retrieved SLA", "slaID", slaID, "name", result.Name)
+	return &result, nil
 }
 
 // GetCustomers retrieves all customers for a service desk
 func (s *JSMService) GetCustomers(ctx context.Context, serviceDeskID string) ([]Customer, error) {
-	results, err := s.getMultipleResources(ctx, "customer", "customer")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/customer", s.client.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	s.logger.Debug("Getting customers", "serviceDeskID", serviceDeskID, "url", apiURL)
+
 	var customers []Customer
-	for _, result := range results {
-		if customer, ok := result.(*Customer); ok {
-			customers = append(customers, *customer)
-		}
+	if err := s.client.do(req, &customers); err != nil {
+		return nil, fmt.Errorf("failed to get customers: %w", err)
 	}
 
 	s.logger.Info("Retrieved customers", "serviceDeskID", serviceDeskID, "count", len(customers))
@@ -497,16 +519,22 @@ func (s *JSMService) GetCustomers(ctx context.Context, serviceDeskID string) ([]
 
 // GetCustomer retrieves a specific customer by ID
 func (s *JSMService) GetCustomer(ctx context.Context, customerID string) (*Customer, error) {
-	result, err := s.getSingleResource(ctx, "customer", customerID, "customer")
+	apiURL := fmt.Sprintf("%s/servicedeskapi/customer/%s", s.client.baseURL, customerID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, http.NoBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if customer, ok := result.(*Customer); ok {
-		s.logger.Info("Retrieved customer", "customerID", customerID, "name", customer.Name)
-		return customer, nil
+	s.logger.Debug("Getting customer", "customerID", customerID, "url", apiURL)
+
+	var result Customer
+	if err := s.client.do(req, &result); err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
-	return nil, fmt.Errorf("failed to parse customer response")
+
+	s.logger.Info("Retrieved customer", "customerID", customerID, "name", result.Name)
+	return &result, nil
 }
 
 // CreateCustomer creates a new customer

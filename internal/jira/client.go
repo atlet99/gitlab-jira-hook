@@ -211,7 +211,7 @@ func (c *Client) GetTransitions(ctx context.Context, issueKey string) ([]Transit
 
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("JIRA API error: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
 	}
 
 	// Parse response
