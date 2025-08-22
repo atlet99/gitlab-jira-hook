@@ -1,6 +1,7 @@
 package async
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -62,7 +63,7 @@ func TestDelayedQueue(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("submit delayed job", func(t *testing.T) {
-		mainQueue := NewPriorityQueue(cfg, nil, slog.Default())
+		mainQueue := NewPriorityQueue(cfg, nil, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 		defer mainQueue.Shutdown()
 
 		delayedQueue := NewDelayedQueue(cfg, logger, mainQueue, nil)
@@ -79,10 +80,27 @@ func TestDelayedQueue(t *testing.T) {
 		assert.Error(t, err) // Should return "no jobs available"
 		assert.Contains(t, err.Error(), "no jobs available")
 
-		// Wait for job to be ready and moved to main queue with proper timeout
-		job := waitForJob(t, mainQueue, 5*time.Second)
-		assert.Equal(t, event, job.Event)
-		assert.Equal(t, PriorityHigh, job.Priority)
+		// Debug: Check stats
+		stats := delayedQueue.GetStats()
+		t.Logf("Delayed queue stats after submission: %+v", stats)
+
+		// Add more frequent polling to see what's happening
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			stats := delayedQueue.GetStats()
+			t.Logf("Checking stats: %+v", stats)
+
+			if job, err := mainQueue.GetJob(); err == nil {
+				t.Logf("Job found in main queue: %+v", job)
+				assert.Equal(t, event, job.Event)
+				assert.Equal(t, PriorityHigh, job.Priority)
+				return
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		t.Fatal("Job never appeared in main queue")
 	})
 
 	t.Run("multiple delayed jobs with different delays", func(t *testing.T) {
