@@ -938,6 +938,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Performance test `TestResourceEfficiency` is temporarily disabled** due to CI timeouts. To enable, remove the `t.Skip` in `internal/async/performance_integration_test.go`.
 - All other tests pass reliably. See [CHANGELOG.md](CHANGELOG.md) for details.
 
+### Recent Linter Fixes (v1.0.1 - 2025-08-22)
+
+- Fixed duplicate code (dupl) in Jira client modules by refactoring similar functions
+- Removed unused functions to eliminate warnings and improve code maintainability
+- Fixed circuit breaker test assertions to match actual error message formats
+- Resolved race conditions in monitoring tests for better reliability
+- Enhanced test stability and performance across the entire codebase
+
 ### Running Tests
 
 ```bash

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2025-08-19
+## [1.0.1] - 2025-08-22
 
 ### Added
 - **JQL-based Event Filtering System**
@@ -886,6 +886,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed failing tests that were outdated due to code logic changes with updated test expectations
   - Resolved all linting and compilation issues across the entire codebase (69 issues total)
   - Enhanced error handling with proper error return checking and structured error responses
+
+- **Linter Error Fixes**
+  - Fixed duplicate code (dupl) in internal/jira/agile.go by refactoring GetBoard, GetSprint, and GetEpic functions to use shared helper methods
+  - Fixed duplicate code (dupl) in internal/jira/jsm.go by refactoring GetServiceDesk, GetRequest, GetSLA, and GetCustomers functions
+  - Fixed duplicate code (dupl) in internal/jira/jsm_enhanced.go by consolidating GetCustomer function implementation
+  - Removed unused functions getSingleResource and getMultipleResources from internal/jira/jsm.go to eliminate unused code warnings
+  - Removed unused function getSingleResource from internal/jira/agile.go to clean up codebase
+  - Fixed circuit breaker test assertion to match actual error message format for proper test validation
+  - Fixed duplicate constant declaration for defaultCircuitBreakerTimeout by using shared constant values
+  - Fixed race condition in TestAdvancedMonitorAlerts by removing manual CheckAlertRules call and using background processing
 
 - **Context Propagation and Error Handling**
   - Fixed context.Context passing throughout the application with proper cancellation support
