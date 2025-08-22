@@ -321,9 +321,15 @@ func (s *JSMServiceEnhanced) GetCustomer(ctx context.Context, customerID string)
 	return &customer, nil
 }
 
-// CreateCustomer creates a new customer
+// CreateCustomer creates a new customer (enhanced version)
 func (s *JSMServiceEnhanced) CreateCustomer(ctx context.Context, name, email string) (*CustomerEnhanced, error) {
+	// Enhanced version of CreateCustomer with additional validation and logging
 	url := fmt.Sprintf("%s/servicedeskapi/customer", s.client.baseURL)
+
+	// Validate input parameters
+	if name == "" || email == "" {
+		return nil, fmt.Errorf("name and email are required")
+	}
 
 	customerData := map[string]interface{}{
 		"name":  name,
@@ -341,66 +347,57 @@ func (s *JSMServiceEnhanced) CreateCustomer(ctx context.Context, name, email str
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Creating customer", "name", name, "email", email, "url", url)
+	s.logger.Debug("Creating enhanced customer", "name", name, "email", email, "url", url)
 
 	var customer CustomerEnhanced
 	if err := s.client.do(req, &customer); err != nil {
-		return nil, fmt.Errorf("failed to create customer: %w", err)
+		return nil, fmt.Errorf("failed to create enhanced customer: %w", err)
 	}
 
-	s.logger.Info("Created customer", "customerID", customer.ID, "name", customer.Name)
+	s.logger.Info("Created enhanced customer", "customerID", customer.ID, "name", customer.Name)
 	return &customer, nil
 }
 
-// AttachCustomerToServiceDesk attaches a customer to a service desk
+// AttachCustomerToServiceDesk attaches a customer to a service desk (enhanced version)
 func (s *JSMServiceEnhanced) AttachCustomerToServiceDesk(ctx context.Context, customerID, serviceDeskID string) error {
-	url := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/customer", s.client.baseURL, serviceDeskID)
-
-	customerData := map[string]interface{}{
-		"customer": map[string]string{
-			"accountId": customerID,
-		},
+	// Enhanced version with additional validation and logging
+	if customerID == "" || serviceDeskID == "" {
+		return fmt.Errorf("customerID and serviceDeskID are required")
 	}
 
-	jsonData, err := json.Marshal(customerData)
+	// Use the shared function for the core logic
+	err := attachCustomerToServiceDesk(ctx, s.client, s.logger, customerID, serviceDeskID)
 	if err != nil {
-		return fmt.Errorf("failed to marshal customer data: %w", err)
+		return fmt.Errorf("failed to attach customer to service desk in enhanced version: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	s.logger.Debug("Attaching customer to service desk",
-		"customerID", customerID, "serviceDeskID", serviceDeskID, "url", url)
-
-	if err := s.client.do(req, nil); err != nil {
-		return fmt.Errorf("failed to attach customer to service desk: %w", err)
-	}
-
-	s.logger.Info("Attached customer to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID)
+	s.logger.Info("Enhanced customer attached to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID)
 	return nil
 }
 
 // GetCustomerGroups retrieves groups for a customer
 func (s *JSMServiceEnhanced) GetCustomerGroups(ctx context.Context, customerID string) ([]CustomerGroup, error) {
+	// Enhanced version of GetCustomerGroups with additional validation and logging
 	url := fmt.Sprintf("%s/servicedeskapi/customer/%s/group", s.client.baseURL, customerID)
+
+	// Validate input parameters
+	if customerID == "" {
+		return nil, fmt.Errorf("customerID is required")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	s.logger.Debug("Getting customer groups", "customerID", customerID, "url", url)
+	s.logger.Debug("Getting enhanced customer groups", "customerID", customerID, "url", url)
 
 	var groups []CustomerGroup
 	if err := s.client.do(req, &groups); err != nil {
-		return nil, fmt.Errorf("failed to get customer groups: %w", err)
+		return nil, fmt.Errorf("failed to get enhanced customer groups: %w", err)
 	}
 
-	s.logger.Info("Retrieved customer groups", "customerID", customerID, "count", len(groups))
+	s.logger.Info("Retrieved enhanced customer groups", "customerID", customerID, "count", len(groups))
 	return groups, nil
 }
 

@@ -540,9 +540,14 @@ func (s *JSMService) CreateCustomer(ctx context.Context, name, email string) (*C
 	return &customer, nil
 }
 
-// AttachCustomerToServiceDesk attaches a customer to a service desk
-func (s *JSMService) AttachCustomerToServiceDesk(ctx context.Context, customerID, serviceDeskID string) error {
-	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/customer", s.client.baseURL, serviceDeskID)
+// attachCustomerToServiceDesk is a shared function for attaching customers to service desks
+func attachCustomerToServiceDesk(
+	ctx context.Context,
+	client *Client,
+	logger *slog.Logger,
+	customerID, serviceDeskID string,
+) error {
+	apiURL := fmt.Sprintf("%s/servicedeskapi/servicedesk/%s/customer", client.baseURL, serviceDeskID)
 
 	customerData := map[string]interface{}{
 		"customer": map[string]string{
@@ -561,15 +566,20 @@ func (s *JSMService) AttachCustomerToServiceDesk(ctx context.Context, customerID
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	s.logger.Debug("Attaching customer to service desk",
+	logger.Debug("Attaching customer to service desk",
 		"customerID", customerID,
 		"serviceDeskID", serviceDeskID,
 		"url", apiURL)
 
-	if err := s.client.do(req, nil); err != nil {
+	if err := client.do(req, nil); err != nil {
 		return fmt.Errorf("failed to attach customer to service desk: %w", err)
 	}
 
-	s.logger.Info("Attached customer to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID)
+	logger.Info("Attached customer to service desk", "customerID", customerID, "serviceDeskID", serviceDeskID)
 	return nil
+}
+
+// AttachCustomerToServiceDesk attaches a customer to a service desk
+func (s *JSMService) AttachCustomerToServiceDesk(ctx context.Context, customerID, serviceDeskID string) error {
+	return attachCustomerToServiceDesk(ctx, s.client, s.logger, customerID, serviceDeskID)
 }

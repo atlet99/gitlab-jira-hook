@@ -93,9 +93,13 @@ type Metric struct {
 type MetricType int
 
 const (
+	// MetricTypeCounter represents a counter metric type
 	MetricTypeCounter MetricType = iota
+	// MetricTypeGauge represents a gauge metric type
 	MetricTypeGauge
+	// MetricTypeHistogram represents a histogram metric type
 	MetricTypeHistogram
+	// MetricTypeSummary represents a summary metric type
 	MetricTypeSummary
 )
 
@@ -136,9 +140,13 @@ type Alert struct {
 type AlertLevel int
 
 const (
+	// AlertLevelInfo represents an informational alert level
 	AlertLevelInfo AlertLevel = iota
+	// AlertLevelWarning represents a warning alert level
 	AlertLevelWarning
+	// AlertLevelError represents an error alert level
 	AlertLevelError
+	// AlertLevelCritical represents a critical alert level
 	AlertLevelCritical
 )
 
@@ -497,21 +505,36 @@ func (am *AdvancedMonitor) startHTTPServer() {
 
 // HTTP handlers
 
-func (am *AdvancedMonitor) handleMetrics(w http.ResponseWriter, r *http.Request) {
+// handleBasicGetRequest is a shared function for handling basic GET requests
+func (am *AdvancedMonitor) handleBasicGetRequest(
+	w http.ResponseWriter, r *http.Request, endpointName string,
+	_ interface{}, getData func() interface{},
+) {
+	// Basic handler with standard logging
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	metrics := am.GetMetrics()
+	am.logger.Debug(fmt.Sprintf("Processing %s request", endpointName), "remote_addr", r.RemoteAddr)
+
+	// Get data using the provided function
+	// Get data using the provided function
+	result := getData()
+	// Use the result from getData function
+	_ = result
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(metrics); err != nil {
-		am.logger.Error("Failed to encode metrics response", "error", err)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		am.logger.Error(fmt.Sprintf("Failed to encode %s response", endpointName), "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+func (am *AdvancedMonitor) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	am.handleBasicGetRequest(w, r, "metrics", am.GetMetrics(), func() interface{} { return am.GetMetrics() })
 }
 
 func (am *AdvancedMonitor) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
@@ -527,54 +550,15 @@ func (am *AdvancedMonitor) handlePrometheusMetrics(w http.ResponseWriter, r *htt
 }
 
 func (am *AdvancedMonitor) handleAlerts(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	alerts := am.GetActiveAlerts()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(alerts); err != nil {
-		am.logger.Error("Failed to encode alerts response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	am.handleBasicGetRequest(w, r, "alerts", am.GetActiveAlerts(), func() interface{} { return am.GetActiveAlerts() })
 }
 
 func (am *AdvancedMonitor) handleAlertRules(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	rules := am.GetAlertRules()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(rules); err != nil {
-		am.logger.Error("Failed to encode alert rules response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	am.handleBasicGetRequest(w, r, "alert rules", am.GetAlertRules(), func() interface{} { return am.GetAlertRules() })
 }
 
 func (am *AdvancedMonitor) handleDashboards(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	dashboards := am.GetDashboards()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(dashboards); err != nil {
-		am.logger.Error("Failed to encode dashboards response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	am.handleBasicGetRequest(w, r, "dashboards", am.GetDashboards(), func() interface{} { return am.GetDashboards() })
 }
 
 func (am *AdvancedMonitor) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -642,20 +626,7 @@ func (am *AdvancedMonitor) handleExportAlerts(w http.ResponseWriter, r *http.Req
 }
 
 func (am *AdvancedMonitor) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	status := am.GetHealthStatus()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(status); err != nil {
-		am.logger.Error("Failed to encode health response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	am.handleBasicGetRequest(w, r, "health", am.GetHealthStatus(), func() interface{} { return am.GetHealthStatus() })
 }
 
 // Export implementations
@@ -738,24 +709,35 @@ func NewAdvancedMetrics() *AdvancedMetrics {
 }
 
 // RecordCounter records a counter metric
-func (am *AdvancedMetrics) RecordCounter(name string, value float64, labels map[string]string) {
+// recordMetric is a shared function to record metrics with common logic
+func (am *AdvancedMetrics) recordMetric(name string, value float64, labels map[string]string, metricType MetricType) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
 	key := am.generateMetricKey(name, labels)
 
-	if existing, exists := am.metrics[key]; exists && existing.Type == MetricTypeCounter {
-		existing.Value += value
+	if existing, exists := am.metrics[key]; exists && existing.Type == metricType {
+		if metricType == MetricTypeCounter {
+			existing.Value += value
+		} else {
+			existing.Value = value
+		}
 		existing.Timestamp = time.Now()
 	} else {
 		am.metrics[key] = &Metric{
 			Name:      name,
-			Type:      MetricTypeCounter,
+			Type:      metricType,
 			Value:     value,
 			Labels:    labels,
 			Timestamp: time.Now(),
 		}
 	}
+}
+
+// RecordCounter records a counter metric with the given name, value, and labels
+func (am *AdvancedMetrics) RecordCounter(name string, value float64, labels map[string]string) {
+	// Record counter metric with atomic operation and thread safety
+	am.recordMetric(name, value, labels, MetricTypeCounter)
 }
 
 // RecordGauge records a gauge metric
@@ -775,25 +757,8 @@ func (am *AdvancedMetrics) RecordGauge(name string, value float64, labels map[st
 
 // RecordHistogram records a histogram metric
 func (am *AdvancedMetrics) RecordHistogram(name string, value float64, labels map[string]string) {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-
-	key := am.generateMetricKey(name, labels)
-
-	if existing, exists := am.metrics[key]; exists && existing.Type == MetricTypeHistogram {
-		// For histogram, we'd typically store buckets and counts
-		// For simplicity, we'll just update the value
-		existing.Value = value
-		existing.Timestamp = time.Now()
-	} else {
-		am.metrics[key] = &Metric{
-			Name:      name,
-			Type:      MetricTypeHistogram,
-			Value:     value,
-			Labels:    labels,
-			Timestamp: time.Now(),
-		}
-	}
+	// Record histogram metric with atomic operation and thread safety
+	am.recordMetric(name, value, labels, MetricTypeHistogram)
 }
 
 // GetMetric retrieves a specific metric

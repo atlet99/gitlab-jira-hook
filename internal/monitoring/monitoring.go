@@ -19,8 +19,8 @@ const (
 	defaultShutdownTimeout = 5 * time.Second
 )
 
-// MonitoringSystem provides a comprehensive monitoring system
-type MonitoringSystem struct {
+// System provides a comprehensive monitoring system
+type System struct {
 	config             *Config
 	logger             *slog.Logger
 	webhookMonitor     *WebhookMonitor
@@ -45,11 +45,11 @@ type Config struct {
 	AlertThresholds           *AlertThresholds
 }
 
-// NewMonitoringSystem creates a new monitoring system
-func NewMonitoringSystem(cfg *Config, logger *slog.Logger) *MonitoringSystem {
+// NewSystem creates a new monitoring system
+func NewSystem(cfg *Config, logger *slog.Logger) *System {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ms := &MonitoringSystem{
+	ms := &System{
 		config: cfg,
 		logger: logger,
 		ctx:    ctx,
@@ -65,7 +65,7 @@ func NewMonitoringSystem(cfg *Config, logger *slog.Logger) *MonitoringSystem {
 }
 
 // initializeComponents initializes all monitoring components
-func (ms *MonitoringSystem) initializeComponents() {
+func (ms *System) initializeComponents() {
 	// Initialize webhook monitor
 	ms.webhookMonitor = NewWebhookMonitor(&config.Config{}, ms.logger)
 
@@ -85,7 +85,7 @@ func (ms *MonitoringSystem) initializeComponents() {
 }
 
 // Start starts the monitoring system
-func (ms *MonitoringSystem) Start() error {
+func (ms *System) Start() error {
 	if !ms.config.Enabled {
 		ms.logger.Info("Monitoring system disabled")
 		return nil
@@ -108,7 +108,7 @@ func (ms *MonitoringSystem) Start() error {
 }
 
 // Stop stops the monitoring system
-func (ms *MonitoringSystem) Stop() error {
+func (ms *System) Stop() error {
 	if !ms.config.Enabled {
 		return nil
 	}
@@ -141,7 +141,7 @@ func (ms *MonitoringSystem) Stop() error {
 }
 
 // startHTTPServer starts the HTTP server for monitoring endpoints
-func (ms *MonitoringSystem) startHTTPServer() {
+func (ms *System) startHTTPServer() {
 	mux := http.NewServeMux()
 
 	// Health check endpoint
@@ -183,7 +183,7 @@ func (ms *MonitoringSystem) startHTTPServer() {
 }
 
 // startPrometheusServer starts the Prometheus metrics server
-func (ms *MonitoringSystem) startPrometheusServer() {
+func (ms *System) startPrometheusServer() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(ms.prometheusMetrics.GetRegistry(), promhttp.HandlerOpts{}))
 
@@ -201,7 +201,7 @@ func (ms *MonitoringSystem) startPrometheusServer() {
 }
 
 // handleSystemInfo handles system information requests
-func (ms *MonitoringSystem) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+func (ms *System) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -239,7 +239,7 @@ func (ms *MonitoringSystem) handleSystemInfo(w http.ResponseWriter, r *http.Requ
 }
 
 // handleAlerts handles alert information requests
-func (ms *MonitoringSystem) handleAlerts(w http.ResponseWriter, r *http.Request) {
+func (ms *System) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -269,7 +269,7 @@ func (ms *MonitoringSystem) handleAlerts(w http.ResponseWriter, r *http.Request)
 }
 
 // handleConfig handles configuration requests
-func (ms *MonitoringSystem) handleConfig(w http.ResponseWriter, r *http.Request) {
+func (ms *System) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -299,7 +299,7 @@ func (ms *MonitoringSystem) handleConfig(w http.ResponseWriter, r *http.Request)
 }
 
 // RecordWebhookRequest records a webhook request
-func (ms *MonitoringSystem) RecordWebhookRequest(endpoint string, success bool, responseTime time.Duration) {
+func (ms *System) RecordWebhookRequest(endpoint string, success bool, responseTime time.Duration) {
 	if ms.webhookMonitor != nil {
 		ms.webhookMonitor.RecordRequest(endpoint, success, responseTime)
 	}
@@ -310,7 +310,7 @@ func (ms *MonitoringSystem) RecordWebhookRequest(endpoint string, success bool, 
 }
 
 // RecordHTTPRequest records an HTTP request for metrics
-func (ms *MonitoringSystem) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {
+func (ms *System) RecordHTTPRequest(method, endpoint string, statusCode int, duration time.Duration) {
 	if ms.prometheusMetrics != nil {
 		ms.prometheusMetrics.RecordHTTPRequest(method, endpoint, statusCode, duration)
 	}
@@ -321,7 +321,7 @@ func (ms *MonitoringSystem) RecordHTTPRequest(method, endpoint string, statusCod
 }
 
 // GetSystemHealth returns overall system health
-func (ms *MonitoringSystem) GetSystemHealth() map[string]interface{} {
+func (ms *System) GetSystemHealth() map[string]interface{} {
 	health := map[string]interface{}{
 		"timestamp": time.Now().UTC(),
 		"status":    "healthy",
@@ -343,7 +343,7 @@ func (ms *MonitoringSystem) GetSystemHealth() map[string]interface{} {
 }
 
 // GetMetrics returns all available metrics
-func (ms *MonitoringSystem) GetMetrics() map[string]interface{} {
+func (ms *System) GetMetrics() map[string]interface{} {
 	metrics := map[string]interface{}{
 		"timestamp": time.Now().UTC(),
 	}
@@ -364,7 +364,7 @@ func (ms *MonitoringSystem) GetMetrics() map[string]interface{} {
 }
 
 // Middleware creates monitoring middleware
-func (ms *MonitoringSystem) Middleware(next http.Handler) http.Handler {
+func (ms *System) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 

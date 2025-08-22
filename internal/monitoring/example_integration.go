@@ -19,6 +19,12 @@ const (
 	defaultSuccessRate               = 20
 	defaultDemoDuration              = 30 * time.Second
 	defaultMemoryAllocation          = 1024 * 1024 // 1MB
+
+	// Magic number constants
+	defaultSleepFactor        = 10
+	defaultResponseTimeFactor = 5
+	defaultMaxResponseTime    = 20
+	defaultMinResponseTime    = 3
 )
 
 // ExampleIntegration demonstrates how to integrate the monitoring system
@@ -50,7 +56,7 @@ func ExampleIntegration() {
 	}
 
 	// Create monitoring system
-	monitoringSystem := NewMonitoringSystem(monitoringConfig, logger)
+	monitoringSystem := NewSystem(monitoringConfig, logger)
 
 	// Create application configuration
 	appConfig := &config.Config{
@@ -64,13 +70,13 @@ func ExampleIntegration() {
 	mux := http.NewServeMux()
 
 	// Add example endpoints
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte("Hello, World!")); err != nil {
 			logger.Error("Failed to write response", "error", err)
 		}
 	})
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		health := monitoringSystem.GetSystemHealth()
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(health); err != nil {
@@ -78,7 +84,7 @@ func ExampleIntegration() {
 		}
 	})
 
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
 		metrics := monitoringSystem.GetMetrics()
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(metrics); err != nil {
@@ -88,8 +94,9 @@ func ExampleIntegration() {
 
 	// Create server with monitoring middleware
 	server := &http.Server{
-		Addr:    ":" + appConfig.Port,
-		Handler: monitoringSystem.Middleware(mux),
+		Addr:              ":" + appConfig.Port,
+		Handler:           monitoringSystem.Middleware(mux),
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
 	}
 
 	// Start monitoring system
@@ -142,7 +149,7 @@ func WebhookIntegration() {
 	}
 
 	// Create monitoring system
-	monitoringSystem := NewMonitoringSystem(monitoringConfig, logger)
+	monitoringSystem := NewSystem(monitoringConfig, logger)
 
 	// Start monitoring system
 	if err := monitoringSystem.Start(); err != nil {
@@ -157,7 +164,7 @@ func WebhookIntegration() {
 			start := time.Now()
 
 			// Simulate work
-			time.Sleep(time.Duration(i%10) * defaultSleepDuration)
+			time.Sleep(time.Duration(i%defaultSleepFactor) * defaultSleepDuration)
 
 			// Record webhook request
 			success := i%defaultSuccessRate != 0 // 90% success rate
@@ -193,7 +200,7 @@ func PerformanceIntegration() {
 	}
 
 	// Create monitoring system
-	monitoringSystem := NewMonitoringSystem(monitoringConfig, logger)
+	monitoringSystem := NewSystem(monitoringConfig, logger)
 
 	// Start monitoring system
 	if err := monitoringSystem.Start(); err != nil {
@@ -205,7 +212,8 @@ func PerformanceIntegration() {
 	go func() {
 		// Normal load
 		for i := 0; i < 50; i++ {
-			monitoringSystem.RecordHTTPRequest("GET", "/api/data", http.StatusOK, time.Duration(i%5)*defaultSleepDuration)
+			monitoringSystem.RecordHTTPRequest(
+				"GET", "/api/data", http.StatusOK, time.Duration(i%defaultResponseTimeFactor)*defaultSleepDuration)
 			time.Sleep(defaultSleepDuration)
 		}
 
@@ -215,7 +223,8 @@ func PerformanceIntegration() {
 			if i%10 == 0 {
 				status = http.StatusInternalServerError // 10% error rate
 			}
-			monitoringSystem.RecordHTTPRequest("POST", "/api/process", status, time.Duration(i%20)*defaultSleepDuration)
+			monitoringSystem.RecordHTTPRequest(
+				"POST", "/api/process", status, time.Duration(i%defaultMaxResponseTime)*defaultSleepDuration)
 			time.Sleep(defaultSleepDuration)
 		}
 
@@ -225,7 +234,8 @@ func PerformanceIntegration() {
 			data := make([]byte, defaultMemoryAllocation) // 1MB
 			_ = data
 
-			monitoringSystem.RecordHTTPRequest("GET", "/api/large-data", http.StatusOK, time.Duration(i%3)*defaultSleepDuration)
+			monitoringSystem.RecordHTTPRequest(
+				"GET", "/api/large-data", http.StatusOK, time.Duration(i%defaultMinResponseTime)*defaultSleepDuration)
 			time.Sleep(defaultSleepDuration)
 		}
 	}()

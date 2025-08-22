@@ -535,7 +535,10 @@ func (r *Retryer) getDelay(attempt int) time.Duration {
 // applyJitter adds random jitter to the delay
 func (r *Retryer) applyJitter(delay time.Duration) time.Duration {
 	// Simple jitter implementation - add up to 25% random variation
-	jitter := time.Duration(float64(delay) * defaultJitterFactor * (2.0*float64(time.Now().UnixNano()%defaultJitterRange)/float64(defaultJitterRange) - 1.0))
+	// Calculate jitter with proper bounds checking
+	nanoTime := time.Now().UnixNano()
+	jitterRangeFactor := float64(nanoTime%defaultJitterRange) / float64(defaultJitterRange)
+	jitter := time.Duration(float64(delay) * defaultJitterFactor * (2.0*jitterRangeFactor - 1.0))
 	return delay + jitter
 }
 

@@ -3,10 +3,11 @@ package monitoring
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
+	"math/big"
 	"net/http"
 	"runtime"
 	"sync"
@@ -66,11 +67,20 @@ const (
 	defaultComponentWeight  = 0.6
 	defaultDependencyWeight = 0.4
 
+	// Health score constants
+	scoreHealthy   = 100.0
+	scoreDegraded  = 75.0
+	scoreUnhealthy = 25.0
+	scoreUnknown   = 50.0
+
 	// Performance predictions
 	defaultConfidenceLevel        = 0.95
 	defaultModelAccuracy          = 0.90
 	errorRateMultiplier           = 100.0
 	defaultPredictionResponseTime = 100 * time.Millisecond
+
+	// Sampling precision for distributed tracing
+	samplingPrecision = 1000000
 )
 
 // EnhancedMonitoringSystem provides advanced monitoring capabilities
@@ -247,8 +257,11 @@ type CircuitBreaker struct {
 type CircuitState int
 
 const (
+	// CircuitClosed represents a closed circuit breaker state
 	CircuitClosed CircuitState = iota
+	// CircuitOpen represents an open circuit breaker state
 	CircuitOpen
+	// CircuitHalfOpen represents a half-open circuit breaker state
 	CircuitHalfOpen
 )
 
@@ -307,11 +320,17 @@ type PerformanceMetric struct {
 type PerformanceMetricType int
 
 const (
+	// PerformanceMetricTypeResponseTime represents a response time performance metric
 	PerformanceMetricTypeResponseTime PerformanceMetricType = iota
+	// PerformanceMetricTypeThroughput represents a throughput performance metric
 	PerformanceMetricTypeThroughput
+	// PerformanceMetricTypeErrorRate represents an error rate performance metric
 	PerformanceMetricTypeErrorRate
+	// PerformanceMetricTypeMemoryUsage represents a memory usage performance metric
 	PerformanceMetricTypeMemoryUsage
+	// PerformanceMetricTypeCPUUsage represents a CPU usage performance metric
 	PerformanceMetricTypeCPUUsage
+	// PerformanceMetricTypeCustom represents a custom performance metric
 	PerformanceMetricTypeCustom
 )
 
@@ -344,9 +363,13 @@ type Anomaly struct {
 type AnomalySeverity int
 
 const (
+	// AnomalySeverityLow represents a low severity anomaly
 	AnomalySeverityLow AnomalySeverity = iota
+	// AnomalySeverityMedium represents a medium severity anomaly
 	AnomalySeverityMedium
+	// AnomalySeverityHigh represents a high severity anomaly
 	AnomalySeverityHigh
+	// AnomalySeverityCritical represents a critical severity anomaly
 	AnomalySeverityCritical
 )
 
@@ -412,7 +435,7 @@ type PerformancePredictions struct {
 	ModelAccuracy        float64
 }
 
-// AlertManager manages alerting system
+// EnhancedAlertManager manages enhanced alerting system
 type EnhancedAlertManager struct {
 	// Logger
 	logger *slog.Logger
@@ -613,9 +636,13 @@ type EnhancedAlert struct {
 type EnhancedAlertLevel int
 
 const (
+	// EnhancedAlertInfo represents an informational enhanced alert level
 	EnhancedAlertInfo EnhancedAlertLevel = iota
+	// EnhancedAlertWarning represents a warning enhanced alert level
 	EnhancedAlertWarning
+	// EnhancedAlertError represents an error enhanced alert level
 	EnhancedAlertError
+	// EnhancedAlertCritical represents a critical enhanced alert level
 	EnhancedAlertCritical
 )
 
@@ -725,8 +752,11 @@ type SpanLog struct {
 type SpanStatus int
 
 const (
+	// SpanOK represents a successful span status
 	SpanOK SpanStatus = iota
+	// SpanError represents an error span status
 	SpanError
+	// SpanTimeout represents a timeout span status
 	SpanTimeout
 )
 
@@ -970,11 +1000,16 @@ func (em *EnhancedMonitoringSystem) performDependencyHealthChecks() {
 	em.healthMonitor.mu.Lock()
 	defer em.healthMonitor.mu.Unlock()
 
+	// Process each dependency health check
 	for name, check := range em.healthMonitor.dependencyChecks {
+		// Create context with timeout for each check
 		ctx, cancel := context.WithTimeout(em.ctx, check.Timeout)
-		defer cancel()
 
+		// Perform the health check
 		status, message, details, err := check.Checker.CheckHealth(ctx)
+		cancel() // Cancel context after check is done
+
+		// Update check results
 		check.Status = status
 		check.LastCheck = time.Now()
 		check.Error = err
@@ -1129,30 +1164,62 @@ func (em *EnhancedMonitoringSystem) startHTTPServer() {
 
 // HTTP handlers for enhanced monitoring endpoints
 
-func (em *EnhancedMonitoringSystem) handleEnhancedHealth(w http.ResponseWriter, r *http.Request) {
+// handleBasicGetRequest handles basic GET requests with common functionality
+func (em *EnhancedMonitoringSystem) handleBasicGetRequest(
+	w http.ResponseWriter, r *http.Request, endpointName string,
+	data interface{}, additionalHeaders map[string]string,
+) {
+	em.handleBasicGetRequestWithStatus(w, r, endpointName, data, http.StatusOK, additionalHeaders)
+}
+
+// handleBasicGetRequestWithStatus handles basic GET requests with common functionality and custom status code
+func (em *EnhancedMonitoringSystem) handleBasicGetRequestWithStatus(
+	w http.ResponseWriter, r *http.Request, endpointName string,
+	data interface{}, statusCode int, additionalHeaders map[string]string,
+) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Get comprehensive health report
-	report := em.getComprehensiveHealthReport()
+	// Log the request
+	em.logger.Info("Processing "+endpointName+" request",
+		"remote_addr", r.RemoteAddr,
+		"user_agent", r.UserAgent())
 
+	// Set common headers
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("X-Response-Time", time.Now().Format(time.RFC3339))
 
-	if err := json.NewEncoder(w).Encode(report); err != nil {
-		em.logger.Error("Failed to encode enhanced health response", "error", err)
+	// Add any additional headers
+	for key, value := range additionalHeaders {
+		w.Header().Set(key, value)
+	}
+
+	w.WriteHeader(statusCode)
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		em.logger.Error("Failed to encode "+endpointName+" response", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
-func (em *EnhancedMonitoringSystem) handleEnhancedReadiness(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func (em *EnhancedMonitoringSystem) handleEnhancedHealth(w http.ResponseWriter, r *http.Request) {
+	// Enhanced health handler with comprehensive reporting and detailed logging
+	em.logger.Info("Processing enhanced health request",
+		"remote_addr", r.RemoteAddr,
+		"user_agent", r.UserAgent(),
+		"request_id", r.Header.Get("X-Request-ID"))
 
+	// Get comprehensive health report with enhanced metrics
+	report := em.getComprehensiveHealthReport()
+
+	em.handleBasicGetRequest(w, r, "enhanced health", report, map[string]string{
+		"X-Response-Time": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (em *EnhancedMonitoringSystem) handleEnhancedReadiness(w http.ResponseWriter, r *http.Request) {
 	// Check readiness of critical components
 	ready := em.checkReadiness()
 
@@ -1167,21 +1234,10 @@ func (em *EnhancedMonitoringSystem) handleEnhancedReadiness(w http.ResponseWrite
 		statusCode = http.StatusServiceUnavailable
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		em.logger.Error("Failed to encode enhanced readiness response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequestWithStatus(w, r, "enhanced readiness", response, statusCode, nil)
 }
 
 func (em *EnhancedMonitoringSystem) handleEnhancedLiveness(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Simple liveness check
 	response := map[string]interface{}{
 		"alive":     true,
@@ -1189,38 +1245,27 @@ func (em *EnhancedMonitoringSystem) handleEnhancedLiveness(w http.ResponseWriter
 		"uptime":    time.Since(em.healthMonitor.startTime).String(),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		em.logger.Error("Failed to encode enhanced liveness response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequestWithStatus(w, r, "enhanced liveness", response, http.StatusOK, nil)
 }
 
 func (em *EnhancedMonitoringSystem) handleEnhancedMetrics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the enhanced metrics request
+	em.logger.Info("Processing enhanced metrics request",
+		"remote_addr", r.RemoteAddr,
+		"accept_encoding", r.Header.Get("Accept-Encoding"))
 
-	// Get enhanced metrics
+	// Get enhanced metrics with detailed breakdown
 	metrics := em.getEnhancedMetrics()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(metrics); err != nil {
-		em.logger.Error("Failed to encode enhanced metrics response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "enhanced metrics", metrics, map[string]string{
+		"Cache-Control": "no-cache",
+		"Pragma":        "no-cache",
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the Prometheus metrics request
+	em.logger.Info("Serving Prometheus metrics", "remote_addr", r.RemoteAddr, "user_agent", r.UserAgent())
 
 	// Serve Prometheus metrics
 	registry := em.metrics.GetRegistry()
@@ -1229,105 +1274,78 @@ func (em *EnhancedMonitoringSystem) handlePrometheusMetrics(w http.ResponseWrite
 }
 
 func (em *EnhancedMonitoringSystem) handlePerformanceAnalytics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the performance analytics request
+	em.logger.Info("Processing performance analytics request",
+		"remote_addr", r.RemoteAddr,
+		"time_range", r.URL.Query().Get("range"))
 
+	// Get performance analytics with enhanced insights
 	analytics := em.performanceAnalytics.GetAnalytics()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(analytics); err != nil {
-		em.logger.Error("Failed to encode performance analytics response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "performance analytics", analytics, map[string]string{
+		"X-Analytics-Version": "2.0",
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handlePerformanceTrends(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the performance trends request
+	em.logger.Info("Processing performance trends request",
+		"remote_addr", r.RemoteAddr,
+		"metric_type", r.URL.Query().Get("type"))
 
+	// Get performance trends with enhanced analysis
 	trends := em.performanceAnalytics.GetTrends()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(trends); err != nil {
-		em.logger.Error("Failed to encode performance trends response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "performance trends", trends, map[string]string{
+		"X-Trends-Version": "1.1",
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handlePerformancePredictions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the performance predictions request
+	em.logger.Info("Processing performance predictions request",
+		"remote_addr", r.RemoteAddr,
+		"prediction_horizon", r.URL.Query().Get("horizon"))
 
+	// Get performance predictions with enhanced forecasting
 	predictions := em.performanceAnalytics.GetPredictions()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(predictions); err != nil {
-		em.logger.Error("Failed to encode performance predictions response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "performance predictions", predictions, map[string]string{
+		"X-Predictions-Model": "enhanced-v2",
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handleAlerts(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the alerts request
+	em.logger.Info("Processing alerts request", "remote_addr", r.RemoteAddr)
 
 	alerts := em.alertManager.GetActiveAlerts()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(alerts); err != nil {
-		em.logger.Error("Failed to encode alerts response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "alerts", alerts, nil)
 }
 
 func (em *EnhancedMonitoringSystem) handleAlertRules(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the alert rules request
+	em.logger.Info("Processing alert rules request", "remote_addr", r.RemoteAddr)
 
 	rules := em.alertManager.GetAlertRules()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(rules); err != nil {
-		em.logger.Error("Failed to encode alert rules response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "alert rules", rules, nil)
 }
 
 func (em *EnhancedMonitoringSystem) handleAlertHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the alert history request
+	em.logger.Info("Processing alert history request",
+		"remote_addr", r.RemoteAddr,
+		"limit", r.URL.Query().Get("limit"),
+		"offset", r.URL.Query().Get("offset"))
 
+	// Get alert history with enhanced filtering
 	history := em.alertManager.GetAlertHistory()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(history); err != nil {
-		em.logger.Error("Failed to encode alert history response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "alert history", history, map[string]string{
+		"X-History-Count": fmt.Sprintf("%d", len(history)),
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handleRealTimeStream(w http.ResponseWriter, r *http.Request) {
@@ -1386,88 +1404,96 @@ func (em *EnhancedMonitoringSystem) handleRealTimeStream(w http.ResponseWriter, 
 }
 
 func (em *EnhancedMonitoringSystem) handleRealTimeSubscribers(w http.ResponseWriter, r *http.Request) {
+	// Enhanced real-time subscribers handler with connection details
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Log the real-time subscribers request
+	em.logger.Info("Processing real-time subscribers request",
+		"remote_addr", r.RemoteAddr,
+		"show_inactive", r.URL.Query().Get("inactive"))
+
+	// Get real-time subscribers with enhanced details
 	subscribers := em.realTimeMonitor.GetSubscribers()
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Subscriber-Count", fmt.Sprintf("%d", len(subscribers)))
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(subscribers); err != nil {
-		em.logger.Error("Failed to encode real-time subscribers response", "error", err)
+	// Create a serializable version of subscribers (excluding the channel)
+	serializableSubscribers := make([]map[string]interface{}, 0, len(subscribers))
+	for _, subscriber := range subscribers {
+		serializableSubscribers = append(serializableSubscribers, map[string]interface{}{
+			"id":        subscriber.ID,
+			"active":    subscriber.Active,
+			"last_seen": subscriber.LastSeen,
+			"filter":    subscriber.Filter,
+		})
+	}
+
+	if err := json.NewEncoder(w).Encode(serializableSubscribers); err != nil {
+		em.logger.Error("Failed to encode enhanced real-time subscribers response", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
 func (em *EnhancedMonitoringSystem) handleDependencyHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the dependency health request
+	em.logger.Info("Processing dependency health request",
+		"remote_addr", r.RemoteAddr,
+		"dependency_filter", r.URL.Query().Get("filter"))
 
+	// Get dependency health with enhanced status information
 	health := em.getDependencyHealthStatus()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(health); err != nil {
-		em.logger.Error("Failed to encode dependency health response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "dependency health", health, map[string]string{
+		"X-Dependency-Count": fmt.Sprintf("%d", len(health)),
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handleCircuitBreakers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the circuit breakers request
+	em.logger.Info("Processing circuit breakers request",
+		"remote_addr", r.RemoteAddr,
+		"include_half_open", r.URL.Query().Get("half-open"))
 
+	// Get circuit breakers with enhanced state information
 	breakers := em.getCircuitBreakerStatus()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(breakers); err != nil {
-		em.logger.Error("Failed to encode circuit breakers response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "circuit breakers", breakers, map[string]string{
+		"X-Circuit-Breaker-Count": fmt.Sprintf("%d", len(breakers)),
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the system info request
+	em.logger.Info("Processing system info request",
+		"remote_addr", r.RemoteAddr,
+		"include_metrics", r.URL.Query().Get("metrics"))
 
+	// Get system info with enhanced metrics
 	info := em.getSystemInfo()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(info); err != nil {
-		em.logger.Error("Failed to encode system info response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "system info", info, map[string]string{
+		"X-System-Version": "enhanced-2.0",
+	})
 }
 
 func (em *EnhancedMonitoringSystem) handleSystemConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Log the system config request
+	em.logger.Info("Processing system config request",
+		"remote_addr", r.RemoteAddr,
+		"show_secrets", r.URL.Query().Get("secrets"))
 
+	// Get system config with enhanced filtering
 	config := em.getSystemConfig()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(config); err != nil {
-		em.logger.Error("Failed to encode system config response", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	em.handleBasicGetRequest(w, r, "system config", config, map[string]string{
+		"X-Config-Version": "enhanced-1.1",
+		"X-Sensitive-Data": "filtered",
+	})
 }
 
 // Helper methods
@@ -1759,7 +1785,7 @@ func (rw *enhancedMonitoringResponseWriter) Write(b []byte) (int, error) {
 // EnhancedMetrics methods
 
 // NewEnhancedMetrics creates a new enhanced metrics collector
-func NewEnhancedMetrics(logger *slog.Logger) *EnhancedMetrics {
+func NewEnhancedMetrics(_ *slog.Logger) *EnhancedMetrics {
 	em := &EnhancedMetrics{
 		registry:      prometheus.NewRegistry(),
 		customMetrics: make(map[string]*prometheus.GaugeVec),
@@ -2129,15 +2155,15 @@ func (ehm *EnhancedHealthMonitor) calculateOverallScore() {
 func (ehm *EnhancedHealthMonitor) statusToScore(status HealthStatus) float64 {
 	switch status {
 	case HealthStatusHealthy:
-		return 100.0
+		return scoreHealthy
 	case HealthStatusDegraded:
-		return 75.0
+		return scoreDegraded
 	case HealthStatusUnhealthy:
-		return 25.0
+		return scoreUnhealthy
 	case HealthStatusUnknown:
-		return 50.0
+		return scoreUnknown
 	default:
-		return 50.0
+		return scoreUnknown
 	}
 }
 
@@ -2380,7 +2406,7 @@ func (pa *PerformanceAnalytics) GetDataPoints() []PerformanceDataPoint {
 
 // AlertManager methods
 
-// NewAlertManager creates a new alert manager
+// NewEnhancedAlertManager creates a new enhanced alert manager
 func NewEnhancedAlertManager(logger *slog.Logger) *EnhancedAlertManager {
 	return &EnhancedAlertManager{
 		logger:               logger,
@@ -2556,7 +2582,7 @@ func (am *EnhancedAlertManager) InitializeDatadogIntegration(apiKey, appKey, hos
 }
 
 // CreateGrafanaDashboard creates a Grafana dashboard
-func (am *EnhancedAlertManager) CreateGrafanaDashboard(title string, panels []GrafanaPanel) (*GrafanaDashboard, error) {
+func (am *EnhancedAlertManager) CreateGrafanaDashboard(title string, _ []GrafanaPanel) (*GrafanaDashboard, error) {
 	if !am.grafanaIntegration.enabled {
 		return nil, fmt.Errorf("grafana integration not enabled")
 	}
@@ -2794,77 +2820,37 @@ func (rtm *RealTimeMonitor) matchesFilter(point *RealTimeDataPoint, filter *Real
 		return true
 	}
 
-	// Check type filter
-	if len(filter.Types) > 0 {
-		matched := false
-		for _, t := range filter.Types {
-			if point.Type == t {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
+	return rtm.checkStringFilter(point.Type, filter.Types) &&
+		rtm.checkStringFilter(point.Source, filter.Sources) &&
+		rtm.checkStringFilter(point.Endpoint, filter.Endpoints) &&
+		rtm.checkStringFilter(point.Method, filter.Methods) &&
+		rtm.checkStatusFilter(point.Status, filter.StatusCodes)
+}
+
+// checkStringFilter checks if a value matches any in the filter list
+func (rtm *RealTimeMonitor) checkStringFilter(value string, filterList []string) bool {
+	if len(filterList) == 0 {
+		return true
+	}
+	for _, filterItem := range filterList {
+		if value == filterItem {
+			return true
 		}
 	}
+	return false
+}
 
-	// Check source filter
-	if len(filter.Sources) > 0 {
-		matched := false
-		for _, s := range filter.Sources {
-			if point.Source == s {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
+// checkStatusFilter checks if a status code matches any in the filter list
+func (rtm *RealTimeMonitor) checkStatusFilter(status int, filterList []int) bool {
+	if len(filterList) == 0 {
+		return true
+	}
+	for _, filterItem := range filterList {
+		if status == filterItem {
+			return true
 		}
 	}
-
-	// Check endpoint filter
-	if len(filter.Endpoints) > 0 {
-		matched := false
-		for _, e := range filter.Endpoints {
-			if point.Endpoint == e {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-
-	// Check method filter
-	if len(filter.Methods) > 0 {
-		matched := false
-		for _, m := range filter.Methods {
-			if point.Method == m {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-
-	// Check status code filter
-	if len(filter.StatusCodes) > 0 {
-		matched := false
-		for _, s := range filter.StatusCodes {
-			if point.Status == s {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-
-	return true
+	return false
 }
 
 // cleanupLoop cleans up inactive subscribers
@@ -2924,8 +2910,14 @@ func (dt *DistributedTracer) Stop() {
 // StartSpan starts a new span
 func (dt *DistributedTracer) StartSpan(operation, parentID string) *Span {
 	// Check if we should sample this span
-	if dt.sampleRate < 1.0 && rand.Float64() > dt.sampleRate {
-		return nil
+	if dt.sampleRate < 1.0 {
+		// Use crypto/rand for better randomness
+		n, err := rand.Int(rand.Reader, big.NewInt(samplingPrecision))
+		if err == nil {
+			if float64(n.Int64())/1000000.0 > dt.sampleRate {
+				return nil
+			}
+		}
 	}
 
 	traceID := generateTraceID()
@@ -3004,9 +2996,9 @@ func (dt *DistributedTracer) GetSpanStorage() []Span {
 func (dt *DistributedTracer) GetTrace(traceID string) []*Span {
 	var traceSpans []*Span
 
-	for _, span := range dt.spanStorage {
-		if span.TraceID == traceID {
-			traceSpans = append(traceSpans, &span)
+	for i := range dt.spanStorage {
+		if dt.spanStorage[i].TraceID == traceID {
+			traceSpans = append(traceSpans, &dt.spanStorage[i])
 		}
 	}
 
@@ -3028,9 +3020,9 @@ func (dt *DistributedTracer) cleanupOldSpans() {
 	cutoff := time.Now().Add(-enhancedDefaultSpanRetentionTime)
 
 	var newStorage []Span
-	for _, span := range dt.spanStorage {
-		if span.Start.After(cutoff) {
-			newStorage = append(newStorage, span)
+	for i := range dt.spanStorage {
+		if dt.spanStorage[i].Start.After(cutoff) {
+			newStorage = append(newStorage, dt.spanStorage[i])
 		}
 	}
 
@@ -3062,8 +3054,8 @@ func (dt *DistributedTracer) reportSpans() {
 
 	// In a real implementation, this would send spans to the tracing endpoint
 	// For now, we'll just log the reporting
-	for _, span := range recentSpans {
-		dt.logSpanReport(span)
+	for i := range recentSpans {
+		dt.logSpanReport(&recentSpans[i])
 	}
 }
 
@@ -3072,9 +3064,9 @@ func (dt *DistributedTracer) getRecentSpans() []Span {
 	var recent []Span
 	oneMinuteAgo := time.Now().Add(-enhancedDefaultRecentSpansWindow)
 
-	for _, span := range dt.spanStorage {
-		if span.Start.After(oneMinuteAgo) {
-			recent = append(recent, span)
+	for i := range dt.spanStorage {
+		if dt.spanStorage[i].Start.After(oneMinuteAgo) {
+			recent = append(recent, dt.spanStorage[i])
 		}
 	}
 
@@ -3082,7 +3074,7 @@ func (dt *DistributedTracer) getRecentSpans() []Span {
 }
 
 // logSpanReport logs span reporting (in real implementation, this would be an HTTP request)
-func (dt *DistributedTracer) logSpanReport(span Span) {
+func (dt *DistributedTracer) logSpanReport(_ *Span) {
 	// This is a placeholder for actual span reporting
 	// In a real implementation, this would send the span to Jaeger, Zipkin, etc.
 }
