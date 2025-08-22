@@ -2,7 +2,9 @@ package async
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -282,6 +284,7 @@ type CircuitBreaker struct {
 	state            CircuitBreakerState
 	failureCount     int
 	lastFailureTime  time.Time
+	mu               sync.RWMutex
 }
 
 // CircuitBreakerState represents the state of a circuit breaker
@@ -306,12 +309,27 @@ func NewCircuitBreaker(failureThreshold int, timeout time.Duration, logger *slog
 
 // Execute executes a function with circuit breaker protection
 func (cb *CircuitBreaker) Execute(fn func() error) error {
-	switch cb.state {
+	cb.mu.RLock()
+	currentState := cb.state
+	lastFailureTime := cb.lastFailureTime
+	failureCount := cb.failureCount
+	cb.mu.RUnlock()
+
+	cb.logger.Debug("Circuit breaker execute",
+		"state", currentState,
+		"failure_threshold", cb.failureThreshold,
+		"failure_count", failureCount,
+		"last_failure_time", lastFailureTime)
+
+	switch currentState {
 	case StateOpen:
-		if time.Since(cb.lastFailureTime) > cb.timeout {
+		if time.Since(lastFailureTime) > cb.timeout {
+			cb.mu.Lock()
 			cb.state = StateHalfOpen
 			cb.logger.Info("Circuit breaker transitioning to half-open")
+			cb.mu.Unlock()
 		} else {
+			cb.logger.Debug("Circuit breaker is open, returning ErrCircuitBreakerOpen")
 			return ErrCircuitBreakerOpen
 		}
 	case StateHalfOpen:
@@ -321,17 +339,25 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 	err := fn()
 
 	if err != nil {
+		cb.logger.Debug("Function failed, calling onFailure")
 		cb.onFailure()
+		return err
 	} else {
+		cb.logger.Debug("Function succeeded, calling onSuccess")
 		cb.onSuccess()
 	}
 
-	return err
+	return nil
 }
 
 func (cb *CircuitBreaker) onFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
 	cb.failureCount++
 	cb.lastFailureTime = time.Now()
+
+	cb.logger.Debug("Circuit breaker onFailure", "failure_count", cb.failureCount, "threshold", cb.failureThreshold, "current_state", cb.state)
 
 	if cb.state == StateHalfOpen || cb.failureCount >= cb.failureThreshold {
 		cb.state = StateOpen
@@ -340,11 +366,12 @@ func (cb *CircuitBreaker) onFailure() {
 }
 
 func (cb *CircuitBreaker) onSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
 	cb.failureCount = 0
 	cb.state = StateClosed
-	if cb.state == StateHalfOpen {
-		cb.logger.Info("Circuit breaker closed")
-	}
+	cb.logger.Info("Circuit breaker closed")
 }
 
 // JobTracer defines the interface for job tracing
@@ -365,7 +392,7 @@ type RateLimiter interface {
 }
 
 // ErrCircuitBreakerOpen is returned when the circuit breaker is open
-var ErrCircuitBreakerOpen = NewError(ErrCodeCircuitBreakerOpen, "circuit breaker is open", nil)
+var ErrCircuitBreakerOpen = errors.New("Circuit breaker is open")
 
 // CircuitBreakerError represents a circuit breaker error
 type CircuitBreakerError struct{}

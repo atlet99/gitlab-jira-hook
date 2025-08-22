@@ -590,7 +590,7 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 
 // NewCircuitBreaker creates a new circuit breaker with the given configuration
 func NewCircuitBreaker(config *CircuitBreakerConfig, logger *slog.Logger) *CircuitBreaker {
-	return async.NewCircuitBreaker(config.FailureThreshold, config.Timeout, logger)
+	return async.NewCircuitBreaker(config.FailureThreshold, config.MonitoringWindow, logger)
 }
 
 // StateClosed is an alias for the closed circuit breaker state

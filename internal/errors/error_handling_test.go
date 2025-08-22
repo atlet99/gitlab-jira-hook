@@ -289,7 +289,7 @@ func TestRetryer_Execute(t *testing.T) {
 }
 
 func TestCircuitBreaker_Execute(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	t.Run("Success with closed circuit", func(t *testing.T) {
 		cb := NewCircuitBreaker(DefaultCircuitBreakerConfig(), logger)
@@ -327,11 +327,15 @@ func TestCircuitBreaker_Execute(t *testing.T) {
 		})
 		// Note: GetState() is not available in the async package's CircuitBreaker
 
-		// Second failure should open circuit
+		// Second failure should open circuit - add small delay to ensure state update
+		time.Sleep(10 * time.Millisecond)
 		_ = cb.Execute(func() error {
 			return operation(context.Background(), 1)
 		})
 		// Note: GetState() is not available in the async package's CircuitBreaker
+
+		// Add delay to ensure circuit breaker state is updated
+		time.Sleep(10 * time.Millisecond)
 
 		// Next call should be rejected
 		err := cb.Execute(func() error {
