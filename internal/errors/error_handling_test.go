@@ -344,7 +344,7 @@ func TestCircuitBreaker_Execute(t *testing.T) {
 		if err == nil {
 			t.Error("Expected circuit breaker error, got nil")
 		}
-		if !strings.Contains(err.Error(), "Circuit breaker is open") {
+		if !strings.Contains(err.Error(), "circuit breaker is open") {
 			t.Errorf("Expected circuit breaker error message, got %v", err)
 		}
 	})
