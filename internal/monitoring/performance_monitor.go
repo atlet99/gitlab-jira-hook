@@ -790,7 +790,7 @@ func (pm *PerformanceMonitor) PerformanceMiddleware(next http.Handler) http.Hand
 		defer atomic.AddInt64(&pm.activeRequests, -1)
 
 		// Create response writer wrapper to capture status
-		wrappedWriter := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		wrappedWriter := &performanceResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Process request
 		next.ServeHTTP(wrappedWriter, r)
@@ -801,17 +801,17 @@ func (pm *PerformanceMonitor) PerformanceMiddleware(next http.Handler) http.Hand
 	})
 }
 
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
+// performanceResponseWriter wraps http.ResponseWriter to capture status code
+type performanceResponseWriter struct {
 	http.ResponseWriter
 	statusCode int
 }
 
-func (rw *responseWriter) WriteHeader(code int) {
+func (rw *performanceResponseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-func (rw *responseWriter) Write(b []byte) (int, error) {
+func (rw *performanceResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }

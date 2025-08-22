@@ -45,3 +45,10 @@ docs/
 
 # Special files
 *rules
+
+# Logs and reports
+*.log
+*.tmp
+*.temp
+*.out
+*.sarif

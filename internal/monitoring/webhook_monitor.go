@@ -128,7 +128,7 @@ func (m *WebhookMonitor) initializeEndpoints() {
 
 // monitorLoop runs the main monitoring loop
 func (m *WebhookMonitor) monitorLoop() {
-	ticker := time.NewTicker(DefaultCheckInterval) // Check every 30 seconds
+	ticker := time.NewTicker(DefaultCheckInterval)
 	defer ticker.Stop()
 
 	for {
@@ -190,7 +190,7 @@ func (m *WebhookMonitor) checkEndpoint(endpoint string) {
 
 	responseTime := time.Since(start)
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		m.updateStatus(endpoint, "healthy", responseTime, "")
 	} else {
 		m.updateStatus(endpoint, "unhealthy", responseTime, fmt.Sprintf("HTTP %d", resp.StatusCode))

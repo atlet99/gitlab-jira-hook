@@ -11,15 +11,16 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/atlet99/gitlab-jira-hook/internal/config"
+	configpkg "github.com/atlet99/gitlab-jira-hook/internal/config"
 )
 
 // Client represents a Jira API client
 type Client struct {
-	config       *config.Config
+	config       *configpkg.Config
 	httpClient   *http.Client
 	baseURL      string
 	authHeader   string        // Used for Basic Auth
@@ -75,7 +76,7 @@ func (rl *RateLimiter) Wait() {
 }
 
 // NewClient creates a new Jira API client
-func NewClient(cfg *config.Config) *Client {
+func NewClient(cfg *configpkg.Config) *Client {
 	if cfg == nil {
 		return nil
 	}
@@ -100,7 +101,7 @@ func NewClient(cfg *config.Config) *Client {
 	}
 
 	// Initialize authentication based on method
-	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {
+	if cfg.JiraAuthMethod == configpkg.JiraAuthMethodOAuth2 {
 		client.oauth2Client = NewOAuth2Client(cfg, slog.Default())
 	} else {
 		// Default to Basic Auth for backward compatibility
@@ -113,7 +114,7 @@ func NewClient(cfg *config.Config) *Client {
 
 // getAuthorizationHeader returns the appropriate Authorization header based on auth method
 func (c *Client) getAuthorizationHeader(ctx context.Context) (string, error) {
-	if c.config.JiraAuthMethod == config.JiraAuthMethodOAuth2 && c.oauth2Client != nil {
+	if c.config.JiraAuthMethod == configpkg.JiraAuthMethodOAuth2 && c.oauth2Client != nil {
 		return c.oauth2Client.CreateAuthorizationHeader(ctx)
 	}
 
@@ -291,7 +292,7 @@ func (c *Client) FindTransition(ctx context.Context, issueKey, targetStatus stri
 		return nil, err
 	}
 
-	for i := range transitions {
+	for i := 0; i < len(transitions); i++ {
 		if transitions[i].To.Name == targetStatus {
 			return &transitions[i], nil
 		}
@@ -321,6 +322,57 @@ func (c *Client) TransitionToStatus(ctx context.Context, issueKey, targetStatus 
 
 	// Execute the transition
 	return c.ExecuteTransition(ctx, issueKey, transition.ID)
+}
+
+// ValidateTransition validates if a transition to the target status is available and valid
+func (c *Client) ValidateTransition(ctx context.Context, issueKey, targetStatus string) error {
+	// Get current issue to verify current status
+	currentIssue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to get current issue status: %w", err)
+	}
+
+	// Check if we're already in the target status (idempotency check)
+	if currentIssue.Fields.Status != nil && currentIssue.Fields.Status.Name == targetStatus {
+		return nil // Already in target status, transition is valid but not needed
+	}
+
+	// Get available transitions
+	transitions, err := c.GetTransitions(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to get available transitions: %w", err)
+	}
+
+	// Validate that transition to target status exists
+	for i := 0; i < len(transitions); i++ {
+		if transitions[i].To.Name == targetStatus {
+			return nil // Transition is valid
+		}
+	}
+
+	return fmt.Errorf("no valid transition found to status '%s' for issue %s", targetStatus, issueKey)
+}
+
+// ExecuteTransitionWithValidation executes a transition with full validation and idempotency checks
+func (c *Client) ExecuteTransitionWithValidation(ctx context.Context, issueKey, targetStatus string) error {
+	// Validate transition first
+	if err := c.ValidateTransition(ctx, issueKey, targetStatus); err != nil {
+		return fmt.Errorf("transition validation failed: %w", err)
+	}
+
+	// Find the transition ID
+	transition, err := c.FindTransition(ctx, issueKey, targetStatus)
+	if err != nil {
+		return fmt.Errorf("failed to find transition: %w", err)
+	}
+
+	// Execute the transition
+	return c.ExecuteTransition(ctx, issueKey, transition.ID)
+}
+
+// GetTransitionDetails gets detailed information about available transitions for an issue
+func (c *Client) GetTransitionDetails(ctx context.Context, issueKey string) ([]Transition, error) {
+	return c.GetTransitions(ctx, issueKey)
 }
 
 // GetIssue retrieves a Jira issue by key
@@ -576,11 +628,166 @@ func (c *Client) executePutRequest(ctx context.Context, url string, payload map[
 
 // SetAssignee updates the assignee for a Jira issue using accountId
 func (c *Client) SetAssignee(ctx context.Context, issueKey, accountID string) error {
+	// Handle special assignee cases
+	if c.isSpecialAssigneeValue(accountID) {
+		return c.handleSpecialAssignee(ctx, issueKey, accountID)
+	}
+
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
 	payload := map[string]interface{}{
 		"accountId": accountID,
 	}
 	return c.executePutRequest(ctx, url, payload)
+}
+
+// SetAssigneeWithValidation sets assignee with full validation and special value handling
+func (c *Client) SetAssigneeWithValidation(ctx context.Context, issueKey, accountID string) error {
+	// Handle special assignee cases
+	if c.isSpecialAssigneeValue(accountID) {
+		return c.handleSpecialAssignee(ctx, issueKey, accountID)
+	}
+
+	// Validate that the user exists if not a special value
+	if accountID != "" && accountID != SpecialAssigneeNull {
+		users, err := c.SearchUsers(ctx, "")
+		if err != nil {
+			return fmt.Errorf("failed to validate assignee: %w", err)
+		}
+
+		// Check if accountId exists among found users
+		userExists := false
+		for _, user := range users {
+			if user.AccountID == accountID {
+				userExists = true
+				break
+			}
+		}
+
+		if !userExists {
+			return fmt.Errorf("user with accountId '%s' not found", accountID)
+		}
+	}
+
+	return c.SetAssignee(ctx, issueKey, accountID)
+}
+
+const (
+	// SpecialAssigneeNull represents the null assignee value in Jira
+	SpecialAssigneeNull = "null"
+	// SpecialAssigneeNil represents the nil assignee value in Jira
+	SpecialAssigneeNil = "nil"
+	// SpecialAssigneeUnassigned represents the unassigned value in Jira
+	SpecialAssigneeUnassigned = "unassigned"
+	// SpecialAssigneeDefault represents the default assignee value in Jira
+	SpecialAssigneeDefault = "default"
+	// SpecialAssigneeMinusOne represents the -1 assignee value in Jira
+	SpecialAssigneeMinusOne = "-1"
+	// SystemAccount represents the system account in Jira
+	SystemAccount = "system"
+	// AutomationAccount represents the automation account in Jira
+	AutomationAccount = "automation"
+	// BotAccount represents the bot account in Jira
+	BotAccount = "bot"
+	// UnassignedAccount represents the unassigned account in Jira
+	UnassignedAccount = "unassigned"
+)
+
+// isSpecialAssigneeValue checks if the accountId represents a special assignee value
+func (c *Client) isSpecialAssigneeValue(accountID string) bool {
+	if accountID == "" || accountID == SpecialAssigneeNull || accountID == SpecialAssigneeNil {
+		return true // Unassigned
+	}
+
+	// Check for default assignee
+	if accountID == SpecialAssigneeMinusOne || accountID == SpecialAssigneeDefault {
+		return true // Default assignee
+	}
+
+	// Check for system accounts
+	systemAccounts := []string{
+		SpecialAssigneeMinusOne, SpecialAssigneeNull, SpecialAssigneeNil,
+		SpecialAssigneeUnassigned, SystemAccount, AutomationAccount,
+		BotAccount, UnassignedAccount,
+	}
+	for _, systemAccount := range systemAccounts {
+		if strings.EqualFold(accountID, systemAccount) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleSpecialAssignee handles special assignee cases (Unassigned, Default)
+func (c *Client) handleSpecialAssignee(ctx context.Context, issueKey, accountID string) error {
+	switch strings.ToLower(accountID) {
+	case "", SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned:
+		// Set to unassigned
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": "", // Empty accountId means unassigned
+		}
+		return c.executePutRequest(ctx, url, payload)
+	case SpecialAssigneeMinusOne, SpecialAssigneeDefault:
+		// Set to default assignee (remove specific assignee)
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": "null", // null means default assignee
+		}
+		return c.executePutRequest(ctx, url, payload)
+	default:
+		// Handle other system accounts
+		url := fmt.Sprintf("%s/rest/api/3/issue/%s/assignee", c.baseURL, issueKey)
+		payload := map[string]interface{}{
+			"accountId": accountID,
+		}
+		return c.executePutRequest(ctx, url, payload)
+	}
+}
+
+// GetAssigneeDetails gets detailed information about the current assignee
+func (c *Client) GetAssigneeDetails(ctx context.Context, issueKey string) (*AssigneeDetails, error) {
+	issue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get issue: %w", err)
+	}
+
+	details := &AssigneeDetails{
+		IssueKey:    issueKey,
+		HasAssignee: issue.Fields.Assignee != nil,
+	}
+
+	if issue.Fields.Assignee != nil {
+		details.Assignee = *issue.Fields.Assignee
+		details.IsSpecial = c.isSpecialAssigneeValue(issue.Fields.Assignee.AccountID)
+		details.SpecialType = c.getSpecialAssigneeType(issue.Fields.Assignee.AccountID)
+	} else {
+		details.IsSpecial = true
+		details.SpecialType = "unassigned"
+	}
+
+	return details, nil
+}
+
+// AssigneeDetails represents detailed information about an issue's assignee
+type AssigneeDetails struct {
+	IssueKey    string   `json:"issue_key"`
+	HasAssignee bool     `json:"has_assignee"`
+	Assignee    JiraUser `json:"assignee,omitempty"`
+	IsSpecial   bool     `json:"is_special"`
+	SpecialType string   `json:"special_type,omitempty"`
+}
+
+// getSpecialAssigneeType determines the type of special assignee
+func (c *Client) getSpecialAssigneeType(accountID string) string {
+	switch strings.ToLower(accountID) {
+	case "", SpecialAssigneeNull, SpecialAssigneeNil, SpecialAssigneeUnassigned:
+		return "unassigned"
+	case SpecialAssigneeMinusOne, SpecialAssigneeDefault:
+		return "default"
+	default:
+		return "system"
+	}
 }
 
 // SearchIssues executes a JQL query and returns matching issues
@@ -714,4 +921,58 @@ func (c *Client) SearchUsers(ctx context.Context, email string) ([]JiraUser, err
 	}
 
 	return users, nil
+}
+
+// do executes a generic HTTP request and handles the response
+func (c *Client) do(req *http.Request, response interface{}) error {
+	// Wait for rate limiter
+	c.rateLimiter.Wait()
+
+	// Set authorization header if not already set
+	if req.Header.Get("Authorization") == "" {
+		authHeader, err := c.getAuthorizationHeader(req.Context())
+		if err != nil {
+			return fmt.Errorf("failed to get authorization header: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
+	}
+
+	// Set default headers if not already set
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
+	}
+
+	// Add context
+	req = req.WithContext(req.Context())
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			slog.Error("Failed to close response body", "error", closeErr)
+		}
+	}()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("jira API error: %s - %s", resp.Status, string(body))
+	}
+
+	// Parse response if response interface is provided
+	if response != nil {
+		if err := json.Unmarshal(body, response); err != nil {
+			return fmt.Errorf("failed to unmarshal response: %w", err)
+		}
+	}
+
+	return nil
 }

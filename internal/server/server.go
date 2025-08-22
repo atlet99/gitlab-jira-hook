@@ -182,11 +182,23 @@ func createMux(
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
+	// Create health monitor
+	healthMonitor := monitoring.NewHealthMonitor(cfg, logger, "1.0.0")
+
+	// Register health checkers
+	healthMonitor.RegisterChecker("cache", monitoring.NewCacheHealthChecker(cache.NewMultiLevelCache(
+		cacheL1Size, cacheL2Size))) // Default cache sizes
+
 	// Register main webhook routes with rate limiting and performance monitoring
 	registerWebhookRoutes(mux, gitlabHandler, projectHookHandler, jiraWebhookHandler, webhookMonitor, performanceMonitor)
 
 	// Register monitoring routes (no rate limiting for internal monitoring)
 	registerMonitoringRoutes(mux, webhookMonitor, performanceMonitor, logger)
+
+	// Register health check routes
+	healthHandler := monitoring.NewHTTPHealthHandler(healthMonitor)
+	mux.HandleFunc("/health", healthHandler.HandleHealth)
+	mux.HandleFunc("/health/ready", healthHandler.HandleHealth)
 
 	// Register OAuth 2.0 routes (only if OAuth 2.0 is configured)
 	if cfg.JiraAuthMethod == config.JiraAuthMethodOAuth2 {

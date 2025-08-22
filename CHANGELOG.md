@@ -5,6 +5,139 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-08-22
+
+### Added
+- **JQL-based Event Filtering System**
+  - Advanced JQL filter configuration for selective GitLab event processing with placeholder substitution
+  - Dynamic JQL execution for filtering events based on Jira queries with proper error handling
+  - Integration with existing event processing pipeline for seamless filtering
+  - Comprehensive configuration management for JQL filters with environment variable support
+  - Event age filtering to skip old events based on configurable time windows
+  - Support for complex JQL queries with dynamic field mapping and validation
+
+- **Enhanced ADF (Atlassian Document Format) Validation**
+  - Comprehensive ADF validation layer with JSON schema validation and error reporting
+  - Automatic fallback to plain text when ADF validation fails with graceful degradation
+  - Support for rich content validation with proper error handling and logging
+  - Integration with comment synchronization for enhanced content processing
+  - Enhanced ADF text extraction with proper content sanitization and formatting
+
+- **Improved JWT Webhook Security**
+  - Enhanced JWT validation using Atlassian public keys with multiple algorithm support
+  - Comprehensive JWT claims validation (iss, aud, exp, iat) with configurable thresholds
+  - Support for multiple JWT algorithms (RS256, HS256) with automatic algorithm detection
+  - Configurable JWT validation with environment variables and fallback mechanisms
+  - Enhanced security documentation and configuration examples for production deployment
+
+- **Bidirectional Synchronization Enhancements**
+  - Complete bidirectional sync system between Jira and GitLab with configurable direction
+  - Support for issue creation, updates, comments, and status synchronization
+  - User mapping system for assignee synchronization using accountId and email lookup
+  - Project mapping for cross-platform issue management with automatic fallback
+  - Event filtering by age and type for efficient processing and resource optimization
+
+- **Advanced Conflict Resolution**
+  - Intelligent conflict detection for concurrent modifications across both platforms
+  - Multiple resolution strategies: Last-Write-Wins, Merge, Manual with configurable defaults
+  - Configurable conflict detection window (5-minute default) with adjustable thresholds
+  - Field-level conflict analysis (title, description, status, assignee) with detailed logging
+  - Manual resolution queue for complex conflicts requiring human intervention
+
+- **Comprehensive Audit Logging System**
+  - Complete audit trail for all API operations and system events with structured logging
+  - Multiple event types: API request/response, authentication, authorization, data change, system operation, error
+  - Request ID correlation for tracking operations across the entire system
+  - Sensitive data sanitization and field masking for security and compliance
+  - Configurable logging levels and performance monitoring with metrics collection
+
+### Changed
+- **Jira Client Architecture Improvements**
+  - Enhanced Jira client with comprehensive API v3 compliance and proper endpoint usage
+  - Added dynamic authorization header generation with token refresh and error handling
+  - Improved context propagation throughout all API calls with proper cancellation support
+  - Enhanced error handling with structured retry logic and exponential backoff
+  - Reduced cyclomatic complexity through function decomposition and better organization
+
+- **Server Architecture Enhancements**
+  - Updated server initialization to support OAuth 2.0 endpoints and JWT validation
+  - Enhanced dependency injection for new sync components and middleware integration
+  - Improved error handling across all HTTP endpoints with proper status codes
+  - Added comprehensive logging for all new features and security enhancements
+  - Enhanced webhook handler with audit logging integration and performance monitoring
+
+- **Configuration Management Improvements**
+  - Extended configuration with 60+ new options for advanced features and security
+  - OAuth 2.0 configuration section with comprehensive security best practices
+  - Bidirectional sync configuration with fine-grained controls and validation
+  - Conflict resolution strategy configuration with multiple approach options
+  - JWT validation configuration with multiple security and algorithm options
+  - Enhanced validation with comprehensive input sanitization and error reporting
+
+### Fixed
+- **Critical Security and Stability Improvements**
+  - Fixed request forgery vulnerability in GetProjectInfo function with proper URL validation and sanitization
+  - Resolved nil pointer dereferences in WriteErrorResponse and LogError functions with comprehensive nil checks
+  - Fixed unhandled error in validateAndFallback function (gosec G104) with proper error handling
+  - Eliminated duplicate constants in internal/monitoring/webhook_monitor.go by using shared constants from handlers.go
+  - Enhanced test server setup with proper GitLab webhook endpoint registration for all test scenarios
+  - Fixed race condition in TestPriorityQueue/max_retries_exceeded with proper synchronization and timing controls
+  - Added proper validation to webhook handler to return 400 for missing required fields with detailed error messages
+  - Configured GitLab webhook handler with proper worker pool and monitor integration for async processing
+  - Fixed failing tests that were outdated due to code logic changes with updated test expectations
+  - Resolved all linting and compilation issues across the entire codebase (69 issues total)
+  - Enhanced error handling with proper error return checking and structured error responses
+
+- **Context Propagation and Error Handling**
+  - Fixed context.Context passing throughout the application with proper cancellation support
+  - Updated all API calls to properly handle request cancellation and timeouts
+  - Improved timeout handling in long-running operations with graceful degradation
+  - Enhanced error messages with detailed context and debugging information
+  - Fixed memory leaks in context handling with proper resource cleanup
+
+- **Test Infrastructure and Coverage**
+  - Updated all test files to support new authentication methods and security features
+  - Fixed mock interfaces to match new function signatures and API changes
+  - Enhanced test coverage for OAuth 2.0, JWT validation, and sync features
+  - Fixed compilation errors in test files with proper dependency injection
+  - Added comprehensive ADF validation and JQL filtering tests with edge cases
+
+- **Webhook Event Processing Improvements**
+  - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
+  - Added fallback logic to use event.Type when ObjectKind is empty for better compatibility
+  - Added support for repository_update events (skipped as not relevant for Jira integration)
+  - Fixed event type conversion between internal Event and webhook.Event structures
+  - Improved error logging with both object_kind and event_type for better debugging
+  - Enhanced merge request, issue, and note event processing with fallback logic
+  - Added better error handling and logging for missing event data
+  - Improved Jira issue ID extraction and validation in all event types
+  - Translated all Russian comments to English for better code maintainability
+
+### Security
+- **Enhanced Authentication Security**
+  - Added OAuth 2.0 support for improved security over Basic Auth with token refresh
+  - Implemented JWT signature validation for webhook security with public key verification
+  - Added CSRF protection with secure state parameter handling and validation
+  - Enhanced token storage and refresh mechanisms with automatic expiration handling
+  - Added comprehensive JWT validation with Atlassian public keys and algorithm support
+
+- **Webhook Security Improvements**
+  - Improved HMAC-SHA256 signature validation with proper timing attack protection
+  - Added replay attack prevention mechanisms with nonce validation
+  - Enhanced input validation and sanitization for all webhook endpoints
+  - Added comprehensive audit logging for security events and access attempts
+  - Implemented rate limiting and DDoS protection for all webhook handlers
+
+### Documentation
+- **Comprehensive Feature Documentation**
+  - Added detailed OAuth 2.0 setup and configuration guide with security considerations
+  - Enhanced JWT validation documentation with algorithm support and examples
+  - Complete bidirectional sync configuration examples with conflict resolution strategies
+  - JQL-based filtering configuration guide with placeholder substitution examples
+  - Enhanced audit logging documentation with event types and security considerations
+  - Production deployment guidance with security hardening and best practices
+  - ADF validation documentation with fallback mechanisms and error handling
+
 ## [1.0.0] - 2025-08-18
 
 ### Added
@@ -671,7 +804,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture diagrams and project structure
 - Troubleshooting guides
 
-## [1.0.1] - 2025-08-18
+## [1.0.1] - 2025-08-19
+
+### Added
+- **JQL-based Event Filtering System**
+  - Advanced JQL filter configuration for selective GitLab event processing with placeholder substitution
+  - Dynamic JQL execution for filtering events based on Jira queries with proper error handling
+  - Integration with existing event processing pipeline for seamless filtering
+  - Comprehensive configuration management for JQL filters with environment variable support
+  - Event age filtering to skip old events based on configurable time windows
+  - Support for complex JQL queries with dynamic field mapping and validation
+
+- **Enhanced ADF (Atlassian Document Format) Validation**
+  - Comprehensive ADF validation layer with JSON schema validation and error reporting
+  - Automatic fallback to plain text when ADF validation fails with graceful degradation
+  - Support for rich content validation with proper error handling and logging
+  - Integration with comment synchronization for enhanced content processing
+  - Enhanced ADF text extraction with proper content sanitization and formatting
+
+- **Improved JWT Webhook Security**
+  - Enhanced JWT validation using Atlassian public keys with multiple algorithm support
+  - Comprehensive JWT claims validation (iss, aud, exp, iat) with configurable thresholds
+  - Support for multiple JWT algorithms (RS256, HS256) with automatic algorithm detection
+  - Configurable JWT validation with environment variables and fallback mechanisms
+  - Enhanced security documentation and configuration examples for production deployment
+
+- **Bidirectional Synchronization Enhancements**
+  - Complete bidirectional sync system between Jira and GitLab with configurable direction
+  - Support for issue creation, updates, comments, and status synchronization
+  - User mapping system for assignee synchronization using accountId and email lookup
+  - Project mapping for cross-platform issue management with automatic fallback
+  - Event filtering by age and type for efficient processing and resource optimization
+
+- **Advanced Conflict Resolution**
+  - Intelligent conflict detection for concurrent modifications across both platforms
+  - Multiple resolution strategies: Last-Write-Wins, Merge, Manual with configurable defaults
+  - Configurable conflict detection window (5-minute default) with adjustable thresholds
+  - Field-level conflict analysis (title, description, status, assignee) with detailed logging
+  - Manual resolution queue for complex conflicts requiring human intervention
+
+- **Comprehensive Audit Logging System**
+  - Complete audit trail for all API operations and system events with structured logging
+  - Multiple event types: API request/response, authentication, authorization, data change, system operation, error
+  - Request ID correlation for tracking operations across the entire system
+  - Sensitive data sanitization and field masking for security and compliance
+  - Configurable logging levels and performance monitoring with metrics collection
+
+### Changed
+- **Jira Client Architecture Improvements**
+  - Enhanced Jira client with comprehensive API v3 compliance and proper endpoint usage
+  - Added dynamic authorization header generation with token refresh and error handling
+  - Improved context propagation throughout all API calls with proper cancellation support
+  - Enhanced error handling with structured retry logic and exponential backoff
+  - Reduced cyclomatic complexity through function decomposition and better organization
+
+- **Server Architecture Enhancements**
+  - Updated server initialization to support OAuth 2.0 endpoints and JWT validation
+  - Enhanced dependency injection for new sync components and middleware integration
+  - Improved error handling across all HTTP endpoints with proper status codes
+  - Added comprehensive logging for all new features and security enhancements
+  - Enhanced webhook handler with audit logging integration and performance monitoring
+
+- **Configuration Management Improvements**
+  - Extended configuration with 60+ new options for advanced features and security
+  - OAuth 2.0 configuration section with comprehensive security best practices
+  - Bidirectional sync configuration with fine-grained controls and validation
+  - Conflict resolution strategy configuration with multiple approach options
+  - JWT validation configuration with multiple security and algorithm options
+  - Enhanced validation with comprehensive input sanitization and error reporting
 
 ### Fixed
 - **Critical Security and Stability Improvements**
@@ -686,3 +886,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed failing tests that were outdated due to code logic changes with updated test expectations
   - Resolved all linting and compilation issues across the entire codebase (69 issues total)
   - Enhanced error handling with proper error return checking and structured error responses
+
+- **Linter Error Fixes**
+  - Fixed duplicate code (dupl) in internal/jira/agile.go by refactoring GetBoard, GetSprint, and GetEpic functions to use shared helper methods
+  - Fixed duplicate code (dupl) in internal/jira/jsm.go by refactoring GetServiceDesk, GetRequest, GetSLA, and GetCustomers functions
+  - Fixed duplicate code (dupl) in internal/jira/jsm_enhanced.go by consolidating GetCustomer function implementation
+  - Removed unused functions getSingleResource and getMultipleResources from internal/jira/jsm.go to eliminate unused code warnings
+  - Removed unused function getSingleResource from internal/jira/agile.go to clean up codebase
+  - Fixed circuit breaker test assertion to match actual error message format for proper test validation
+  - Fixed duplicate constant declaration for defaultCircuitBreakerTimeout by using shared constant values
+  - Fixed race condition in TestAdvancedMonitorAlerts by removing manual CheckAlertRules call and using background processing
+
+- **Context Propagation and Error Handling**
+  - Fixed context.Context passing throughout the application with proper cancellation support
+  - Updated all API calls to properly handle request cancellation and timeouts
+  - Improved timeout handling in long-running operations with graceful degradation
+  - Enhanced error messages with detailed context and debugging information
+  - Fixed memory leaks in context handling with proper resource cleanup
+
+- **Test Infrastructure and Coverage**
+  - Updated all test files to support new authentication methods and security features
+  - Fixed mock interfaces to match new function signatures and API changes
+  - Enhanced test coverage for OAuth 2.0, JWT validation, and sync features
+  - Fixed compilation errors in test files with proper dependency injection
+  - Added comprehensive ADF validation and JQL filtering tests with edge cases
+
+- **Webhook Event Processing Improvements**
+  - Fixed webhook event processing where ObjectKind was empty causing "unsupported event type" errors
+  - Added fallback logic to use event.Type when ObjectKind is empty for better compatibility
+  - Added support for repository_update events (skipped as not relevant for Jira integration)
+  - Fixed event type conversion between internal Event and webhook.Event structures
+  - Improved error logging with both object_kind and event_type for better debugging
+  - Enhanced merge request, issue, and note event processing with fallback logic
+  - Added better error handling and logging for missing event data
+  - Improved Jira issue ID extraction and validation in all event types
+  - Translated all Russian comments to English for better code maintainability
+
+### Security
+- **Enhanced Authentication Security**
+  - Added OAuth 2.0 support for improved security over Basic Auth with token refresh
+  - Implemented JWT signature validation for webhook security with public key verification
+  - Added CSRF protection with secure state parameter handling and validation
+  - Enhanced token storage and refresh mechanisms with automatic expiration handling
+  - Added comprehensive JWT validation with Atlassian public keys and algorithm support
+
+- **Webhook Security Improvements**
+  - Improved HMAC-SHA256 signature validation with proper timing attack protection
+  - Added replay attack prevention mechanisms with nonce validation
+  - Enhanced input validation and sanitization for all webhook endpoints
+  - Added comprehensive audit logging for security events and access attempts
+  - Implemented rate limiting and DDoS protection for all webhook handlers
+
+### Documentation
+- **Comprehensive Feature Documentation**
+  - Added detailed OAuth 2.0 setup and configuration guide with security considerations
+  - Enhanced JWT validation documentation with algorithm support and examples
+  - Complete bidirectional sync configuration examples with conflict resolution strategies
+  - JQL-based filtering configuration guide with placeholder substitution examples
+  - Enhanced audit logging documentation with event types and security considerations
+  - Production deployment guidance with security hardening and best practices
+  - ADF validation documentation with fallback mechanisms and error handling

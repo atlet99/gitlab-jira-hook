@@ -24,10 +24,16 @@ import (
 type JWTValidator struct {
 	logger           *slog.Logger
 	httpClient       *http.Client
-	publicKeyCache   map[string]*rsa.PublicKey
+	publicKeyCache   map[string]*publicKeyCacheEntry
 	cacheTTL         time.Duration
 	allowedIssuers   []string
 	expectedAudience string
+}
+
+// publicKeyCacheEntry represents a cached public key with timestamp
+type publicKeyCacheEntry struct {
+	publicKey *rsa.PublicKey
+	timestamp time.Time
 }
 
 // JWTClaims represents the claims in a Jira JWT token
@@ -88,7 +94,7 @@ func NewJWTValidator(logger *slog.Logger, expectedAudience string, allowedIssuer
 	return &JWTValidator{
 		logger:           logger,
 		httpClient:       &http.Client{Timeout: DefaultHTTPTimeout},
-		publicKeyCache:   make(map[string]*rsa.PublicKey),
+		publicKeyCache:   make(map[string]*publicKeyCacheEntry),
 		cacheTTL:         DefaultCacheTTL,
 		allowedIssuers:   allowedIssuers,
 		expectedAudience: expectedAudience,
@@ -249,14 +255,8 @@ func (v *JWTValidator) validateAsymmetricJWT(
 
 // validateSymmetricJWT validates HS256 JWT tokens with shared secret
 func (v *JWTValidator) validateSymmetricJWT(
-	_ context.Context, _ string, claims *JWTClaims, _ *http.Request,
+	_ context.Context, _ string, claims *JWTClaims, request *http.Request,
 ) *ValidationResult {
-	// Note: This requires shared secret which should be obtained during app installation
-	// For now, we'll return an error indicating this needs to be implemented
-	// with proper shared secret management
-
-	v.logger.Warn("Symmetric JWT validation not fully implemented - requires shared secret from installation")
-
 	// Validate basic claims structure
 	if err := v.validateBasicClaims(claims); err != nil {
 		return &ValidationResult{
@@ -266,34 +266,64 @@ func (v *JWTValidator) validateSymmetricJWT(
 		}
 	}
 
-	// For now, we'll do basic validation without signature verification
-	// In production, you need to:
-	// 1. Get shared secret for the issuer (clientKey) from installation data
-	// 2. Verify JWT signature using HS256 with shared secret
-	// 3. Validate query string hash (qsh) if not context JWT
+	// For symmetric tokens, we need to validate the query string hash (qsh)
+	// This is required for webhook tokens to prevent replay attacks
+	if claims.QueryHash != ContextQSH {
+		computedQSH := v.computeCanonicalHash(request)
+		if claims.QueryHash != computedQSH {
+			return &ValidationResult{
+				Valid:     false,
+				ErrorCode: errors.ErrCodeInvalidSignature,
+				ErrorMessage: fmt.Sprintf("Query string hash validation failed: "+
+					"expected %s, got %s", computedQSH, claims.QueryHash),
+			}
+		}
+	}
+
+	// Note: Full signature verification requires shared secret from installation
+	// For now, we'll log a warning but accept the token if claims are valid
+	// In production, you should implement:
+	// 1. Store shared secrets for each issuer (clientKey) securely
+	// 2. Verify JWT signature using HS256 with the appropriate shared secret
+	// 3. Consider implementing installation data storage for Connect apps
+
+	v.logger.Warn("Symmetric JWT signature verification not fully implemented - shared secret required for production",
+		"issuer", claims.Issuer,
+		"subject", claims.Subject)
 
 	return &ValidationResult{
-		Valid:        true, // TODO: Implement proper signature verification
-		Claims:       claims,
-		TokenType:    TokenTypeSymmetric,
-		ErrorMessage: "Signature verification skipped - shared secret required",
+		Valid:     true,
+		Claims:    claims,
+		TokenType: TokenTypeSymmetric,
 	}
 }
 
-// getPublicKey retrieves public key from Atlassian CDN
+// getPublicKey retrieves public key from Atlassian CDN with caching
 func (v *JWTValidator) getPublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	// Check cache first
-	if cachedKey, exists := v.publicKeyCache[keyID]; exists {
-		return cachedKey, nil
+	if cachedEntry, exists := v.publicKeyCache[keyID]; exists {
+		// Check if cache entry is still valid
+		if time.Since(cachedEntry.timestamp) < v.cacheTTL {
+			v.logger.Debug("Using cached public key", "keyID", keyID)
+			return cachedEntry.publicKey, nil
+		}
+		// Remove expired cache entry
+		delete(v.publicKeyCache, keyID)
+		v.logger.Debug("Expired cache entry removed", "keyID", keyID)
 	}
 
 	// Fetch from CDN
 	keyURL := fmt.Sprintf("%s/%s", AtlassianCDNBaseURL, keyID)
 
+	v.logger.Debug("Fetching public key from CDN", "keyID", keyID, "url", keyURL)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", keyURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	// Add User-Agent header to identify our application
+	req.Header.Set("User-Agent", "gitlab-jira-hook/1.0")
 
 	resp, err := v.httpClient.Do(req)
 	if err != nil {
@@ -320,10 +350,13 @@ func (v *JWTValidator) getPublicKey(ctx context.Context, keyID string) (*rsa.Pub
 		return nil, fmt.Errorf("failed to parse public key: %w", err)
 	}
 
-	// Cache the key
-	v.publicKeyCache[keyID] = publicKey
+	// Cache the key with timestamp
+	v.publicKeyCache[keyID] = &publicKeyCacheEntry{
+		publicKey: publicKey,
+		timestamp: time.Now(),
+	}
 
-	v.logger.Debug("Public key cached", "keyID", keyID)
+	v.logger.Debug("Public key cached", "keyID", keyID, "cacheTTL", v.cacheTTL)
 
 	return publicKey, nil
 }

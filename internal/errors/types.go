@@ -3,10 +3,41 @@
 package errors
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/atlet99/gitlab-jira-hook/internal/async"
+)
+
+// Default retry configuration constants
+const (
+	defaultMaxAttempts  = 3
+	defaultInitialDelay = 100 * time.Millisecond
+	defaultMaxDelay     = 10 * time.Second
+	defaultMultiplier   = 2.0
+	defaultJitterFactor = 0.25
+	defaultJitterRange  = 1000
+
+	// GitLab specific retry constants
+	gitlabMaxAttempts  = 5
+	gitlabInitialDelay = 1 * time.Second
+	gitlabMaxDelay     = 30 * time.Second
+	gitlabMultiplier   = 2.0
+
+	// Jira specific retry constants
+	jiraMaxAttempts  = 3
+	jiraInitialDelay = 500 * time.Millisecond
+	jiraMaxDelay     = 15 * time.Second
+	jiraMultiplier   = 1.5
+
+	// Circuit breaker constants
+	defaultFailureThreshold = 3
+	defaultSuccessThreshold = 1
+	defaultMonitoringWindow = time.Minute
 )
 
 // ErrorCode represents a specific error condition
@@ -365,3 +396,211 @@ func getUserFriendlyMessage(code ErrorCode) string {
 		return "An unexpected error occurred. Please try again or contact support."
 	}
 }
+
+// isDefaultRetryable checks if an error should be retried by default
+func isDefaultRetryable(err error) bool {
+	if serviceErr, ok := err.(*ServiceError); ok {
+		return serviceErr.IsRetryable()
+	}
+
+	// Network errors are typically retryable
+	errStr := err.Error()
+	networkIndicators := []string{
+		"connection refused", "connection timeout", "network unreachable",
+		"no such host", "dial tcp", "context deadline exceeded",
+		"Client.Timeout exceeded", "connection reset by peer",
+		"temporary failure", "resource temporarily unavailable",
+	}
+
+	for _, indicator := range networkIndicators {
+		if contains(errStr, indicator) {
+			return true
+		}
+	}
+
+	// Rate limiting errors are retryable
+	rateLimitIndicators := []string{
+		"rate limit", "too many requests", "429",
+		"quota exceeded", "throttled",
+	}
+
+	for _, indicator := range rateLimitIndicators {
+		if contains(errStr, indicator) {
+			return true
+		}
+	}
+
+	// Timeout errors are retryable
+	timeoutIndicators := []string{
+		"timeout", "deadline exceeded",
+	}
+
+	for _, indicator := range timeoutIndicators {
+		if contains(errStr, indicator) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// RetryConfig holds configuration for retry logic
+type RetryConfig struct {
+	MaxAttempts   int              `json:"max_attempts"`
+	InitialDelay  time.Duration    `json:"initial_delay"`
+	MaxDelay      time.Duration    `json:"max_delay"`
+	Multiplier    float64          `json:"multiplier"`
+	Jitter        bool             `json:"jitter"`
+	RetryableFunc func(error) bool `json:"retryable_func"`
+}
+
+// CircuitBreakerConfig holds configuration for circuit breaker logic
+type CircuitBreakerConfig struct {
+	FailureThreshold int           `json:"failure_threshold"`
+	SuccessThreshold int           `json:"success_threshold"`
+	Timeout          time.Duration `json:"timeout"`
+	MonitoringWindow time.Duration `json:"monitoring_window"`
+}
+
+// RetryableOperation represents a function that can be retried
+type RetryableOperation func(ctx context.Context, attempt int) error
+
+// Retryer implements retry logic for operations
+type Retryer struct {
+	config *RetryConfig
+	logger *slog.Logger
+}
+
+// NewRetryer creates a new retryer with the given configuration
+func NewRetryer(config *RetryConfig, logger *slog.Logger) *Retryer {
+	return &Retryer{
+		config: config,
+		logger: logger,
+	}
+}
+
+// Execute executes a retryable operation with the configured retry logic
+func (r *Retryer) Execute(ctx context.Context, operation RetryableOperation) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= r.config.MaxAttempts; attempt++ {
+		if attempt > 1 {
+			// Wait before retry
+			delay := r.getDelay(attempt)
+			if r.config.Jitter {
+				delay = r.applyJitter(delay)
+			}
+
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		err := operation(ctx, attempt)
+		if err == nil {
+			return nil // Success
+		}
+
+		lastErr = err
+
+		// Check if error is retryable
+		if !r.config.RetryableFunc(err) {
+			break
+		}
+
+		// Don't retry if context is canceled
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+
+	return lastErr
+}
+
+// getDelay calculates the delay for the given attempt
+func (r *Retryer) getDelay(attempt int) time.Duration {
+	delay := r.config.InitialDelay
+	for i := 1; i < attempt; i++ {
+		delay = time.Duration(float64(delay) * r.config.Multiplier)
+		if delay > r.config.MaxDelay {
+			delay = r.config.MaxDelay
+			break
+		}
+	}
+	return delay
+}
+
+// applyJitter adds random jitter to the delay
+func (r *Retryer) applyJitter(delay time.Duration) time.Duration {
+	// Simple jitter implementation - add up to 25% random variation
+	// Calculate jitter with proper bounds checking
+	nanoTime := time.Now().UnixNano()
+	jitterRangeFactor := float64(nanoTime%defaultJitterRange) / float64(defaultJitterRange)
+	jitter := time.Duration(float64(delay) * defaultJitterFactor * (2.0*jitterRangeFactor - 1.0))
+	return delay + jitter
+}
+
+// DefaultRetryConfig returns default retry configuration
+func DefaultRetryConfig() *RetryConfig {
+	return &RetryConfig{
+		MaxAttempts:   defaultMaxAttempts,
+		InitialDelay:  defaultInitialDelay,
+		MaxDelay:      defaultMaxDelay,
+		Multiplier:    defaultMultiplier,
+		Jitter:        true,
+		RetryableFunc: isDefaultRetryable,
+	}
+}
+
+// GitLabRetryConfig returns retry configuration optimized for GitLab API
+func GitLabRetryConfig() *RetryConfig {
+	return &RetryConfig{
+		MaxAttempts:   gitlabMaxAttempts,
+		InitialDelay:  gitlabInitialDelay,
+		MaxDelay:      gitlabMaxDelay,
+		Multiplier:    gitlabMultiplier,
+		Jitter:        true,
+		RetryableFunc: isDefaultRetryable,
+	}
+}
+
+// JiraRetryConfig returns retry configuration optimized for Jira API
+func JiraRetryConfig() *RetryConfig {
+	return &RetryConfig{
+		MaxAttempts:   jiraMaxAttempts,
+		InitialDelay:  jiraInitialDelay,
+		MaxDelay:      jiraMaxDelay,
+		Multiplier:    jiraMultiplier,
+		Jitter:        true,
+		RetryableFunc: isDefaultRetryable,
+	}
+}
+
+// DefaultCircuitBreakerConfig returns default circuit breaker configuration
+func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
+	return &CircuitBreakerConfig{
+		FailureThreshold: defaultFailureThreshold,
+		SuccessThreshold: defaultSuccessThreshold,
+		Timeout:          defaultCircuitBreakerTimeout,
+		MonitoringWindow: defaultMonitoringWindow,
+	}
+}
+
+// NewCircuitBreaker creates a new circuit breaker with the given configuration
+func NewCircuitBreaker(config *CircuitBreakerConfig, logger *slog.Logger) *CircuitBreaker {
+	return async.NewCircuitBreaker(config.FailureThreshold, config.MonitoringWindow, logger)
+}
+
+// StateClosed is an alias for the closed circuit breaker state
+const StateClosed = async.StateClosed
+
+// CircuitBreaker is an alias for the async package's circuit breaker type
+type CircuitBreaker = async.CircuitBreaker
+
+// CircuitBreakerState is an alias for the async package's circuit breaker state type
+type CircuitBreakerState = async.CircuitBreakerState
+
+// StateOpen is an alias for the open circuit breaker state
+const StateOpen = async.StateOpen

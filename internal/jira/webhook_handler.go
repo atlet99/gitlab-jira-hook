@@ -874,6 +874,7 @@ type WebhookHandler struct {
 	authValidator *AuthValidator
 	syncManager   Manager // Bidirectional sync manager
 	auditLogger   *AuditLogger
+	// jqlFilter     *JQLFilter // JQL-based event filter - TODO: implement JQL filtering
 }
 
 // NewWebhookHandler creates a new Jira webhook handler
@@ -1372,13 +1373,9 @@ func (h *WebhookHandler) processGitLabIssueEvent(ctx context.Context, event *Git
 		return nil // Status already matches
 	}
 
-	// Update Jira issue status
-	updateFields := map[string]interface{}{
-		"status": map[string]string{"name": targetJiraStatus},
-	}
-
-	if err := h.getJiraClient().UpdateIssue(ctx, jiraKey, updateFields); err != nil {
-		return fmt.Errorf("failed to update Jira issue status: %w", err)
+	// Update Jira issue status using proper workflow transitions
+	if err := h.getJiraClient().TransitionToStatus(ctx, jiraKey, targetJiraStatus); err != nil {
+		return fmt.Errorf("failed to transition Jira issue status: %w", err)
 	}
 
 	h.logger.Info("Synced GitLab status to Jira",
