@@ -640,7 +640,11 @@ func (am *AdvancedMonitor) exportMetricsJSON() string {
 		"total":     len(metrics),
 	}
 
-	jsonData, _ := json.MarshalIndent(data, "", "  ")
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		am.logger.Error("Failed to marshal metrics for export", "error", err)
+		return fmt.Sprintf(`{"error": "Failed to export metrics: %v"}`, err)
+	}
 	return string(jsonData)
 }
 

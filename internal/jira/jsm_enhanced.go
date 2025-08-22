@@ -310,14 +310,14 @@ func (s *JSMServiceEnhanced) GetCustomer(ctx context.Context, customerID string)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	s.logger.Debug("Getting customer", "customerID", customerID, "url", url)
+	s.logger.Debug("Getting enhanced customer", "customerID", customerID, "url", url)
 
 	var customer CustomerEnhanced
 	if err := s.client.do(req, &customer); err != nil {
-		return nil, fmt.Errorf("failed to get customer: %w", err)
+		return nil, fmt.Errorf("failed to get enhanced customer: %w", err)
 	}
 
-	s.logger.Info("Retrieved customer", "customerID", customerID, "name", customer.Name)
+	s.logger.Info("Retrieved enhanced customer", "customerID", customerID, "name", customer.Name)
 	return &customer, nil
 }
 

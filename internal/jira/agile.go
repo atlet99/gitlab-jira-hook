@@ -26,26 +26,22 @@ func NewAgileService(client *Client, logger *slog.Logger) *AgileService {
 	}
 }
 
-// getSingleResource makes a GET request to get a single resource by ID
-func (s *AgileService) getSingleResource(
-	_ context.Context,
-	endpoint string,
-	resourceID int,
-	resourceType string,
-) ([]byte, error) {
+// getResource makes a GET request to get a single resource by ID
+func (s *AgileService) getResource(
+	_ context.Context, endpoint string, resourceID int, resourceType string, result interface{},
+) error {
 	url := fmt.Sprintf("%s/rest/agile/1.0/%s/%d", s.client.baseURL, endpoint, resourceID)
 
 	req, err := http.NewRequest("GET", url, http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	var result []byte
-	if err := s.client.do(req, &result); err != nil {
-		return nil, fmt.Errorf("failed to get %s: %w", resourceType, err)
+	if err := s.client.do(req, result); err != nil {
+		return fmt.Errorf("failed to get %s: %w", resourceType, err)
 	}
 
-	return result, nil
+	return nil
 }
 
 // getIssuesForResource makes a GET request to get issues for a specific resource
@@ -216,16 +212,9 @@ func (s *AgileService) GetBoards(_ context.Context, projectKey string) ([]AgileB
 
 // GetBoard retrieves a specific board by ID
 func (s *AgileService) GetBoard(ctx context.Context, boardID int) (*AgileBoard, error) {
-	url := fmt.Sprintf("%s/rest/agile/1.0/board/%d", s.client.baseURL, boardID)
-
-	req, err := http.NewRequest("GET", url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
 	var result AgileBoard
-	if err := s.client.do(req, &result); err != nil {
-		return nil, fmt.Errorf("failed to get board: %w", err)
+	if err := s.getResource(ctx, "board", boardID, "board", &result); err != nil {
+		return nil, err
 	}
 
 	s.logger.Info("Retrieved board", "boardID", boardID, "name", result.Name)
@@ -270,16 +259,9 @@ func (s *AgileService) GetSprints(_ context.Context, boardID int, state string) 
 
 // GetSprint retrieves a specific sprint by ID
 func (s *AgileService) GetSprint(ctx context.Context, sprintID int) (*AgileSprint, error) {
-	url := fmt.Sprintf("%s/rest/agile/1.0/sprint/%d", s.client.baseURL, sprintID)
-
-	req, err := http.NewRequest("GET", url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
 	var result AgileSprint
-	if err := s.client.do(req, &result); err != nil {
-		return nil, fmt.Errorf("failed to get sprint: %w", err)
+	if err := s.getResource(ctx, "sprint", sprintID, "sprint", &result); err != nil {
+		return nil, err
 	}
 
 	s.logger.Info("Retrieved sprint", "sprintID", sprintID, "name", result.Name)
@@ -444,16 +426,9 @@ func (s *AgileService) GetEpics(_ context.Context, startAt, maxResults int, quer
 
 // GetEpic retrieves a specific epic by ID
 func (s *AgileService) GetEpic(ctx context.Context, epicID int) (*AgileEpic, error) {
-	url := fmt.Sprintf("%s/rest/agile/1.0/epic/%d", s.client.baseURL, epicID)
-
-	req, err := http.NewRequest("GET", url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
 	var result AgileEpic
-	if err := s.client.do(req, &result); err != nil {
-		return nil, fmt.Errorf("failed to get epic: %w", err)
+	if err := s.getResource(ctx, "epic", epicID, "epic", &result); err != nil {
+		return nil, err
 	}
 
 	s.logger.Info("Retrieved epic", "epicID", epicID, "name", result.Name)

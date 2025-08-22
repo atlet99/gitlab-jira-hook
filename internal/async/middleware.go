@@ -342,10 +342,10 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 		cb.logger.Debug("Function failed, calling onFailure")
 		cb.onFailure()
 		return err
-	} else {
-		cb.logger.Debug("Function succeeded, calling onSuccess")
-		cb.onSuccess()
 	}
+
+	cb.logger.Debug("Function succeeded, calling onSuccess")
+	cb.onSuccess()
 
 	return nil
 }
@@ -357,7 +357,10 @@ func (cb *CircuitBreaker) onFailure() {
 	cb.failureCount++
 	cb.lastFailureTime = time.Now()
 
-	cb.logger.Debug("Circuit breaker onFailure", "failure_count", cb.failureCount, "threshold", cb.failureThreshold, "current_state", cb.state)
+	cb.logger.Debug("Circuit breaker onFailure",
+		"failure_count", cb.failureCount,
+		"threshold", cb.failureThreshold,
+		"current_state", cb.state)
 
 	if cb.state == StateHalfOpen || cb.failureCount >= cb.failureThreshold {
 		cb.state = StateOpen
@@ -392,7 +395,7 @@ type RateLimiter interface {
 }
 
 // ErrCircuitBreakerOpen is returned when the circuit breaker is open
-var ErrCircuitBreakerOpen = errors.New("Circuit breaker is open")
+var ErrCircuitBreakerOpen = errors.New("circuit breaker is open")
 
 // CircuitBreakerError represents a circuit breaker error
 type CircuitBreakerError struct{}
