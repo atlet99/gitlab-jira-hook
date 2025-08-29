@@ -884,81 +884,122 @@ func (am *AlertManager) GetAlertHistory() []Alert {
 
 // CheckAlertRules checks all alert rules and triggers alerts if needed
 func (am *AlertManager) CheckAlertRules(metrics *AdvancedMetrics) {
+	// Get a snapshot of alert rules to minimize lock time
+	alertRules := am.getEnabledAlertRules()
+
+	// Process each rule with minimal locking
+	for _, rule := range alertRules {
+		am.processAlertRule(rule, metrics)
+	}
+
+	// Clean up history
+	am.cleanupAlertHistory()
+}
+
+// getEnabledAlertRules returns a snapshot of enabled alert rules
+func (am *AlertManager) getEnabledAlertRules() []*AlertRule {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+
+	alertRules := make([]*AlertRule, 0, len(am.alertRules))
+	for _, rule := range am.alertRules {
+		if rule.Enabled {
+			alertRules = append(alertRules, rule)
+		}
+	}
+	return alertRules
+}
+
+// processAlertRule processes a single alert rule
+func (am *AlertManager) processAlertRule(rule *AlertRule, metrics *AdvancedMetrics) {
+	// Get current metric value (metrics have their own synchronization)
+	metric := metrics.GetMetric(rule.Metric, nil)
+	if metric == nil {
+		return
+	}
+
+	// Check condition
+	shouldAlert := am.evaluateAlertCondition(metric.Value, rule.Condition, rule.Threshold)
+	alertID := fmt.Sprintf("%s-%s", rule.ID, rule.Metric)
+
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	for _, rule := range am.alertRules {
-		if !rule.Enabled {
-			continue
+	if shouldAlert {
+		am.createOrUpdateAlert(alertID, rule, metric)
+	} else {
+		am.resolveAlert(alertID)
+	}
+}
+
+// evaluateAlertCondition evaluates if an alert should be triggered
+func (am *AlertManager) evaluateAlertCondition(value float64, condition string, threshold float64) bool {
+	switch condition {
+	case ">":
+		return value > threshold
+	case ">=":
+		return value >= threshold
+	case "<":
+		return value < threshold
+	case "<=":
+		return value <= threshold
+	case "==":
+		return value == threshold
+	case "!=":
+		return value != threshold
+	default:
+		return false
+	}
+}
+
+// createOrUpdateAlert creates or updates an alert
+func (am *AlertManager) createOrUpdateAlert(alertID string, rule *AlertRule, metric *Metric) {
+	if existing, exists := am.activeAlerts[alertID]; exists {
+		// Update existing alert
+		existing.CurrentValue = metric.Value
+		existing.Timestamp = time.Now()
+	} else {
+		// Create new alert
+		alert := &Alert{
+			ID:           alertID,
+			Name:         rule.Name,
+			Description:  rule.Description,
+			Level:        rule.Level,
+			Metric:       rule.Metric,
+			CurrentValue: metric.Value,
+			Threshold:    rule.Threshold,
+			Condition:    rule.Condition,
+			Timestamp:    time.Now(),
+			Resolved:     false,
 		}
+		am.activeAlerts[alertID] = alert
 
-		// Get current metric value
-		metric := metrics.GetMetric(rule.Metric, nil)
-		if metric == nil {
-			continue
-		}
-
-		// Check condition
-		shouldAlert := false
-		switch rule.Condition {
-		case ">":
-			shouldAlert = metric.Value > rule.Threshold
-		case ">=":
-			shouldAlert = metric.Value >= rule.Threshold
-		case "<":
-			shouldAlert = metric.Value < rule.Threshold
-		case "<=":
-			shouldAlert = metric.Value <= rule.Threshold
-		case "==":
-			shouldAlert = metric.Value == rule.Threshold
-		case "!=":
-			shouldAlert = metric.Value != rule.Threshold
-		}
-
-		// Create or update alert
-		alertID := fmt.Sprintf("%s-%s", rule.ID, rule.Metric)
-		if shouldAlert {
-			if existing, exists := am.activeAlerts[alertID]; exists {
-				// Update existing alert
-				existing.CurrentValue = metric.Value
-				existing.Timestamp = time.Now()
-			} else {
-				// Create new alert
-				alert := &Alert{
-					ID:           alertID,
-					Name:         rule.Name,
-					Description:  rule.Description,
-					Level:        rule.Level,
-					Metric:       rule.Metric,
-					CurrentValue: metric.Value,
-					Threshold:    rule.Threshold,
-					Condition:    rule.Condition,
-					Timestamp:    time.Now(),
-					Resolved:     false,
-				}
-				am.activeAlerts[alertID] = alert
-
-				// Send notification
-				select {
-				case am.alertChan <- alert:
-				default:
-					// Channel full, drop the notification
-				}
-			}
-		} else {
-			// Resolve alert if it exists
-			if existing, exists := am.activeAlerts[alertID]; exists {
-				existing.Resolved = true
-				existing.ResolvedAt = time.Now()
-
-				// Move to history
-				am.alertHistory = append(am.alertHistory, *existing)
-				delete(am.activeAlerts, alertID)
-			}
+		// Send notification
+		select {
+		case am.alertChan <- alert:
+		default:
+			// Channel full, drop the notification
 		}
 	}
+}
 
-	// Keep history size manageable
+// resolveAlert resolves an alert if it exists
+func (am *AlertManager) resolveAlert(alertID string) {
+	if existing, exists := am.activeAlerts[alertID]; exists {
+		existing.Resolved = true
+		existing.ResolvedAt = time.Now()
+
+		// Move to history
+		am.alertHistory = append(am.alertHistory, *existing)
+		delete(am.activeAlerts, alertID)
+	}
+}
+
+// cleanupAlertHistory keeps the history size manageable
+func (am *AlertManager) cleanupAlertHistory() {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
 	if len(am.alertHistory) > defaultAlertHistoryMaxSize {
 		am.alertHistory = am.alertHistory[1:]
 	}

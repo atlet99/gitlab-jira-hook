@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-08-29
+
+### Fixed
+- **Race Condition Resolution in Advanced Monitoring**
+  - Fixed data race in TestAdvancedMonitorAlerts with proper synchronization between background alert processing and test access
+  - Optimized CheckAlertRules method in advanced_monitoring.go to reduce mutex lock time:
+    - Changed from exclusive lock to RLock() for reading alert rules list
+    - Minimized critical section locking to only active alerts modification
+    - Reduced overall mutex blocking time for better concurrency
+  - Enhanced test synchronization in advanced_monitoring_test.go:
+    - Added delay before test execution to ensure background goroutines are properly started
+    - Implemented safe alert data access by creating copies to avoid race conditions
+    - Improved test reliability with proper timing controls and synchronization
+
+### Changed
+- **Performance Improvements in Alert Processing**
+  - Reduced mutex contention in AlertManager.CheckAlertRules method by using read-write locks appropriately
+  - Optimized concurrent access patterns for better performance under high load
+  - Enhanced thread safety while maintaining backward compatibility
+
+### Security
+- **Enhanced Test Security**
+  - Eliminated potential data exposure in test scenarios with proper synchronization
+  - Improved test isolation to prevent cross-test contamination
+  - Added comprehensive race condition detection with Go race detector
+
 ## [1.0.1] - 2025-08-22
 
 ### Added

@@ -145,6 +145,9 @@ func TestAdvancedMonitorAlerts(t *testing.T) {
 		}
 	}()
 
+	// Add a small delay to ensure background goroutines are started
+	time.Sleep(50 * time.Millisecond)
+
 	t.Run("add_alert_rule", func(t *testing.T) {
 		rule := &AlertRule{
 			ID:        "test_rule",
@@ -203,14 +206,16 @@ func TestAdvancedMonitorAlerts(t *testing.T) {
 		alerts := monitor.GetActiveAlerts()
 		assert.GreaterOrEqual(t, len(alerts), 1)
 
-		// Find our alert
+		// Find our alert and access it safely with proper synchronization
 		found := false
 		for _, alert := range alerts {
 			if alert.Name == "High Value Alert" && !alert.Resolved {
 				found = true
-				assert.Equal(t, AlertLevelWarning, alert.Level)
-				assert.Equal(t, 10.0, alert.CurrentValue)
-				assert.Equal(t, 5.0, alert.Threshold)
+				// Make a copy of the alert to avoid race conditions
+				alertCopy := *alert
+				assert.Equal(t, AlertLevelWarning, alertCopy.Level)
+				assert.Equal(t, 10.0, alertCopy.CurrentValue)
+				assert.Equal(t, 5.0, alertCopy.Threshold)
 			}
 		}
 		assert.True(t, found)
